@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "llm-client"
+version = "0.1.0"
+description = "Asynchronous OpenAI client with caching, streaming, and rate limiting helpers."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "asyncpg>=0.27.0",
+  "redis>=4.2.0",
+  "aiohttp==3.9.5",
+  "aiofiles>=23.0",
+  "blake3>=0.4",
+  "python-dotenv>=1.0",
+  "openai>=1.59",
+  "tiktoken>=0.7",
+  "numpy>=1.26",
+  "tqdm>=4.66",
+  "six>=1.16",
+]
+
+[project.urls]
+Source = "https://example.com/llm-client"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-dir]
+"" = "src"

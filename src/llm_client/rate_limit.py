@@ -1,0 +1,70 @@
+import asyncio
+import time
+from typing import Type
+
+from .models import ModelProfile
+
+
+class TokenBucket:
+    def __init__(self, size: int = 0) -> None:
+        self._maximum_size = size
+        self._current_size = size
+        self._consume_per_second = size / 60
+        self._last_fill_time = time.time()
+        self._lock = asyncio.Lock()
+
+    async def consume(self, amount: int = 0) -> None:
+        if amount == 0:
+            return
+
+        async with self._lock:
+            if amount > self._maximum_size:
+                raise ValueError("Amount exceeds bucket size.")
+
+            self._refill()
+
+            while amount > self._current_size:
+                await asyncio.sleep(0.05)
+                self._refill()
+
+            self._current_size -= amount
+
+    def _refill(self) -> None:
+        now = time.time()
+        elapsed = now - self._last_fill_time
+        refilled_tokens = int(elapsed * self._consume_per_second)
+        self._current_size = min(self._maximum_size, self._current_size + refilled_tokens)
+        self._last_fill_time = now
+
+
+class Limiter:
+    DEFAULT_RATE_LIMITS = {"tkn_per_min": 0, "req_per_min": 0}
+
+    def __init__(self, model_specs: Type["ModelProfile"] | None = None) -> None:
+        rate_limits = model_specs.rate_limits if model_specs else self.DEFAULT_RATE_LIMITS
+        self.tkn_limiter = TokenBucket(size=int(rate_limits["tkn_per_min"] * 0.75))
+        self.req_limiter = TokenBucket(size=int(rate_limits["req_per_min"] * 0.95))
+
+    def limit(self, tokens: int = 0, requests: int = 0):
+        return self._LimitContextManager(self, tokens, requests)
+
+    class _LimitContextManager:
+        def __init__(self, limiter, tokens, requests):
+            self.limiter = limiter
+            self.tokens = tokens
+            self.requests = requests
+            self.output_tokens = 0
+
+        async def __aenter__(self):
+            await asyncio.gather(
+                self.limiter.tkn_limiter.consume(self.tokens),
+                self.limiter.req_limiter.consume(self.requests),
+            )
+            return self
+
+        async def __aexit__(self, exc_type, exc_val, exc_tb):
+            if self.output_tokens > 0:
+                await self.limiter.tkn_limiter.consume(self.output_tokens)
+
+
+__all__ = ["Limiter", "TokenBucket"]
