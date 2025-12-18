@@ -131,8 +131,8 @@ class OpenAIClient:
             }
         ]
 
-        response = await self._call_responses(input=messages, reasoning={"effort": "minimal"})
-        return response
+        result, _ = await self._call_responses(input=messages, reasoning={"effort": "minimal"})
+        return result
 
     async def transcribe_image(self, file_path: Union[str, Path]) -> dict:
         file_path = Path(file_path)
@@ -165,7 +165,7 @@ class OpenAIClient:
         response = await self.get_response(messages=messages, response_format="text")
         return response
 
-    async def _call_responses(self, **params) -> dict:
+    async def _call_responses(self, **params) -> Union[dict, any]:
         assert params.get("input"), "'input' is required for completions."
         params["model"] = self.model.model_name
         if "reasoning" in params:
@@ -200,8 +200,8 @@ class OpenAIClient:
                 print(f"API Status Error in Completions: {error}")
             finally:
                 usage = usage or {}
-        return dict(params=params, output=output, usage=usage,
-                            status=status, error=error)
+        result = dict(params=params, output=output, usage=usage, status=status, error=error)
+        return result, response
 
     async def _call_completions(self, **params) -> dict:
         assert params.get("messages"), "Messages are required for completions."
