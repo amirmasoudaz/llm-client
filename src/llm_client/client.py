@@ -48,7 +48,9 @@ class OpenAIClient:
         else:
             raise ValueError("Model must be provided either as a ModelProfile subclass or a model key string.")
 
-        if self.model.category == "completions":
+        if self.responses_api_toggle:
+            self._call_model = self._call_responses
+        elif self.model.category == "completions":
             self._call_model = self._call_completions
         elif self.model.category == "embeddings":
             self._call_model = self._call_embeddings
@@ -203,7 +205,7 @@ class OpenAIClient:
         result = dict(params=params, output=output, usage=usage, status=status, error=error)
         return result, response
 
-    async def _call_completions(self, **params) -> dict:
+    async def _call_completions(self, **params) -> Union[dict, any]:
         assert params.get("messages"), "Messages are required for completions."
         params["model"] = self.model.model_name
 
@@ -270,9 +272,10 @@ class OpenAIClient:
                 print(f"API Status Error in Completions: {error}")
             finally:
                 usage = usage or {}
-        return dict(params=params, output=output, usage=usage, status=status, error=error)
+        result = dict(params=params, output=output, usage=usage, status=status, error=error)
+        return result, response
 
-    async def _call_embeddings(self, **params) -> dict:
+    async def _call_embeddings(self, **params) -> Union[dict, any]:
         assert params.get("input"), "Input is required for embeddings."
         params["model"] = self.model.model_name
         if not params.get("encoding_format"):
@@ -307,7 +310,8 @@ class OpenAIClient:
                 print(f"API Status Error in Embeddings: {error}")
             finally:
                 usage = usage or {}
-        return dict(params=params, output=output, usage=usage, status=status, error=error)
+        result = dict(params=params, output=output, usage=usage, status=status, error=error)
+        return result, response
 
     async def get_response(
         self,
