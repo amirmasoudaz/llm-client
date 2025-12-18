@@ -30,6 +30,9 @@ class ModelProfile:
     context_window: ClassVar[int]
     rate_limits: ClassVar[dict]
     usage_costs: ClassVar[dict]
+    reasoning_model: ClassVar[bool] = False
+    reasoning_efforts: ClassVar[list[str]] = []
+    default_reasoning_effort: ClassVar[str | None] = None
     function_calling_support: ClassVar[bool] = False
     token_streaming_support: ClassVar[bool] = False
     encoding: ClassVar[str] = "cl100k_base"
@@ -140,6 +143,8 @@ class GPT5Point2(ModelProfile):
         "cached_input": 0.175 / 1_000_000,
     }
     rate_limits = {"tkn_per_min": 2_000_000, "req_per_min": 10_000}
+    reasoning_model = True
+    reasoning_efforts = ["none", "minimal", "low", "medium", "high", "xhigh"]
     function_calling_support = True
     token_streaming_support = True
     encoding = "o200k_base"
@@ -157,6 +162,9 @@ class GPT5Point1(ModelProfile):
         "cached_input": 0.125 / 1_000_000,
     }
     rate_limits = {"tkn_per_min": 2_000_000, "req_per_min": 10_000}
+    reasoning_model = True
+    reasoning_efforts = ["none", "minimal", "low", "medium", "high"]
+    default_reasoning_effort = "none"
     function_calling_support = True
     token_streaming_support = True
     encoding = "o200k_base"
@@ -174,6 +182,9 @@ class GPT5(ModelProfile):
         "cached_input": 0.125 / 1_000_000,
     }
     rate_limits = {"tkn_per_min": 2_000_000, "req_per_min": 10_000}
+    reasoning_model = True
+    reasoning_efforts = ["minimal", "low", "medium", "high"]
+    default_reasoning_effort = "medium"
     function_calling_support = True
     token_streaming_support = True
     encoding = "o200k_base"
@@ -191,6 +202,9 @@ class GPT5Mini(ModelProfile):
         "cached_input": 0.025 / 1_000_000,
     }
     rate_limits = {"tkn_per_min": 10_000_000, "req_per_min": 10_000}
+    reasoning_model = True
+    reasoning_efforts = ["minimal", "low", "medium", "high"]
+    default_reasoning_effort = "medium"
     function_calling_support = True
     token_streaming_support = True
     encoding = "o200k_base"
@@ -208,6 +222,9 @@ class GPT5Nano(ModelProfile):
         "cached_input": 0.005 / 1_000_000,
     }
     rate_limits = {"tkn_per_min": 10_000_000, "req_per_min": 10_000}
+    reasoning_model = True
+    reasoning_efforts = ["minimal", "low", "medium", "high"]
+    default_reasoning_effort = "medium"
     function_calling_support = True
     token_streaming_support = True
     encoding = "o200k_base"

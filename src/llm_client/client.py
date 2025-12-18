@@ -79,6 +79,130 @@ class OpenAIClient:
     async def close(self) -> None:
         await self.cache.close()
 
+    @staticmethod
+    def encode_file(file_path: Union[str, Path]) -> dict:
+        file_path = Path(file_path)
+        extension = file_path.suffix.lower()
+        with open(file_path, "rb") as file:
+            data = file.read()
+        base64_encoded = base64.b64encode(data).decode("utf-8")
+
+        if extension in {".jpg", ".jpeg", ".png", ".webp"}:
+            return {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:image/{extension};base64,{base64_encoded}"
+                    },
+                }
+        elif extension == ".pdf":
+            return {
+                    "type": "input_file",
+                    "filename": file_path.name,
+                    "file_data": base64_encoded,
+                }
+        else:
+            raise ValueError(f"Unsupported file type: {extension}")
+
+    async def transcribe_pdf(self, file_path: Union[str, Path]) -> dict:
+        file_path = Path(file_path)
+        if not file_path.exists() or file_path.suffix.lower() != ".pdf":
+            raise ValueError("File does not exist or is not a PDF.")
+
+        file = await self.openai.files.create(
+            file=open(str(file_path), "rb"),
+            purpose="user_data"
+        )
+
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": "Extract text from this PDF document. "
+                                "Do not include any metadata or file information, just the text content. "
+                                "Your output should be the text extracted from the PDF."
+                    },
+                    {
+                        "type": "input_file",
+                        "file_id": file.id
+                    },
+                ]
+            }
+        ]
+
+        response = await self._call_responses(input=messages, reasoning={"effort": "minimal"})
+        return response
+
+    async def transcribe_image(self, file_path: Union[str, Path]) -> dict:
+        file_path = Path(file_path)
+        if not file_path.exists() or file_path.suffix.lower() not in {".jpg", ".jpeg", ".png", ".webp"}:
+            raise ValueError("File does not exist or is not an image.")
+
+        with open(file_path, "rb") as file:
+            data = file.read()
+        base64_encoded = base64.b64encode(data).decode("utf-8")
+
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "Transcribe the text from this image. Do not include any other explanations or metadata."
+                                "Your output should be the image transcription only."
+                    },
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/{file_path.suffix[1:]};base64,{base64_encoded}"
+                        },
+                    },
+                ],
+            }
+        ]
+
+        response = await self.get_response(messages=messages, response_format="text")
+        return response
+
+    async def _call_responses(self, **params) -> dict:
+        assert params.get("input"), "'input' is required for completions."
+        params["model"] = self.model.model_name
+        if "reasoning" in params:
+            if not self.model.reasoning_model:
+                raise ValueError("Model does not support reasoning, but no reasoning parameters were provided.")
+            if params["reasoning"]["effort"] not in self.model.reasoning_efforts:
+                raise ValueError(f"Invalid reasoning effort. Choose from: {self.model.reasoning_efforts}")
+
+        if "response_format" in params:
+            raise ValueError("response_format is not supported with 'responses' endpoint YET.")
+
+        output, usage = None, {}
+        status, error = 500, "INCOMPLETE"
+
+        async with self.limiter.limit(tokens=self.model.count_tokens(params["input"]),
+                                      requests=1) as limit_context:
+            try:
+                response = await self.openai.responses.create(**params)
+                output = response.output_text
+                usage_raw = response.usage.to_dict()
+                status, error = 200, "OK"
+                usage = self.model.parse_usage(usage_raw)
+                limit_context.output_tokens = usage.get("output_tokens", 0)
+            except openai.APIConnectionError as e:
+                status, error = 500, e.__cause__
+                print(f"API Connection Error in Completions: {error}")
+            except openai.RateLimitError as e:
+                status, error = 429, "Rate limit exceeded."
+                print(f"Rate Limit Error in Completions: {error} - {e}")
+            except openai.APIStatusError as e:
+                status, error = e.status_code, e.response
+                print(f"API Status Error in Completions: {error}")
+            finally:
+                usage = usage or {}
+        return dict(params=params, output=output, usage=usage,
+                            status=status, error=error)
+
     async def _call_completions(self, **params) -> dict:
         assert params.get("messages"), "Messages are required for completions."
         params["model"] = self.model.model_name
