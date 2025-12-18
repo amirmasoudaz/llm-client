@@ -320,6 +320,7 @@ class OpenAIClient:
         backoff: int = 1,
         body: dict | None = None,
         cache_response: bool = False,
+        return_response: bool = False,
         rewrite_cache: bool = False,
         regen_cache: bool = False,
         log_errors: bool = True,
@@ -346,16 +347,17 @@ class OpenAIClient:
             if cached:
                 return cached
 
-        response: dict = {}
+        result: dict = {}
         attempts_left = attempts
         current_backoff = backoff
+        response = None
 
         while attempts_left > 0:
             try:
                 if timeout is None:
-                    response = await self._call_model(**kwargs)
+                    result, response = await self._call_model(**kwargs)
                 else:
-                    response = await asyncio.wait_for(self._call_model(**kwargs), timeout=timeout)
+                    result, response = await asyncio.wait_for(self._call_model(**kwargs), timeout=timeout)
             except asyncio.TimeoutError:
                 attempts_left -= 1
                 if attempts_left == 0:
@@ -364,24 +366,24 @@ class OpenAIClient:
                 current_backoff *= 2
                 continue
 
-            if response["status"] < 500:
+            if result["status"] < 500:
                 break
 
             attempts_left -= 1
             if attempts_left == 0:
-                return response
+                return result
 
             await asyncio.sleep(current_backoff)
             current_backoff *= 2
 
-        response.update({"identifier": identifier, "body": body})
-        if response.get("body"):
-            response["body"]["completion"] = response.get("output")
+        result.update({"identifier": identifier, "body": body})
+        if result.get("body"):
+            result["body"]["completion"] = result.get("output")
 
         if cache_response:
-            rf = response.get("params", {}).get("response_format", {})
+            rf = result.get("params", {}).get("response_format", {})
             if rf and not isinstance(rf, dict):
-                response["params"]["response_format"] = {
+                result["params"]["response_format"] = {
                     "type": "json_schema",
                     "schema_name": getattr(rf, "__name__", str(rf)),
                 }
@@ -390,12 +392,15 @@ class OpenAIClient:
                 identifier,
                 rewrite_cache=rewrite_cache,
                 regen_cache=regen_cache,
-                response=response,
+                response=result,
                 model_name=self.model.model_name,
                 log_errors=log_errors,
             )
 
-        return response
+        if return_response:
+            result["response"] = response
+
+        return result
 
     async def _run_one(self, coro):
         async with self.semaphore:
