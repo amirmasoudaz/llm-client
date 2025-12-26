@@ -13,7 +13,7 @@ from blake3 import blake3
 from .cache import CacheSettings, build_cache_core
 from .models import ModelProfile
 from .rate_limit import Limiter
-from .streaming import PusherStreamer
+from .streaming import PusherStreamer, format_sse_event
 
 
 class OpenAIClient:
@@ -57,7 +57,6 @@ class OpenAIClient:
 
         self.limiter = Limiter(self.model)
         self.openai = AsyncOpenAI()
-        self.semaphore = asyncio.Semaphore(256)
 
         backend_name = cache_backend or "none"
         self.cache = build_cache_core(
@@ -230,23 +229,72 @@ class OpenAIClient:
         ) as limit_context:
             try:
                 if params.get("stream", False):
+                    stream_mode = params.pop("stream_mode", "pusher")
                     output = ""
                     params["stream_options"] = {"include_usage": True}
-                    async with PusherStreamer(channel=params.pop("channel", str(uuid.uuid4()))) as streamer:
-                        listener = await self.openai.chat.completions.create(**params)
-                        await streamer.push_event("new-response", "")
-                        async for chunk in listener:
-                            if not chunk.choices and chunk.usage:
-                                usage = dict(chunk.usage)
-                                usage["completion_tokens_details"] = usage["completion_tokens_details"].dict()
-                                usage["prompt_tokens_details"] = usage["prompt_tokens_details"].dict()
-                                error, status = "OK", 200
-                                break
-                            token = chunk.choices[0].delta.content
-                            if token is not None:
-                                await streamer.push_event("new-token", token)
-                                output += token
-                        await streamer.push_event("response-finished", error)
+                    
+                    if stream_mode == "sse":
+                        # SSE streaming mode: return async generator
+                        async def sse_generator():
+                            nonlocal output, usage, status, error
+                            try:
+                                # Send initial metadata event
+                                yield format_sse_event("meta", json.dumps({
+                                    "model": params["model"],
+                                    "stream_mode": "sse"
+                                }))
+                                
+                                listener = await self.openai.chat.completions.create(**params)
+                                async for chunk in listener:
+                                    if not chunk.choices and chunk.usage:
+                                        # Final chunk with usage stats
+                                        usage = dict(chunk.usage)
+                                        usage["completion_tokens_details"] = usage["completion_tokens_details"].dict()
+                                        usage["prompt_tokens_details"] = usage["prompt_tokens_details"].dict()
+                                        usage = self.model.parse_usage(usage)
+                                        error, status = "OK", 200
+                                        
+                                        # Send done event with usage
+                                        yield format_sse_event("done", json.dumps({
+                                            "usage": usage,
+                                            "status": status,
+                                            "output": output
+                                        }))
+                                        break
+                                    
+                                    token = chunk.choices[0].delta.content
+                                    if token is not None:
+                                        yield format_sse_event("token", token)
+                                        output += token
+                                        
+                            except Exception as e:
+                                error = str(e)
+                                status = 500
+                                yield format_sse_event("error", json.dumps({
+                                    "error": error,
+                                    "status": status
+                                }))
+                        
+                        # Return the generator for SSE mode
+                        return sse_generator(), None
+                    
+                    else:
+                        # Pusher streaming mode (default)
+                        async with PusherStreamer(channel=params.pop("channel", str(uuid.uuid4()))) as streamer:
+                            listener = await self.openai.chat.completions.create(**params)
+                            await streamer.push_event("new-response", "")
+                            async for chunk in listener:
+                                if not chunk.choices and chunk.usage:
+                                    usage = dict(chunk.usage)
+                                    usage["completion_tokens_details"] = usage["completion_tokens_details"].dict()
+                                    usage["prompt_tokens_details"] = usage["prompt_tokens_details"].dict()
+                                    error, status = "OK", 200
+                                    break
+                                token = chunk.choices[0].delta.content
+                                if token is not None:
+                                    await streamer.push_event("new-token", token)
+                                    output += token
+                            await streamer.push_event("response-finished", error)
                 else:
                     if isinstance(params["response_format"], dict):
                         response = await self.openai.chat.completions.create(**params)
@@ -358,6 +406,12 @@ class OpenAIClient:
                     result, response = await self._call_model(**kwargs)
                 else:
                     result, response = await asyncio.wait_for(self._call_model(**kwargs), timeout=timeout)
+                
+                # Handle SSE streaming mode: return generator directly
+                if kwargs.get("stream") and kwargs.get("stream_mode") == "sse":
+                    # result is actually the async generator in this case
+                    return result
+                    
             except asyncio.TimeoutError:
                 attempts_left -= 1
                 if attempts_left == 0:
@@ -401,26 +455,6 @@ class OpenAIClient:
             result["response"] = response
 
         return result
-
-    async def _run_one(self, coro):
-        async with self.semaphore:
-            return await coro
-
-    async def run_batch(self, coros: list):
-        wrapped = [self._run_one(c) for c in coros]
-        results = await asyncio.gather(*wrapped, return_exceptions=True)
-
-        out = []
-        for result in results:
-            if isinstance(result, Exception):
-                out.append({"error": str(result), "status": 500, "output": None, "usage": None})
-            else:
-                out.append(result)
-        return out
-
-    async def iter_batch(self, coros: list):
-        for fut in asyncio.as_completed([self._run_one(c) for c in coros]):
-            yield await fut
 
 
 __all__ = ["OpenAIClient"]

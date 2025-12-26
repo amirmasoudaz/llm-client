@@ -9,6 +9,22 @@ import aiohttp
 import six
 
 
+def format_sse_event(event: str, data: str) -> str:
+    """
+    Format data as a Server-Sent Event (SSE).
+    
+    Args:
+        event: The event name (e.g., "token", "done", "error")
+        data: The data payload (will be stringified if not already a string)
+    
+    Returns:
+        SSE-formatted string: "event: {event}\\ndata: {data}\\n\\n"
+    """
+    if not isinstance(data, str):
+        data = str(data)
+    return f"event: {event}\ndata: {data}\n\n"
+
+
 class PusherStreamer:
     def __init__(self, channel: str | None = None) -> None:
         self.auth_key = os.environ.get("PUSHER_AUTH_KEY")
@@ -67,4 +83,4 @@ class PusherStreamer:
             return str(exc)
 
 
-__all__ = ["PusherStreamer"]
+__all__ = ["PusherStreamer", "format_sse_event"]

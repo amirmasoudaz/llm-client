@@ -28,6 +28,7 @@ from .models import (
 )
 from .rate_limit import Limiter, TokenBucket
 from .streaming import PusherStreamer
+from .batch_req import RequestManager
 
 __all__ = [
     "OpenAIClient",
@@ -45,5 +46,6 @@ __all__ = [
     "Limiter",
     "TokenBucket",
     "PusherStreamer",
+    "RequestManager",
     "ResponseTimeoutError",
 ]
