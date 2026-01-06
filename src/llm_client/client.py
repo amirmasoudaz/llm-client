@@ -3,7 +3,7 @@ import base64
 import json
 import uuid
 from pathlib import Path
-from typing import Union, Literal, Type
+from typing import Union, Literal, Type, Optional
 
 import numpy as np
 import openai
@@ -299,7 +299,7 @@ class OpenAIClient:
                     if isinstance(params["response_format"], dict):
                         response = await self.openai.chat.completions.create(**params)
                         output = response.choices[0].message.content
-                        if params["response_format"]["type"] == "json_object":
+                        if params["response_format"]["type"] in ["json_object", "json_schema"]:
                             output = json.loads(output)
                     else:
                         response = await self.openai.beta.chat.completions.parse(**params)
@@ -455,6 +455,66 @@ class OpenAIClient:
             result["response"] = response
 
         return result
+
+    async def upload_batch_input_file(self, file_path: Union[str, Path]) -> dict:
+        """
+        Uploads a JSONL file for batch processing.
+        """
+        file_path = Path(file_path)
+        if not file_path.exists():
+             raise ValueError(f"File {file_path} does not exist.")
+             
+        file_obj = await self.openai.files.create(
+            file=open(file_path, "rb"),
+            purpose="batch"
+        )
+        return file_obj.dict()
+
+    async def create_batch_job(
+        self,
+        input_file_id: str,
+        endpoint: Literal["/v1/chat/completions", "/v1/embeddings", "/v1/completions"] = "/v1/chat/completions",
+        completion_window: Literal["24h"] = "24h",
+        metadata: Optional[dict] = None
+    ) -> dict:
+        """
+        Create a batch job using the OpenAI Batch API.
+        """
+        batch = await self.openai.batches.create(
+            input_file_id=input_file_id,
+            endpoint=endpoint,
+            completion_window=completion_window,
+            metadata=metadata
+        )
+        return batch.dict()
+
+    async def retrieve_batch_job(self, batch_id: str) -> dict:
+        """
+        Retrieve details of a batch job.
+        """
+        batch = await self.openai.batches.retrieve(batch_id)
+        return batch.dict()
+        
+    async def cancel_batch_job(self, batch_id: str) -> dict:
+        """
+        Cancel a batch job.
+        """
+        batch = await self.openai.batches.cancel(batch_id)
+        return batch.dict()
+        
+    async def list_batch_jobs(self, limit: int = 20, after: str = None) -> dict:
+        """
+        List your batch jobs.
+        """
+        batches = await self.openai.batches.list(limit=limit, after=after)
+        return batches.dict()
+
+    async def download_batch_results(self, file_id: str) -> bytes:
+        """
+        Download the result file content.
+        """
+        content = await self.openai.files.content(file_id)
+        return content.read()
 
 
 __all__ = ["OpenAIClient"]
