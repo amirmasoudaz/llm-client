@@ -166,14 +166,47 @@ class OpenAIClient:
         response = await self.get_response(messages=messages, response_format="text")
         return response
 
+    def check_reasoning_effort(self, params: dict, api_type: Literal["completions", "responses"]) -> dict:
+        has_reasoning = "reasoning" in params
+        has_reasoning_effort = "reasoning_effort" in params
+
+        if not (has_reasoning or has_reasoning_effort):
+            return params
+
+        if not self.model.reasoning_model:
+            raise ValueError("Model does not support reasoning, but reasoning parameters were provided.")
+
+        effort = None
+
+        if has_reasoning:
+            reasoning_val = params["reasoning"]
+            if not isinstance(reasoning_val, dict):
+                raise ValueError("`reasoning` must be an object like {'effort': '<level>'}.")
+            effort = reasoning_val.get("effort")
+
+        if has_reasoning_effort:
+            reff = params.get("reasoning_effort")
+            if effort is not None and reff is not None and reff != effort:
+                raise ValueError("Provide only one of `reasoning` or `reasoning_effort`, or ensure they match.")
+            effort = reff if effort is None else effort
+
+        if effort not in self.model.reasoning_efforts:
+            raise ValueError(f"Invalid reasoning effort. Choose from: {self.model.reasoning_efforts}")
+
+        if api_type == "responses":
+            params.pop("reasoning_effort", None)
+            params["reasoning"] = {"effort": effort}
+        elif api_type == "completions":
+            params.pop("reasoning", None)
+            params["reasoning_effort"] = effort
+
+        return params
+
     async def _call_responses(self, **params) -> Union[dict, any]:
         assert params.get("input"), "'input' is required for completions."
+        
         params["model"] = self.model.model_name
-        if "reasoning" in params:
-            if not self.model.reasoning_model:
-                raise ValueError("Model does not support reasoning, but no reasoning parameters were provided.")
-            if params["reasoning"]["effort"] not in self.model.reasoning_efforts:
-                raise ValueError(f"Invalid reasoning effort. Choose from: {self.model.reasoning_efforts}")
+        params = self.check_reasoning_effort(params, "responses")
 
         if "response_format" in params:
             raise ValueError("response_format is not supported with 'responses' endpoint YET.")
@@ -207,6 +240,8 @@ class OpenAIClient:
     async def _call_completions(self, **params) -> Union[dict, any]:
         assert params.get("messages"), "Messages are required for completions."
         params["model"] = self.model.model_name
+
+        params = self.check_reasoning_effort(params, "completions")
 
         if params.get("response_format"):
             if params["response_format"] == "text":
