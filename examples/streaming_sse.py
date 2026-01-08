@@ -34,10 +34,8 @@ async def main():
     print("-" * 40)
 
     # Get SSE stream generator
-    stream = await client.get_response(
+    stream = client.stream_sse(
         messages=[{"role": "user", "content": prompt}],
-        stream=True,
-        stream_mode="sse",
     )
 
     full_output = ""
@@ -55,12 +53,16 @@ async def main():
             elif line.startswith("data:"):
                 data = line[5:].strip()
 
-        if event_type == "token" and data:
-            print(data, end="", flush=True)
-            full_output += data
+        if event_type == "text_delta" and data:
+            import json
+            payload = json.loads(data)
+            token = payload.get("text", "")
+            print(token, end="", flush=True)
+            full_output += token
         elif event_type == "done" and data:
             import json
-            usage_info = json.loads(data)
+            payload = json.loads(data)
+            usage_info = payload.get("result", {})
         elif event_type == "error" and data:
             import json
             error_info = json.loads(data)

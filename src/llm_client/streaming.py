@@ -3,11 +3,12 @@ import hmac
 import json
 import os
 import time
-from typing import Union
+from typing import Union, Protocol, AsyncIterator
 
 import aiohttp
 import six
 
+from .types import LLMEvent
 
 def format_sse_event(event: str, data: str) -> str:
     """
@@ -23,6 +24,29 @@ def format_sse_event(event: str, data: str) -> str:
     if not isinstance(data, str):
         data = str(data)
     return f"event: {event}\ndata: {data}\n\n"
+
+
+def encode_sse_event(event: LLMEvent) -> str:
+    data = event.data
+    if not isinstance(data, str):
+        data = json.dumps(data, ensure_ascii=True)
+    return format_sse_event(event.type, data)
+
+
+async def stream_as_sse(events: AsyncIterator[LLMEvent]) -> AsyncIterator[str]:
+    async for event in events:
+        yield encode_sse_event(event)
+
+
+class EventSink(Protocol):
+    async def emit(self, event: LLMEvent) -> None: ...
+
+    async def close(self) -> None: ...
+
+
+async def stream_to_sink(events: AsyncIterator[LLMEvent], sink: EventSink) -> None:
+    async for event in events:
+        await sink.emit(event)
 
 
 class PusherStreamer:
@@ -83,4 +107,41 @@ class PusherStreamer:
             return str(exc)
 
 
-__all__ = ["PusherStreamer", "format_sse_event"]
+class PusherSink:
+    def __init__(self, channel: str | None = None) -> None:
+        self.channel = channel
+        self._streamer: PusherStreamer | None = None
+
+    async def __aenter__(self):
+        self._streamer = PusherStreamer(channel=self.channel)
+        await self._streamer.__aenter__()
+        return self
+
+    async def __aexit__(self, exc_type, exc_value, traceback):
+        if self._streamer:
+            await self._streamer.__aexit__(exc_type, exc_value, traceback)
+
+    async def emit(self, event: LLMEvent) -> None:
+        if not self._streamer:
+            self._streamer = PusherStreamer(channel=self.channel)
+            await self._streamer.__aenter__()
+        payload = event.data
+        if not isinstance(payload, str):
+            payload = json.dumps(payload, ensure_ascii=True)
+        await self._streamer.push_event(event.type, payload)
+
+    async def close(self) -> None:
+        if self._streamer:
+            await self._streamer.__aexit__(None, None, None)
+            self._streamer = None
+
+
+__all__ = [
+    "PusherStreamer",
+    "PusherSink",
+    "EventSink",
+    "format_sse_event",
+    "encode_sse_event",
+    "stream_as_sse",
+    "stream_to_sink",
+]

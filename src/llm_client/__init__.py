@@ -27,8 +27,16 @@ from .models import (
     TextEmbedding3Small,
 )
 from .rate_limit import Limiter, TokenBucket
-from .streaming import PusherStreamer
+from .streaming import (
+    PusherStreamer,
+    PusherSink,
+    EventSink,
+    stream_as_sse,
+    stream_to_sink,
+)
+from .types import LLMRequest, LLMResult, LLMEvent
 from .batch_req import RequestManager
+from .agent import Tool, ToolRegistry, AgentRunner
 
 __all__ = [
     "OpenAIClient",
@@ -46,6 +54,16 @@ __all__ = [
     "Limiter",
     "TokenBucket",
     "PusherStreamer",
+    "PusherSink",
+    "EventSink",
+    "stream_as_sse",
+    "stream_to_sink",
+    "LLMRequest",
+    "LLMResult",
+    "LLMEvent",
     "RequestManager",
+    "Tool",
+    "ToolRegistry",
+    "AgentRunner",
     "ResponseTimeoutError",
 ]
