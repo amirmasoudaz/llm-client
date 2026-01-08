@@ -37,6 +37,7 @@ class OpenAIClient:
             cache_dir = Path(cache_dir)
         self.cache_dir = cache_dir
         self.responses_api_toggle = responses_api_toggle
+        self.default_cache_collection = cache_collection
 
         if self.cache_dir and cache_backend == "fs":
             self.cache_dir.mkdir(parents=True, exist_ok=True)
@@ -63,7 +64,7 @@ class OpenAIClient:
             CacheSettings(
                 backend=backend_name,  # type: ignore[arg-type]
                 client_type=self.model.category,
-                collection=cache_collection,
+                default_collection=cache_collection,
                 cache_dir=self.cache_dir,
                 pg_dsn=pg_dsn,
                 redis_url=redis_url,
@@ -409,8 +410,12 @@ class OpenAIClient:
         log_errors: bool = True,
         timeout: float | None = None,
         hash_as_identifier: bool = True,
+        cache_collection: str | None = None,
         **kwargs,
     ) -> dict:
+        # Resolve effective cache collection
+        effective_collection = cache_collection or self.default_cache_collection
+
         if not identifier:
             if hash_as_identifier:
                 content = kwargs.get("input", kwargs.get("messages", ""))
@@ -426,6 +431,7 @@ class OpenAIClient:
                 rewrite_cache=rewrite_cache,
                 regen_cache=regen_cache,
                 only_ok=True,
+                collection=effective_collection,
             )
             if cached:
                 return cached
@@ -484,6 +490,7 @@ class OpenAIClient:
                 response=result,
                 model_name=self.model.model_name,
                 log_errors=log_errors,
+                collection=effective_collection,
             )
 
         if return_response:
