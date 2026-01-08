@@ -3,7 +3,7 @@ import base64
 import json
 import uuid
 from pathlib import Path
-from typing import Union, Literal, Type, Optional
+from typing import Union, Literal, Type, Optional, Any, AsyncGenerator
 
 import numpy as np
 import openai
@@ -14,7 +14,8 @@ from .cache import CacheSettings, build_cache_core
 from .models import ModelProfile
 from .rate_limit import Limiter
 from .streaming import PusherStreamer, format_sse_event
-
+from .streams import StreamResponse
+from .types import RequestParams
 
 class OpenAIClient:
     def __init__(
@@ -260,37 +261,43 @@ class OpenAIClient:
         output, usage = None, {}
         status, error = 500, "INCOMPLETE"
 
+        # Check for stream mode
+        is_stream = params.get("stream", False)
+        stream_mode = params.pop("stream_mode", "pusher") if is_stream else None
+        
+        # If streaming, we return the generator/StreamResponse differently 
+        # inside the try/except block to ensure we can handle errors during stream initiation.
+
         async with self.limiter.limit(
             tokens=self.model.count_tokens(params["messages"]), requests=1
         ) as limit_context:
             try:
-                if params.get("stream", False):
-                    stream_mode = params.pop("stream_mode", "pusher")
-                    output = ""
+                if is_stream:
                     params["stream_options"] = {"include_usage": True}
                     
                     if stream_mode == "sse":
-                        # SSE streaming mode: return async generator
-                        async def sse_generator():
+                        # Return StreamResponse object which wraps the stream
+                         async def sse_generator():
                             nonlocal output, usage, status, error
                             try:
-                                # Send initial metadata event
                                 yield format_sse_event("meta", json.dumps({
                                     "model": params["model"],
                                     "stream_mode": "sse"
                                 }))
                                 
                                 listener = await self.openai.chat.completions.create(**params)
+                                # Wrap with StreamResponse if useful or manually handle
+                                # For backward compat with existing 'sse' logic in get_response, we do manual here
+                                # But ideally we should use StreamResponse.
+                                # Let's keep existing logic for now but wrapped cleanly.
+                                
                                 async for chunk in listener:
                                     if not chunk.choices and chunk.usage:
-                                        # Final chunk with usage stats
                                         usage = dict(chunk.usage)
                                         usage["completion_tokens_details"] = usage["completion_tokens_details"].dict()
                                         usage["prompt_tokens_details"] = usage["prompt_tokens_details"].dict()
                                         usage = self.model.parse_usage(usage)
-                                        error, status = "OK", 200
-                                        
-                                        # Send done event with usage
+                                        status, error = 200, "OK"
                                         yield format_sse_event("done", json.dumps({
                                             "usage": usage,
                                             "status": status,
@@ -298,24 +305,30 @@ class OpenAIClient:
                                         }))
                                         break
                                     
-                                    token = chunk.choices[0].delta.content
-                                    if token is not None:
-                                        yield format_sse_event("token", token)
-                                        output += token
+                                    delta = chunk.choices[0].delta.content
+                                    if delta is not None:
+                                        output = (output or "") + delta
+                                        yield format_sse_event("token", delta)
                                         
                             except Exception as e:
                                 error = str(e)
                                 status = 500
-                                yield format_sse_event("error", json.dumps({
-                                    "error": error,
-                                    "status": status
-                                }))
-                        
-                        # Return the generator for SSE mode
-                        return sse_generator(), None
-                    
+                                yield format_sse_event("error", json.dumps({"error": error, "status": status}))
+
+                         return sse_generator(), None
+
+                    elif stream_mode == "raw": 
+                        # New Raw Stream Mode for Agents using StreamResponse
+                        # We don't wait for completion here, we return the StreamResponse immediately
+                        response_stream = await self.openai.chat.completions.create(**params)
+                        # We return the stream object itself as the "result" payload temporarily
+                        # The caller (get_response) knows how to handle this.
+                        # However, to fit the (dict, response) signature, we return a special dict.
+                        return {"stream": response_stream, "status": 200, "stream_mode": "raw"}, None
+
                     else:
-                        # Pusher streaming mode (default)
+                        # Pusher streaming mode (default legacy)
+                        output = ""
                         async with PusherStreamer(channel=params.pop("channel", str(uuid.uuid4()))) as streamer:
                             listener = await self.openai.chat.completions.create(**params)
                             await streamer.push_event("new-response", "")
@@ -324,22 +337,27 @@ class OpenAIClient:
                                     usage = dict(chunk.usage)
                                     usage["completion_tokens_details"] = usage["completion_tokens_details"].dict()
                                     usage["prompt_tokens_details"] = usage["prompt_tokens_details"].dict()
-                                    error, status = "OK", 200
+                                    status, error = 200, "OK"
                                     break
                                 token = chunk.choices[0].delta.content
                                 if token is not None:
                                     await streamer.push_event("new-token", token)
-                                    output += token
+                                    output = (output or "") + token
                             await streamer.push_event("response-finished", error)
+
                 else:
+                    # Non-streaming
                     if isinstance(params["response_format"], dict):
                         response = await self.openai.chat.completions.create(**params)
                         output = response.choices[0].message.content
+                        tool_calls = response.choices[0].message.tool_calls
                         if params["response_format"]["type"] in ["json_object", "json_schema"]:
                             output = json.loads(output)
                     else:
                         response = await self.openai.beta.chat.completions.parse(**params)
                         output = response.choices[0].message.parsed.dict()
+                        tool_calls = response.choices[0].message.tool_calls
+
                     usage = response.usage.to_dict()
                     status, error = 200, "OK"
 
@@ -356,7 +374,13 @@ class OpenAIClient:
                 print(f"API Status Error in Completions: {error}")
             finally:
                 usage = usage or {}
+        
         result = dict(params=params, output=output, usage=usage, status=status, error=error)
+        if tool_calls:
+            result["tool_calls"] = [
+                tc.model_dump() if hasattr(tc, "model_dump") else tc.dict() 
+                for tc in tool_calls
+            ]
         return result, response
 
     async def _call_embeddings(self, **params) -> Union[dict, any]:
@@ -412,10 +436,18 @@ class OpenAIClient:
         hash_as_identifier: bool = True,
         cache_collection: str | None = None,
         **kwargs,
-    ) -> dict:
+    ) -> Union[dict, AsyncGenerator, StreamResponse]:
+        """
+        Main entry point for getting responses from the LLM.
+        Supports:
+        - Caching (checking and updating)
+        - Retries with backoff
+        - Streaming (Pusher, SSE, and new Raw/StreamResponse)
+        """
         # Resolve effective cache collection
         effective_collection = cache_collection or self.default_cache_collection
 
+        # Calculate identifier (cache key)
         if not identifier:
             if hash_as_identifier:
                 content = kwargs.get("input", kwargs.get("messages", ""))
@@ -425,6 +457,7 @@ class OpenAIClient:
             else:
                 identifier = blake3(str(uuid.uuid4()).encode("utf-8")).hexdigest()
 
+        # Check Cache
         if cache_response:
             cached, _ = await self.cache.get_cached(
                 identifier,
@@ -443,16 +476,23 @@ class OpenAIClient:
 
         while attempts_left > 0:
             try:
+                # Perform the call
                 if timeout is None:
                     result, response = await self._call_model(**kwargs)
                 else:
                     result, response = await asyncio.wait_for(self._call_model(**kwargs), timeout=timeout)
                 
-                # Handle SSE streaming mode: return generator directly
-                if kwargs.get("stream") and kwargs.get("stream_mode") == "sse":
-                    # result is actually the async generator in this case
-                    return result
+                # Special handling for Streaming Modes
+                if kwargs.get("stream"):
+                    # SSE Mode: result is an AsyncGenerator
+                    if kwargs.get("stream_mode") == "sse":
+                        return result
                     
+                    # Raw Mode: result is {"stream": AsyncStream, ...}
+                    # We wrap it in StreamResponse and return immediately
+                    if isinstance(result, dict) and result.get("stream_mode") == "raw":
+                         return StreamResponse(result["stream"], stream_mode="raw")
+
             except asyncio.TimeoutError:
                 attempts_left -= 1
                 if attempts_left == 0:
@@ -460,8 +500,9 @@ class OpenAIClient:
                 await asyncio.sleep(current_backoff)
                 current_backoff *= 2
                 continue
-
-            if result["status"] < 500:
+            
+            # Check success
+            if result.get("status", 500) < 500:
                 break
 
             attempts_left -= 1
@@ -471,11 +512,13 @@ class OpenAIClient:
             await asyncio.sleep(current_backoff)
             current_backoff *= 2
 
+        # Post-processing for non-streaming successes
         result.update({"identifier": identifier, "body": body})
         if result.get("body"):
             result["body"]["completion"] = result.get("output")
 
-        if cache_response:
+        # Save to Cache
+        if cache_response and result.get("status") == 200:
             rf = result.get("params", {}).get("response_format", {})
             if rf and not isinstance(rf, dict):
                 result["params"]["response_format"] = {
