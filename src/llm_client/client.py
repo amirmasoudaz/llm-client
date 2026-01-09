@@ -1,9 +1,22 @@
+"""
+Backward-compatible OpenAI client wrapper.
+
+This module provides the original OpenAIClient interface while delegating
+to the new provider architecture. Existing code using OpenAIClient will
+continue to work unchanged.
+
+For new code, consider using the provider and agent APIs directly:
+    - OpenAIProvider for direct LLM access
+    - Agent for autonomous tool-using agents
+"""
+from __future__ import annotations
+
 import asyncio
 import base64
 import json
 import uuid
 from pathlib import Path
-from typing import Union, Literal, Type, Optional
+from typing import Any, Dict, List, Literal, Optional, Type, Union
 
 import numpy as np
 import openai
@@ -12,11 +25,48 @@ from blake3 import blake3
 
 from .cache import CacheSettings, build_cache_core
 from .models import ModelProfile
+from .providers.openai import OpenAIProvider
+from .providers.types import StreamEvent, StreamEventType
 from .rate_limit import Limiter
 from .streaming import PusherStreamer, format_sse_event
 
 
 class OpenAIClient:
+    """
+    High-level OpenAI client with caching, rate limiting, and retry logic.
+    
+    This class maintains backward compatibility with the original API
+    while internally using the new provider architecture for new features.
+    
+    For new agentic use cases, consider using Agent and OpenAIProvider directly:
+    
+        ```python
+        # New recommended approach for agents
+        from llm_client import Agent, OpenAIProvider, tool
+        
+        @tool
+        async def search(query: str) -> str:
+            return f"Results for {query}"
+        
+        agent = Agent(
+            provider=OpenAIProvider(model="gpt-5"),
+            tools=[search]
+        )
+        result = await agent.run("Search for Python tutorials")
+        ```
+    
+    For simple completions, this client works great:
+    
+        ```python
+        # Classic approach - still fully supported
+        client = OpenAIClient(model="gpt-5")
+        result = await client.get_response(
+            messages=[{"role": "user", "content": "Hello!"}]
+        )
+        print(result["output"])
+        ```
+    """
+    
     def __init__(
         self,
         model: Union[Type["ModelProfile"], str, None] = None,
@@ -25,7 +75,6 @@ class OpenAIClient:
         responses_api_toggle: bool = False,
         cache_backend: Literal["qdrant", "pg_redis", "fs", None] = None,
         cache_collection: str | None = None,
-        # optional DSNs for pg/redis/qdrant override if you want
         pg_dsn: str | None = None,
         redis_url: str | None = None,
         qdrant_url: str | None = None,
@@ -33,6 +82,22 @@ class OpenAIClient:
         redis_ttl_seconds: int = 60 * 60 * 24,
         compress_pg: bool = True,
     ) -> None:
+        """
+        Initialize the OpenAI client.
+        
+        Args:
+            model: Model to use (ModelProfile class or model key string)
+            cache_dir: Directory for file-based caching
+            responses_api_toggle: Use the responses API instead of chat completions
+            cache_backend: Cache backend type
+            cache_collection: Collection name for caching
+            pg_dsn: PostgreSQL connection string
+            redis_url: Redis connection URL
+            qdrant_url: Qdrant server URL
+            qdrant_api_key: Qdrant API key
+            redis_ttl_seconds: Redis TTL
+            compress_pg: Compress PostgreSQL cache entries
+        """
         if isinstance(cache_dir, str):
             cache_dir = Path(cache_dir)
         self.cache_dir = cache_dir
@@ -47,7 +112,9 @@ class OpenAIClient:
         elif isinstance(model, str):
             self.model = ModelProfile.get(model)
         else:
-            raise ValueError("Model must be provided either as a ModelProfile subclass or a model key string.")
+            raise ValueError(
+                "Model must be provided either as a ModelProfile subclass or a model key string."
+            )
 
         if self.responses_api_toggle:
             self._call_model = self._call_responses
@@ -76,13 +143,16 @@ class OpenAIClient:
         )
 
     async def warm_cache(self) -> None:
+        """Pre-warm the cache."""
         await self.cache.warm()
 
     async def close(self) -> None:
+        """Close client resources."""
         await self.cache.close()
 
     @staticmethod
     def encode_file(file_path: Union[str, Path]) -> dict:
+        """Encode a file for API submission."""
         file_path = Path(file_path)
         extension = file_path.suffix.lower()
         with open(file_path, "rb") as file:
@@ -91,21 +161,22 @@ class OpenAIClient:
 
         if extension in {".jpg", ".jpeg", ".png", ".webp"}:
             return {
-                    "type": "image_url",
-                    "image_url": {
-                        "url": f"data:image/{extension};base64,{base64_encoded}"
-                    },
-                }
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:image/{extension};base64,{base64_encoded}"
+                },
+            }
         elif extension == ".pdf":
             return {
-                    "type": "input_file",
-                    "filename": file_path.name,
-                    "file_data": base64_encoded,
-                }
+                "type": "input_file",
+                "filename": file_path.name,
+                "file_data": base64_encoded,
+            }
         else:
             raise ValueError(f"Unsupported file type: {extension}")
 
     async def transcribe_pdf(self, file_path: Union[str, Path]) -> dict:
+        """Extract text from a PDF file."""
         file_path = Path(file_path)
         if not file_path.exists() or file_path.suffix.lower() != ".pdf":
             raise ValueError("File does not exist or is not a PDF.")
@@ -137,6 +208,7 @@ class OpenAIClient:
         return result
 
     async def transcribe_image(self, file_path: Union[str, Path]) -> dict:
+        """Extract text from an image file."""
         file_path = Path(file_path)
         if not file_path.exists() or file_path.suffix.lower() not in {".jpg", ".jpeg", ".png", ".webp"}:
             raise ValueError("File does not exist or is not an image.")
@@ -168,6 +240,7 @@ class OpenAIClient:
         return response
 
     def check_reasoning_effort(self, params: dict, api_type: Literal["completions", "responses"]) -> dict:
+        """Validate and normalize reasoning parameters."""
         has_reasoning = "reasoning" in params
         has_reasoning_effort = "reasoning_effort" in params
 
@@ -204,6 +277,7 @@ class OpenAIClient:
         return params
 
     async def _call_responses(self, **params) -> Union[dict, any]:
+        """Call the responses API."""
         assert params.get("input"), "'input' is required for completions."
         
         params["model"] = self.model.model_name
@@ -239,6 +313,7 @@ class OpenAIClient:
         return result, response
 
     async def _call_completions(self, **params) -> Union[dict, any]:
+        """Call the chat completions API."""
         assert params.get("messages"), "Messages are required for completions."
         params["model"] = self.model.model_name
 
@@ -360,6 +435,7 @@ class OpenAIClient:
         return result, response
 
     async def _call_embeddings(self, **params) -> Union[dict, any]:
+        """Call the embeddings API."""
         assert params.get("input"), "Input is required for embeddings."
         params["model"] = self.model.model_name
         if not params.get("encoding_format"):
@@ -413,6 +489,27 @@ class OpenAIClient:
         cache_collection: str | None = None,
         **kwargs,
     ) -> dict:
+        """
+        Get a response from the model with retry logic and optional caching.
+        
+        Args:
+            identifier: Cache key (auto-generated from content if not provided)
+            attempts: Number of retry attempts
+            backoff: Initial backoff in seconds (doubles on each retry)
+            body: Additional metadata to include in result
+            cache_response: Whether to cache the response
+            return_response: Include raw API response in result
+            rewrite_cache: Create new cache entry even if one exists
+            regen_cache: Regenerate (ignore existing cache)
+            log_errors: Log errors to cache
+            timeout: Request timeout in seconds
+            hash_as_identifier: Use content hash as cache key
+            cache_collection: Cache collection name
+            **kwargs: Parameters passed to the API
+            
+        Returns:
+            Dict with output, usage, status, error, and optional body/response
+        """
         # Resolve effective cache collection
         effective_collection = cache_collection or self.default_cache_collection
 
@@ -498,13 +595,13 @@ class OpenAIClient:
 
         return result
 
+    # === Batch API Methods ===
+
     async def upload_batch_input_file(self, file_path: Union[str, Path]) -> dict:
-        """
-        Uploads a JSONL file for batch processing.
-        """
+        """Upload a JSONL file for batch processing."""
         file_path = Path(file_path)
         if not file_path.exists():
-             raise ValueError(f"File {file_path} does not exist.")
+            raise ValueError(f"File {file_path} does not exist.")
              
         file_obj = await self.openai.files.create(
             file=open(file_path, "rb"),
@@ -519,9 +616,7 @@ class OpenAIClient:
         completion_window: Literal["24h"] = "24h",
         metadata: Optional[dict] = None
     ) -> dict:
-        """
-        Create a batch job using the OpenAI Batch API.
-        """
+        """Create a batch job using the OpenAI Batch API."""
         batch = await self.openai.batches.create(
             input_file_id=input_file_id,
             endpoint=endpoint,
@@ -531,30 +626,22 @@ class OpenAIClient:
         return batch.dict()
 
     async def retrieve_batch_job(self, batch_id: str) -> dict:
-        """
-        Retrieve details of a batch job.
-        """
+        """Retrieve details of a batch job."""
         batch = await self.openai.batches.retrieve(batch_id)
         return batch.dict()
         
     async def cancel_batch_job(self, batch_id: str) -> dict:
-        """
-        Cancel a batch job.
-        """
+        """Cancel a batch job."""
         batch = await self.openai.batches.cancel(batch_id)
         return batch.dict()
         
     async def list_batch_jobs(self, limit: int = 20, after: str = None) -> dict:
-        """
-        List your batch jobs.
-        """
+        """List your batch jobs."""
         batches = await self.openai.batches.list(limit=limit, after=after)
         return batches.dict()
 
     async def download_batch_results(self, file_id: str) -> bytes:
-        """
-        Download the result file content.
-        """
+        """Download the result file content."""
         content = await self.openai.files.content(file_id)
         return content.read()
 

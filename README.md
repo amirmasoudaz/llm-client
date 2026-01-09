@@ -1,329 +1,399 @@
 # llm-client
 
-Asynchronous OpenAI client with built‑in caching, rate limiting, and streaming helpers.
+Production-ready Python library for LLM interactions with **agent framework**, **tool calling**, **streaming**, and **caching**.
 
-This package wraps the official `openai` Python SDK and adds:
+## Features
 
-- Model profiles for GPT‑5 family and `text-embedding-3-*`
-- Automatic token counting, usage and cost estimation
-- Pluggable response caching (filesystem, Qdrant, PostgreSQL + Redis)
-- Token‑aware rate limiting using a token bucket implementation
-- Pusher‑based server‑sent streaming helper
-- Opinionated async interface suitable for high‑throughput backends
+- **Agent Framework**: Autonomous agents with ReAct loops and multi-turn conversations
+- **Tool Calling**: Easy tool definition with `@tool` decorator
+- **Provider Abstraction**: Unified interface for LLM providers (OpenAI, with more coming)
+- **Conversation Management**: Context window handling with multiple truncation strategies
+- **Streaming**: Unified event-based streaming with SSE, WebSocket, and Pusher adapters
+- **Caching**: Multiple backends (filesystem, PostgreSQL+Redis, Qdrant)
+- **Rate Limiting**: Token bucket implementation respecting API limits
+- **Batch Processing**: Concurrent request handling with checkpointing
 
-The package auto‑loads environment variables from the nearest `.env` file on import for convenient local development.
+Auto-loads environment variables from `.env` files on import.
 
 ---
-## Installation
 
-From the `llm-client` repo on your machine:
+## Installation
 
 ```bash
 pip install -e .
 ```
 
-Or, from another project, pointing at your local checkout:
-
-```text
--e /absolute/path/to/llm-client
-```
-
-### Requirements
-
+**Requirements:**
 - Python `>=3.10`
-- An OpenAI API key (`OPENAI_API_KEY`)
-- Optional backing services depending on the cache backend:
-  - Filesystem: none
-  - Qdrant: running Qdrant instance (`QDRANT_URL`, `QDRANT_API_KEY`)
-  - PostgreSQL + Redis: `PG_DSN`, `REDIS_URL`
-
-The package itself depends on `openai>=1.59`, `aiohttp`, `asyncpg`, `redis`, `tiktoken`, `numpy`, and a few utility libraries (see `pyproject.toml`).
+- `OPENAI_API_KEY` environment variable
+- Optional backing services for caching (PostgreSQL, Redis, Qdrant)
 
 ---
 
-## Quickstart
+## Quick Start
 
-Minimal chat completion using the bundled GPT‑5 Nano profile and no caching:
+### Simple Completion
 
 ```python
 import asyncio
-from llm_client import OpenAIClient, GPT5Nano
+from llm_client import OpenAIProvider
 
+async def main():
+    provider = OpenAIProvider(model="gpt-5-nano")
+    result = await provider.complete("Hello, world!")
+    print(result.content)
+    await provider.close()
 
-async def main() -> None:
-    client = OpenAIClient(GPT5Nano, cache_backend=None)
-
-    messages = [
-        {"role": "system", "content": "You are a helpful assistant."},
-        {"role": "user", "content": "Hello, how are you?"},
-    ]
-
-    response = await client.get_response(messages=messages)
-    print(response["output"])
-
-
-if __name__ == "__main__":
-    asyncio.run(main())
+asyncio.run(main())
 ```
 
-The repository includes a runnable example in `main.py` that demonstrates the packaged client with PostgreSQL + Redis caching.
+### Agent with Tools
+
+```python
+import asyncio
+from llm_client import Agent, OpenAIProvider, tool
+
+@tool
+async def get_weather(city: str) -> str:
+    """Get weather for a city."""
+    return f"Weather in {city}: Sunny, 72°F"
+
+@tool
+async def search_web(query: str) -> str:
+    """Search the web."""
+    return f"Results for: {query}"
+
+async def main():
+    agent = Agent(
+        provider=OpenAIProvider(model="gpt-5-nano"),
+        tools=[get_weather, search_web],
+        system_message="You are a helpful assistant with access to tools.",
+    )
+    
+    result = await agent.run("What's the weather in Tokyo?")
+    print(result.content)
+    print(f"Tool calls made: {[tc.name for tc in result.all_tool_calls]}")
+
+asyncio.run(main())
+```
+
+### Streaming
+
+```python
+import asyncio
+from llm_client import OpenAIProvider, StreamEventType
+
+async def main():
+    provider = OpenAIProvider(model="gpt-5-nano")
+    
+    async for event in provider.stream("Write a haiku about coding"):
+        if event.type == StreamEventType.TOKEN:
+            print(event.data, end="", flush=True)
+        elif event.type == StreamEventType.DONE:
+            print(f"\nTokens used: {event.data.usage.total_tokens}")
+    
+    await provider.close()
+
+asyncio.run(main())
+```
+
+### Backward Compatible API
+
+The original `OpenAIClient` still works:
+
+```python
+from llm_client import OpenAIClient
+
+client = OpenAIClient(model="gpt-5-nano", cache_backend=None)
+response = await client.get_response(
+    messages=[{"role": "user", "content": "Hello!"}]
+)
+print(response["output"])
+```
 
 ---
 
 ## Core Concepts
 
-### Model profiles
+### Providers
 
-Models are described by `ModelProfile` subclasses in `src/llm_client/models.py`. Profiles encapsulate:
-
-- `key` – short identifier (e.g. `"gpt-5-nano"`)
-- `model_name` – actual API model name
-- `category` – `"completions"` or `"embeddings"`
-- `context_window`, `max_output`, `output_dimensions`
-- `rate_limits` – tokens and requests per minute
-- `usage_costs` – per‑token cost for input/output/cached input
-
-Available profiles include:
-
-- Completions: `GPT5`, `GPT5Mini`, `GPT5Nano`, `GPT5Point1`, `GPT5Point2`
-- Embeddings: `TextEmbedding3Large`, `TextEmbedding3Small`
-
-You can pass either a profile class or a registered key when constructing the client:
+The `Provider` protocol defines a unified interface for LLM backends:
 
 ```python
-from llm_client import OpenAIClient, GPT5Point1
-from llm_client import ModelProfile
+from llm_client import OpenAIProvider, CompletionResult
 
-client = OpenAIClient(GPT5Point1)
-# or
-client = OpenAIClient("gpt-5.1")  # uses ModelProfile.get(...)
-```
-
-The profiles expose helpers like `count_tokens(context)` and `parse_usage(usage_dict)` for consistent accounting.
-
-### OpenAIClient
-
-The main entrypoint lives in `src/llm_client/client.py`:
-
-```python
-from llm_client import OpenAIClient, GPT5Nano
-
-client = OpenAIClient(
-    GPT5Nano,
-    cache_backend="fs",          # "fs", "qdrant", "pg_redis", or None
-    cache_dir="cache/",          # required for "fs"
-    cache_collection="my_cache", # optional; varies by backend
+provider = OpenAIProvider(
+    model="gpt-5",
+    cache_backend="fs",
+    cache_dir="./cache",
 )
-```
 
-Key responsibilities:
-
-- Delegates to the appropriate model API (`chat.completions` vs `embeddings`)
-- Normalizes parameters and response formats
-- Applies token/request rate limits via `Limiter`
-- Integrates with the configured cache backend
-- Provides high‑level helpers for single and batched calls
-
-#### `get_response(...)`
-
-```python
-response = await client.get_response(
-    messages=[{"role": "user", "content": "Tell me a joke."}],
-    cache_response=True,
-    timeout=30.0,
+# Completion
+result: CompletionResult = await provider.complete(
+    messages=[{"role": "user", "content": "Hello"}],
+    temperature=0.7,
 )
-print(response["status"], response["error"])
-print(response["output"])  # model completion
-print(response["usage"])   # normalized usage and cost
+
+# Streaming
+async for event in provider.stream("Tell me a story"):
+    ...
+
+# Embeddings (with embedding model)
+embed_provider = OpenAIProvider(model="text-embedding-3-small")
+result = await embed_provider.embed("Text to embed")
 ```
 
-Important parameters:
+### Tools
 
-- `identifier`: explicit cache key; if omitted, a deterministic hash of `messages` / `input` is used when `hash_as_identifier=True`.
-- `cache_response`: enable caching for successful (and optionally failed) responses.
-- `rewrite_cache`: force a new cache entry while still allowing reads from older entries.
-- `regen_cache`: bypass existing cache entries and force recomputation.
-- `attempts`, `backoff`: simple retry with exponential backoff for 5xx / connection errors.
-- `timeout`: wraps the underlying API call in `asyncio.wait_for`.
-
-The returned dictionary always includes at least:
-
-- `params`: the parameters used for the underlying OpenAI call
-- `output`: the model output (string for completions; vectors for embeddings)
-- `usage`: normalized usage and cost information
-- `status`: HTTP‑like status code
-- `error`: `"OK"` on success, or an error description
-- `identifier`: effective cache identifier
-
-#### Embeddings
-
-When the selected profile is an embeddings model, `get_response` routes to the embeddings API:
+Define tools using the `@tool` decorator:
 
 ```python
-from llm_client import OpenAIClient, TextEmbedding3Small
+from llm_client import tool, sync_tool, ToolRegistry
 
-client = OpenAIClient(TextEmbedding3Small)
-resp = await client.get_response(input="Some text to embed")
-emb = resp["output"]  # list[float] or list[list[float]]
+@tool
+async def calculate(expression: str) -> str:
+    """Evaluate a math expression.
+    
+    Args:
+        expression: Math expression like "2 + 2"
+    """
+    return str(eval(expression))
+
+@sync_tool  # For synchronous functions
+def get_time() -> str:
+    """Get current time."""
+    from datetime import datetime
+    return datetime.now().isoformat()
+
+# Register tools
+registry = ToolRegistry([calculate, get_time])
+
+# Execute a tool
+result = await registry.execute("calculate", '{"expression": "2 + 2"}')
+print(result.content)  # "4"
 ```
 
-By default, embeddings are returned as numeric vectors (the client decodes base64 when needed).
+### Conversations
 
-#### Batching helpers
+Manage multi-turn conversations with context window handling:
 
-`OpenAIClient` provides simple concurrency helpers:
+```python
+from llm_client import Conversation, GPT5Nano
 
-- `await client.run_batch(coros: list)` – execute a list of coroutines with bounded concurrency; errors are wrapped as dicts with `"error"` and `"status"`.
-- `async for result in client.iter_batch(coros: list)` – iterate results as they complete.
+conv = Conversation(
+    system_message="You are helpful.",
+    max_tokens=4000,
+    truncation_strategy="sliding",  # or "drop_oldest", "drop_middle"
+)
 
-All individual coroutines should be calls to `client.get_response(...)`.
+conv.add_user("What is Python?")
+conv.add_assistant("Python is a programming language...")
+conv.add_user("Show me an example")
+
+# Get messages for API (auto-truncated if needed)
+messages = conv.get_messages(model=GPT5Nano)
+
+# Fork conversation for branching
+forked = conv.fork()
+
+# Save/load
+conv.save("conversation.json")
+loaded = Conversation.load("conversation.json")
+```
+
+### Agents
+
+Agents orchestrate providers, tools, and conversations:
+
+```python
+from llm_client import Agent, OpenAIProvider, AgentConfig
+
+agent = Agent(
+    provider=OpenAIProvider(model="gpt-5"),
+    tools=[...],
+    system_message="You are a research assistant.",
+    config=AgentConfig(
+        max_turns=10,
+        parallel_tool_execution=True,
+        tool_timeout=30.0,
+    ),
+)
+
+# Run to completion
+result = await agent.run("Research quantum computing")
+print(result.content)
+print(f"Turns: {result.num_turns}")
+print(f"Status: {result.status}")
+
+# Stream with tool execution
+async for event in agent.stream("Search for Python tutorials"):
+    if event.type == StreamEventType.TOKEN:
+        print(event.data, end="")
+    elif event.type == StreamEventType.META:
+        if event.data.get("event") == "tool_result":
+            print(f"\n[Tool: {event.data['tool_name']}]")
+
+# Continue conversation
+result2 = await agent.run("Now search for JavaScript")
+
+# Reset for new conversation
+agent.reset()
+```
+
+### Streaming Adapters
+
+Transform streams for different output formats:
+
+```python
+from llm_client import (
+    SSEAdapter,
+    CallbackAdapter, 
+    BufferingAdapter,
+    collect_stream,
+)
+
+# SSE for web servers
+adapter = SSEAdapter()
+async for sse_string in adapter.transform(provider.stream(prompt)):
+    yield sse_string  # Send to HTTP response
+
+# Callbacks for custom handling
+adapter = CallbackAdapter(
+    on_token=lambda t: print(t, end=""),
+    on_done=lambda r: print(f"\nDone: {r.content}"),
+)
+await adapter.consume(provider.stream(prompt))
+
+# Buffering for full response
+buffer = BufferingAdapter()
+async for event in buffer.wrap(provider.stream(prompt)):
+    pass  # Process events
+print(buffer.content)  # Full accumulated text
+
+# Utility: collect to CompletionResult
+result = await collect_stream(provider.stream(prompt))
+```
+
+---
+
+## Model Profiles
+
+Available models:
+
+| Key | Model | Category |
+|-----|-------|----------|
+| `gpt-5` | GPT-5 | completions |
+| `gpt-5-mini` | GPT-5 Mini | completions |
+| `gpt-5-nano` | GPT-5 Nano | completions |
+| `gpt-5.1` | GPT-5.1 | completions |
+| `gpt-5.2` | GPT-5.2 | completions |
+| `text-embedding-3-large` | Text Embedding 3 Large | embeddings |
+| `text-embedding-3-small` | Text Embedding 3 Small | embeddings |
+
+All completion models support reasoning with configurable effort levels.
 
 ---
 
 ## Caching
 
-Caching is abstracted behind `CacheCore` in `src/llm_client/cache.py` and supports multiple backends:
-
-- `"fs"` – JSON files on disk
-- `"qdrant"` – vector database used as a generic key/value store
-- `"pg_redis"` – hybrid PostgreSQL + Redis cache
-- `None` / `"none"` – disable caching
-
-### Filesystem cache
-
 ```python
-from pathlib import Path
-from llm_client import OpenAIClient, GPT5Nano
-
-client = OpenAIClient(
-    GPT5Nano,
+# Filesystem
+provider = OpenAIProvider(
+    model="gpt-5",
     cache_backend="fs",
-    cache_dir=Path("cache/completions"),
+    cache_dir="./cache",
 )
 
-resp = await client.get_response(
-    messages=[{"role": "user", "content": "Cached?"}],
-    cache_response=True,
-)
-```
-
-The effective cache key is written as `<identifier>.json` under `cache_dir`.
-
-### Qdrant cache
-
-Requires a running Qdrant instance:
-
-```python
-client = OpenAIClient(
-    GPT5Nano,
-    cache_backend="qdrant",
-    cache_collection="completions_cache",
-    qdrant_url="http://localhost:6333",
-    qdrant_api_key="your-key",  # optional
-)
-```
-
-Responses are stored as payloads in a 1‑dimensional vector collection keyed by a stable hashed ID.
-
-### PostgreSQL + Redis cache
-
-Hybrid cache suitable for production:
-
-```python
-client = OpenAIClient(
-    GPT5Nano,
+# PostgreSQL + Redis (production)
+provider = OpenAIProvider(
+    model="gpt-5",
     cache_backend="pg_redis",
-    cache_collection="llm_cache",
-    pg_dsn="postgresql://user:pass@host:5432/dbname",
-    redis_url="redis://localhost:6379/0",
+    pg_dsn="postgresql://...",
+    redis_url="redis://...",
+)
+
+# Qdrant
+provider = OpenAIProvider(
+    model="gpt-5",
+    cache_backend="qdrant",
+    qdrant_url="http://localhost:6333",
+)
+
+# With caching enabled
+result = await provider.complete(
+    "Hello",
+    cache_response=True,
+    cache_collection="my_cache",
 )
 ```
 
-The cache layer:
+---
 
-- Keeps a durable copy in PostgreSQL (optionally compressed)
-- Mirrors hot entries into Redis with a TTL (`redis_ttl_seconds`)
-- Supports `rewrite_cache`/`regen_cache` semantics for controlled invalidation
+## Environment Variables
 
-For all backends, you can manually manage lifecycle:
+| Variable | Description |
+|----------|-------------|
+| `OPENAI_API_KEY` | OpenAI API key (required) |
+| `PG_DSN` | PostgreSQL connection string |
+| `REDIS_URL` | Redis connection URL |
+| `QDRANT_URL` | Qdrant server URL |
+| `QDRANT_API_KEY` | Qdrant API key |
+| `PUSHER_*` | Pusher streaming credentials |
+
+---
+
+## Examples
+
+See the `examples/` directory:
+
+- `agent_with_tools.py` - Agent with multiple tools and streaming
+- `provider_streaming.py` - Streaming with different adapters
+- `conversation_management.py` - Conversation handling and persistence
+- `basic_completions_fs_cache.py` - Simple completions with caching
+- `streaming_sse.py` - SSE streaming for web apps
+
+---
+
+## Architecture
+
+```
+llm_client/
+├── providers/          # Provider abstraction
+│   ├── base.py        # Protocol and base class
+│   ├── openai.py      # OpenAI implementation
+│   └── types.py       # Message, CompletionResult, StreamEvent
+├── tools/             # Tool system
+│   ├── base.py        # Tool, ToolRegistry, ToolResult
+│   └── decorators.py  # @tool, @sync_tool
+├── agent.py           # Agent orchestrator
+├── conversation.py    # Conversation management
+├── streaming.py       # Stream adapters
+├── models.py          # ModelProfile registry
+├── cache.py           # Cache backends
+├── rate_limit.py      # Rate limiting
+├── batch_req.py       # Batch processing
+└── client.py          # Backward-compatible OpenAIClient
+```
+
+---
+
+## Migration from v1
+
+The original `OpenAIClient` API is fully preserved. New code should use:
 
 ```python
-await client.warm_cache()  # backend-specific warmup
-await client.close()       # close DB / Redis connections
+# Old (still works)
+from llm_client import OpenAIClient
+client = OpenAIClient(model="gpt-5")
+result = await client.get_response(messages=[...])
+
+# New (recommended for agents)
+from llm_client import Agent, OpenAIProvider
+agent = Agent(provider=OpenAIProvider(model="gpt-5"), tools=[...])
+result = await agent.run("prompt")
+
+# New (recommended for simple completions)
+from llm_client import OpenAIProvider
+provider = OpenAIProvider(model="gpt-5")
+result = await provider.complete("prompt")
 ```
-
----
-
-## Streaming
-
-Streaming support is implemented via `PusherStreamer` in `src/llm_client/streaming.py`. When you call `get_response` with `stream=True`, the client:
-
-- Creates a temporary Pusher channel (or uses the provided `channel` parameter)
-- Sends `"new-token"` events for each streamed token
-- Sends `"new-response"` and `"response-finished"` events around the stream lifecycle
-
-To enable streaming:
-
-```python
-resp = await client.get_response(
-    messages=[{"role": "user", "content": "Stream this."}],
-    cache_response=False,
-    stream=True,
-    channel="my-channel-name",  # optional; autogenerated if omitted
-)
-```
-
-You must configure the Pusher credentials via environment variables:
-
-- `PUSHER_AUTH_KEY`
-- `PUSHER_AUTH_SECRET`
-- `PUSHER_AUTH_VERSION`
-- `PUSHER_APP_CLUSTER`
-- `PUSHER_APP_ID`
-
----
-
-## Rate limiting
-
-Rate limiting is handled by `Limiter` and `TokenBucket` in `src/llm_client/rate_limit.py`.
-
-- Each `ModelProfile` defines `rate_limits` with `tkn_per_min` and `req_per_min`.
-- `Limiter.limit(tokens, requests)` returns an async context manager that:
-  - waits until enough token and request budget is available;
-  - tracks output tokens and charges them back into the bucket on exit.
-
-The client uses this internally to guard all OpenAI calls; you usually do not need to use `Limiter` directly.
-
----
-
-## Environment and configuration
-
-On import, `llm_client` automatically loads environment variables from the nearest `.env` file using `python-dotenv`. Relevant variables include:
-
-- `OPENAI_API_KEY` – required by the `openai` SDK.
-- `PG_DSN` – default PostgreSQL DSN for the hybrid cache.
-- `REDIS_URL` – default Redis URL for the hybrid cache.
-- `QDRANT_URL`, `QDRANT_API_KEY` – default Qdrant configuration.
-- Pusher variables as listed in the Streaming section.
-
-You can override most of these by passing explicit arguments to `OpenAIClient(...)`.
-
----
-
-## Development
-
-- Main entrypoint: `src/llm_client/client.py`
-- Supporting modules:
-  - `src/llm_client/models.py` – model profiles
-  - `src/llm_client/cache.py` – cache backends and core
-  - `src/llm_client/rate_limit.py` – rate limiting primitives
-  - `src/llm_client/streaming.py` – Pusher streaming helper
-  - `src/llm_client/exceptions.py` – custom exceptions
-
-To run the included example from the repo root:
-
-```bash
-OPENAI_API_KEY=... python -m main
-```
-
-Make sure any backing services required by your chosen cache backend (PostgreSQL, Redis, Qdrant) are reachable before running tests or examples.
