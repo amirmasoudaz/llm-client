@@ -9,6 +9,8 @@ Demonstrates:
 4. Response handling and error checking
 5. Using caching with the new Provider API
 6. Retry logic with exponential backoff
+7. Context manager usage
+8. Backward compatibility with OpenAIClient (v1 API)
 """
 import asyncio
 import sys
@@ -20,6 +22,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from llm_client import (
     OpenAIProvider,
+    OpenAIClient,  # Backward-compatible API
     Message,
 )
 
@@ -193,6 +196,32 @@ async def main():
     async with OpenAIProvider(model="gpt-5-nano") as provider:
         result = await provider.complete("Say 'context manager works'")
         print(f"\nUsing context manager: {result.content}")
+    
+    # === Example 8: Backward Compatibility (OpenAIClient) ===
+    print("\n" + "=" * 40)
+    print("Example 8: Backward Compatibility")
+    print("=" * 40)
+    
+    print("\nThe old OpenAIClient API is fully preserved:")
+    
+    # Old API (v1) - still works!
+    client = OpenAIClient(model="gpt-5-nano")
+    
+    result = await client.get_response(
+        messages=[{"role": "user", "content": "Say 'backward compatible'"}]
+    )
+    
+    # Old API returns a dict
+    print(f"\nOld API result type: {type(result)}")
+    print(f"Output: {result['output']}")
+    print(f"Tokens: input={result['usage']['input_tokens']}, output={result['usage']['output_tokens']}")
+    
+    # Compare with new API
+    print("\n--- Comparison ---")
+    print("Old API: client.get_response() -> dict with 'output' key")
+    print("New API: provider.complete() -> CompletionResult with .content")
+    
+    await client.close()
     
     print("\n✅ Done!")
 
