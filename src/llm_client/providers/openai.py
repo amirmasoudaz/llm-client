@@ -6,7 +6,6 @@ supporting both chat completions and embeddings.
 """
 from __future__ import annotations
 
-import asyncio
 import base64
 import json
 from pathlib import Path
@@ -25,6 +24,7 @@ from typing import (
 import numpy as np
 import openai
 from openai import AsyncOpenAI
+from blake3 import blake3
 
 from ..cache import CacheSettings, build_cache_core
 from ..rate_limit import Limiter
@@ -32,7 +32,6 @@ from .base import BaseProvider
 from .types import (
     CompletionResult,
     EmbeddingResult,
-    Message,
     MessageInput,
     StreamEvent,
     StreamEventType,
@@ -208,7 +207,7 @@ class OpenAIProvider(BaseProvider):
         self,
         response_format: Optional[Union[str, Dict[str, Any], Type]],
         messages: List[Dict[str, Any]],
-    ) -> Optional[Dict[str, Any]]:
+    ) -> Optional[Dict[str, Any]] | Type:
         """Normalize response format parameter."""
         if response_format is None:
             return {"type": "text"}
@@ -245,6 +244,8 @@ class OpenAIProvider(BaseProvider):
         cache_collection: Optional[str] = None,
         rewrite_cache: bool = False,
         regen_cache: bool = False,
+        attempts: int = 3,
+        backoff: float = 1.0,
         **kwargs: Any,
     ) -> CompletionResult:
         """
@@ -263,6 +264,8 @@ class OpenAIProvider(BaseProvider):
             cache_collection: Cache collection name
             rewrite_cache: Create new cache entry even if one exists
             regen_cache: Regenerate cache (ignore existing)
+            attempts: Number of retry attempts for transient errors
+            backoff: Initial backoff delay in seconds (doubles each retry)
             **kwargs: Additional API parameters
             
         Returns:
@@ -310,11 +313,21 @@ class OpenAIProvider(BaseProvider):
         # Add any extra kwargs
         params.update(kwargs)
         
+        # Use responses API if enabled
+        if self.use_responses_api:
+            return await self._complete_responses(
+                api_messages,
+                params,
+                cache_response=cache_response,
+                cache_collection=cache_collection,
+                rewrite_cache=rewrite_cache,
+                regen_cache=regen_cache,
+                attempts=attempts,
+                backoff=backoff,
+            )
+        
         # Check cache
         if cache_response:
-            import uuid
-            from blake3 import blake3
-            
             content_str = json.dumps(api_messages, sort_keys=True)
             identifier = blake3(content_str.encode("utf-8")).hexdigest()
             
@@ -331,69 +344,72 @@ class OpenAIProvider(BaseProvider):
         else:
             identifier = None
         
-        # Make the request with rate limiting
+        # Make the request with rate limiting and retry
         input_tokens = self.count_tokens(api_messages)
         
-        async with self.limiter.limit(tokens=input_tokens, requests=1) as limit_ctx:
-            try:
-                if isinstance(rf, dict):
-                    response = await self.client.chat.completions.create(**params)
-                    content = response.choices[0].message.content
+        async def _do_completion() -> CompletionResult:
+            async with self.limiter.limit(tokens=input_tokens, requests=1) as limit_ctx:
+                try:
+                    if isinstance(rf, dict):
+                        response = await self.client.chat.completions.create(**params)
+                        content = response.choices[0].message.content
+                        
+                        # Parse JSON if requested
+                        if rf.get("type") in ("json_object", "json_schema"):
+                            try:
+                                content = json.loads(content)
+                            except json.JSONDecodeError:
+                                pass
+                    else:
+                        # Structured output with Pydantic model
+                        response = await self.client.beta.chat.completions.parse(**params)
+                        parsed = response.choices[0].message.parsed
+                        content = parsed.dict() if hasattr(parsed, "dict") else parsed
                     
-                    # Parse JSON if requested
-                    if rf.get("type") in ("json_object", "json_schema"):
-                        try:
-                            content = json.loads(content)
-                        except json.JSONDecodeError:
-                            pass
-                else:
-                    # Structured output with Pydantic model
-                    response = await self.client.beta.chat.completions.parse(**params)
-                    parsed = response.choices[0].message.parsed
-                    content = parsed.dict() if hasattr(parsed, "dict") else parsed
-                
-                # Extract tool calls
-                tool_calls = None
-                msg = response.choices[0].message
-                if hasattr(msg, "tool_calls") and msg.tool_calls:
-                    tool_calls = [
-                        ToolCall(
-                            id=tc.id,
-                            name=tc.function.name,
-                            arguments=tc.function.arguments,
-                        )
-                        for tc in msg.tool_calls
-                    ]
-                
-                # Parse usage
-                usage = self.parse_usage(response.usage.to_dict())
-                limit_ctx.output_tokens = usage.output_tokens
-                
-                result = CompletionResult(
-                    content=content if isinstance(content, str) else json.dumps(content),
-                    tool_calls=tool_calls,
-                    usage=usage,
-                    model=self.model_name,
-                    finish_reason=response.choices[0].finish_reason,
-                    status=200,
-                    raw_response=response,
-                )
-                
-            except openai.APIConnectionError as e:
-                result = CompletionResult(
-                    status=500,
-                    error=str(e.__cause__),
-                )
-            except openai.RateLimitError as e:
-                result = CompletionResult(
-                    status=429,
-                    error=f"Rate limit exceeded: {e}",
-                )
-            except openai.APIStatusError as e:
-                result = CompletionResult(
-                    status=e.status_code,
-                    error=str(e.response),
-                )
+                    # Extract tool calls
+                    tool_calls = None
+                    msg = response.choices[0].message
+                    if hasattr(msg, "tool_calls") and msg.tool_calls:
+                        tool_calls = [
+                            ToolCall(
+                                id=tc.id,
+                                name=tc.function.name,
+                                arguments=tc.function.arguments,
+                            )
+                            for tc in msg.tool_calls
+                        ]
+                    
+                    # Parse usage
+                    usage = self.parse_usage(response.usage.to_dict())
+                    limit_ctx.output_tokens = usage.output_tokens
+                    
+                    return CompletionResult(
+                        content=content if isinstance(content, str) else json.dumps(content),
+                        tool_calls=tool_calls,
+                        usage=usage,
+                        model=self.model_name,
+                        finish_reason=response.choices[0].finish_reason,
+                        status=200,
+                        raw_response=response,
+                    )
+                    
+                except openai.APIConnectionError as e:
+                    return CompletionResult(
+                        status=500,
+                        error=str(e.__cause__),
+                    )
+                except openai.RateLimitError as e:
+                    return CompletionResult(
+                        status=429,
+                        error=f"Rate limit exceeded: {e}",
+                    )
+                except openai.APIStatusError as e:
+                    return CompletionResult(
+                        status=e.status_code,
+                        error=str(e.response),
+                    )
+        
+        result = await self._with_retry(_do_completion, attempts=attempts, backoff=backoff)
         
         # Cache successful responses
         if cache_response and identifier and result.ok:
@@ -403,6 +419,114 @@ class OpenAIProvider(BaseProvider):
                 rewrite_cache=rewrite_cache,
                 regen_cache=regen_cache,
                 response=self._result_to_cache(result, params),
+                model_name=self.model_name,
+                log_errors=True,
+                collection=effective_collection,
+            )
+        
+        return result
+    
+    async def _complete_responses(
+        self,
+        api_messages: List[Dict[str, Any]],
+        params: Dict[str, Any],
+        *,
+        cache_response: bool = False,
+        cache_collection: Optional[str] = None,
+        rewrite_cache: bool = False,
+        regen_cache: bool = False,
+        attempts: int = 3,
+        backoff: float = 1.0,
+    ) -> CompletionResult:
+        """
+        Complete using the OpenAI Responses API.
+        
+        The Responses API is a newer OpenAI endpoint that supports
+        extended features like file inputs and different output formats.
+        """
+        # Convert messages format for responses API
+        # Responses API uses 'input' instead of 'messages'
+        responses_params: Dict[str, Any] = {
+            "model": params["model"],
+            "input": api_messages,
+        }
+        
+        # Copy over reasoning params if present
+        if "reasoning_effort" in params:
+            responses_params["reasoning_effort"] = params["reasoning_effort"]
+        if "reasoning" in params:
+            responses_params["reasoning"] = params["reasoning"]
+        
+        # Validate params
+        responses_params = self._check_reasoning_params(responses_params, "responses")
+        
+        # Check cache
+        if cache_response:
+            content_str = json.dumps(api_messages, sort_keys=True)
+            identifier = blake3(content_str.encode("utf-8")).hexdigest()
+            
+            effective_collection = cache_collection or self.default_cache_collection
+            cached, _ = await self.cache.get_cached(
+                identifier,
+                rewrite_cache=rewrite_cache,
+                regen_cache=regen_cache,
+                only_ok=True,
+                collection=effective_collection,
+            )
+            if cached:
+                return self._cached_to_result(cached)
+        else:
+            identifier = None
+        
+        input_tokens = self.count_tokens(api_messages)
+        
+        async def _do_responses() -> CompletionResult:
+            async with self.limiter.limit(tokens=input_tokens, requests=1) as limit_ctx:
+                try:
+                    response = await self.client.responses.create(**responses_params)
+                    
+                    # Extract output text
+                    content = response.output_text
+                    
+                    # Parse usage
+                    raw_usage = response.usage.to_dict() if response.usage else {}
+                    usage = self.parse_usage(raw_usage)
+                    limit_ctx.output_tokens = usage.output_tokens
+                    
+                    return CompletionResult(
+                        content=content,
+                        usage=usage,
+                        model=self.model_name,
+                        status=200,
+                        raw_response=response,
+                    )
+                    
+                except openai.APIConnectionError as e:
+                    return CompletionResult(
+                        status=500,
+                        error=str(e.__cause__),
+                    )
+                except openai.RateLimitError as e:
+                    return CompletionResult(
+                        status=429,
+                        error=f"Rate limit exceeded: {e}",
+                    )
+                except openai.APIStatusError as e:
+                    return CompletionResult(
+                        status=e.status_code,
+                        error=str(e.response),
+                    )
+        
+        result = await self._with_retry(_do_responses, attempts=attempts, backoff=backoff)
+        
+        # Cache successful responses
+        if cache_response and identifier and result.ok:
+            effective_collection = cache_collection or self.default_cache_collection
+            await self.cache.put_cached(
+                identifier,
+                rewrite_cache=rewrite_cache,
+                regen_cache=regen_cache,
+                response=self._result_to_cache(result, responses_params),
                 model_name=self.model_name,
                 log_errors=True,
                 collection=effective_collection,
@@ -484,6 +608,7 @@ class OpenAIProvider(BaseProvider):
         
         # Track accumulated content and tool calls
         content_buffer = ""
+        reasoning_buffer = ""
         tool_calls_buffer: Dict[int, Dict[str, Any]] = {}  # index -> {id, name, arguments}
         usage = None
         
@@ -522,6 +647,15 @@ class OpenAIProvider(BaseProvider):
                         continue
                     
                     delta = chunk.choices[0].delta
+                    
+                    # Handle reasoning tokens (for o1/GPT-5 reasoning models)
+                    # OpenAI emits reasoning content via delta.reasoning_content
+                    if hasattr(delta, "reasoning_content") and delta.reasoning_content:
+                        reasoning_buffer += delta.reasoning_content
+                        yield StreamEvent(
+                            type=StreamEventType.REASONING,
+                            data=delta.reasoning_content
+                        )
                     
                     # Handle content tokens
                     if delta.content:
@@ -602,6 +736,7 @@ class OpenAIProvider(BaseProvider):
                     usage=usage,
                     model=self.model_name,
                     status=200,
+                    reasoning=reasoning_buffer if reasoning_buffer else None,
                 )
                 
                 yield StreamEvent(

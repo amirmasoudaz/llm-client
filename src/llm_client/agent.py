@@ -8,12 +8,13 @@ reasoning and action.
 from __future__ import annotations
 
 import asyncio
+import json
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import (
     TYPE_CHECKING,
     Any,
     AsyncIterator,
-    Callable,
     Dict,
     List,
     Literal,
@@ -26,7 +27,6 @@ from .conversation import Conversation
 from .providers.base import Provider
 from .providers.types import (
     CompletionResult,
-    Message,
     StreamEvent,
     StreamEventType,
     ToolCall,
@@ -561,6 +561,134 @@ class Agent:
             conversation=self.conversation.fork(),
             config=self.config,
         )
+    
+    # === Session Persistence ===
+    
+    def save_session(self, path: Union[str, Path]) -> None:
+        """
+        Save the agent session (conversation + config) to a file.
+        
+        This saves:
+        - Conversation history (messages, system message)
+        - Agent configuration
+        - Tool names (tools themselves must be re-registered on load)
+        
+        Args:
+            path: File path to save the session to (JSON format)
+            
+        Example:
+            ```python
+            agent = Agent(provider=provider, system_message="You are helpful.")
+            await agent.run("Hello!")
+            agent.save_session("session.json")
+            
+            # Later...
+            loaded_agent = Agent.load_session("session.json", provider=provider)
+            ```
+        """
+        path = Path(path)
+        
+        session_data = {
+            "version": "1.0",
+            "conversation": self.conversation.to_dict(),
+            "config": {
+                "max_turns": self.config.max_turns,
+                "max_tool_calls_per_turn": self.config.max_tool_calls_per_turn,
+                "parallel_tool_execution": self.config.parallel_tool_execution,
+                "tool_timeout": self.config.tool_timeout,
+                "max_tokens": self.config.max_tokens,
+                "reserve_tokens": self.config.reserve_tokens,
+                "stop_on_tool_error": self.config.stop_on_tool_error,
+                "include_tool_errors_in_context": self.config.include_tool_errors_in_context,
+                "stream_tool_calls": self.config.stream_tool_calls,
+            },
+            "tool_names": self.tools.names if self.tools else [],
+        }
+        
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(session_data, indent=2))
+    
+    @classmethod
+    def load_session(
+        cls,
+        path: Union[str, Path],
+        provider: Provider,
+        *,
+        tools: Optional[Union[List[Tool], ToolRegistry]] = None,
+    ) -> "Agent":
+        """
+        Load an agent session from a file.
+        
+        Note: Tools must be provided separately as they cannot be serialized.
+        The loaded session will warn if expected tools are missing.
+        
+        Args:
+            path: File path to load the session from
+            provider: LLM provider for the agent
+            tools: Tools to register (should include tools used in saved session)
+            
+        Returns:
+            Agent with restored conversation and configuration
+            
+        Example:
+            ```python
+            # Define the same tools as the original session
+            @tool
+            async def search(query: str) -> str:
+                return f"Results for {query}"
+            
+            agent = Agent.load_session(
+                "session.json",
+                provider=OpenAIProvider(model="gpt-5"),
+                tools=[search]
+            )
+            
+            # Continue the conversation
+            result = await agent.run("What else can you tell me?")
+            ```
+        """
+        path = Path(path)
+        session_data = json.loads(path.read_text())
+        
+        # Load conversation
+        conversation = Conversation.from_dict(session_data["conversation"])
+        
+        # Load config
+        config_data = session_data.get("config", {})
+        config = AgentConfig(
+            max_turns=config_data.get("max_turns", 10),
+            max_tool_calls_per_turn=config_data.get("max_tool_calls_per_turn", 10),
+            parallel_tool_execution=config_data.get("parallel_tool_execution", True),
+            tool_timeout=config_data.get("tool_timeout", 30.0),
+            max_tokens=config_data.get("max_tokens"),
+            reserve_tokens=config_data.get("reserve_tokens", 2000),
+            stop_on_tool_error=config_data.get("stop_on_tool_error", False),
+            include_tool_errors_in_context=config_data.get("include_tool_errors_in_context", True),
+            stream_tool_calls=config_data.get("stream_tool_calls", True),
+        )
+        
+        # Create agent
+        agent = cls(
+            provider=provider,
+            tools=tools,
+            conversation=conversation,
+            config=config
+        )
+        
+        # Check for missing tools
+        expected_tools = set(session_data.get("tool_names", []))
+        provided_tools = set(agent.tools.names) if agent.tools else set()
+        missing_tools = expected_tools - provided_tools
+        
+        if missing_tools:
+            import warnings
+            warnings.warn(
+                f"Session was saved with tools that are not provided: {missing_tools}. "
+                "The agent may not work correctly without these tools.",
+                UserWarning,
+            )
+        
+        return agent
     
     # === Context Manager ===
     

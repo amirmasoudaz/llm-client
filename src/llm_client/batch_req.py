@@ -1,7 +1,7 @@
 import asyncio
 import json
 from pathlib import Path
-from typing import Any, Callable, Coroutine, Iterable, List, Optional, Union
+from typing import Any, Callable, Coroutine, Iterable, List, Union
 
 try:
     from tqdm.asyncio import tqdm

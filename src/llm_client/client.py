@@ -16,7 +16,7 @@ import base64
 import json
 import uuid
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional, Type, Union
+from typing import Literal, Optional, Type, Union
 
 import numpy as np
 import openai
@@ -25,8 +25,6 @@ from blake3 import blake3
 
 from .cache import CacheSettings, build_cache_core
 from .models import ModelProfile
-from .providers.openai import OpenAIProvider
-from .providers.types import StreamEvent, StreamEventType
 from .rate_limit import Limiter
 from .streaming import PusherStreamer, format_sse_event
 
@@ -607,7 +605,7 @@ class OpenAIClient:
             file=open(file_path, "rb"),
             purpose="batch"
         )
-        return file_obj.dict()
+        return file_obj.model_dump()
 
     async def create_batch_job(
         self,
@@ -623,22 +621,22 @@ class OpenAIClient:
             completion_window=completion_window,
             metadata=metadata
         )
-        return batch.dict()
+        return batch.model_dump()
 
     async def retrieve_batch_job(self, batch_id: str) -> dict:
         """Retrieve details of a batch job."""
         batch = await self.openai.batches.retrieve(batch_id)
-        return batch.dict()
+        return batch.model_dump()
         
     async def cancel_batch_job(self, batch_id: str) -> dict:
         """Cancel a batch job."""
         batch = await self.openai.batches.cancel(batch_id)
-        return batch.dict()
+        return batch.model_dump()
         
     async def list_batch_jobs(self, limit: int = 20, after: str = None) -> dict:
         """List your batch jobs."""
         batches = await self.openai.batches.list(limit=limit, after=after)
-        return batches.dict()
+        return batches.model_dump()
 
     async def download_batch_results(self, file_id: str) -> bytes:
         """Download the result file content."""

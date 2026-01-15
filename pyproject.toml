@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "llm-client"
-version = "0.1.2"
-description = "Asynchronous OpenAI client with caching, streaming, and rate limiting helpers."
+version = "0.2.0"
+description = "Production-ready LLM client with provider abstraction, agents, tool calling, caching, and streaming."
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -21,6 +21,10 @@ dependencies = [
   "tqdm>=4.66",
   "six>=1.16",
 ]
+
+[project.optional-dependencies]
+anthropic = ["anthropic>=0.40.0"]
+all = ["anthropic>=0.40.0"]
 
 [project.urls]
 Source = "https://example.com/llm-client"

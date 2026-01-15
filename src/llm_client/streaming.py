@@ -14,9 +14,7 @@ import hmac
 import json
 import os
 import time
-from abc import ABC, abstractmethod
 from typing import (
-    TYPE_CHECKING,
     Any,
     AsyncIterator,
     Callable,
@@ -93,7 +91,7 @@ class SSEAdapter:
                 break
             yield event.to_sse()
     
-    async def emit(self, event: StreamEvent) -> None:
+    async def emit(self, event: StreamEvent) -> None | str:
         """Convert and return single event as SSE (for manual use)."""
         return event.to_sse()
     

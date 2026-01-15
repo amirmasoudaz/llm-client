@@ -19,7 +19,6 @@ from typing import (
     Dict,
     List,
     Optional,
-    Type,
     Union,
     get_type_hints,
 )
@@ -101,7 +100,7 @@ class Tool:
     
     def to_openai_format(self) -> Dict[str, Any]:
         """Convert to OpenAI tools format."""
-        tool_def = {
+        tool_def: Dict[str, Any] = {
             "type": "function",
             "function": {
                 "name": self.name,
@@ -333,19 +332,20 @@ def _python_type_to_json_schema(py_type: Any) -> Dict[str, Any]:
 
 
 def tool_from_function(
-    func: Callable[..., Awaitable[Any]],
+    func: Callable[..., Any],
     *,
     name: Optional[str] = None,
     description: Optional[str] = None,
     strict: bool = False,
 ) -> Tool:
     """
-    Create a Tool from an async function.
+    Create a Tool from a function (sync or async).
     
     Uses function signature and docstring to generate tool definition.
+    Synchronous functions are automatically wrapped to run in an executor.
     
     Args:
-        func: Async function to convert
+        func: Function to convert (sync or async)
         name: Tool name (defaults to function name)
         description: Tool description (defaults to docstring)
         strict: Enable strict schema validation
@@ -355,6 +355,7 @@ def tool_from_function(
         
     Example:
         ```python
+        # Async function
         async def get_weather(city: str, units: str = "celsius") -> str:
             '''Get current weather for a city.
             
@@ -364,15 +365,46 @@ def tool_from_function(
             '''
             return f"Weather in {city}: sunny"
         
+        # Sync function
+        def calculate_hash(data: str) -> str:
+            '''Calculate SHA256 hash.
+            
+            Args:
+                data: Data to hash
+            '''
+            import hashlib
+            return hashlib.sha256(data.encode()).hexdigest()
+        
         weather_tool = tool_from_function(get_weather)
+        hash_tool = tool_from_function(calculate_hash)
         ```
     """
+    # If sync function, wrap it to run in executor
     if not asyncio.iscoroutinefunction(func):
-        raise ValueError(f"Function {func.__name__} must be async")
+        from functools import partial, wraps
+        
+        original_func = func
+        
+        @wraps(original_func)
+        async def async_wrapper(**kwargs: Any) -> Any:
+            loop = asyncio.get_event_loop()
+            return await loop.run_in_executor(None, partial(original_func, **kwargs))
+        
+        # Copy metadata for schema generation
+        async_wrapper.__doc__ = original_func.__doc__
+        async_wrapper.__annotations__ = original_func.__annotations__
+        
+        # Use the original function for signature inspection
+        # but the wrapper as the handler
+        func_for_schema = original_func
+        handler = async_wrapper
+    else:
+        func_for_schema = func
+        handler = func
     
-    # Get function signature
-    sig = inspect.signature(func)
-    hints = get_type_hints(func) if hasattr(func, "__annotations__") else {}
+    # Get function signature (use original for schema inspection)
+    sig = inspect.signature(func_for_schema)
+    hints = get_type_hints(func_for_schema) if hasattr(func_for_schema, "__annotations__") else {}
     
     # Build parameters schema
     properties: Dict[str, Any] = {}
@@ -386,9 +418,9 @@ def tool_from_function(
         param_schema = _python_type_to_json_schema(param_type)
         
         # Try to extract description from docstring
-        if func.__doc__:
+        if func_for_schema.__doc__:
             # Simple extraction - look for "param_name:" in docstring
-            for line in func.__doc__.split("\n"):
+            for line in func_for_schema.__doc__.split("\n"):
                 line = line.strip()
                 if line.startswith(f"{param_name}:"):
                     param_schema["description"] = line[len(param_name) + 1:].strip()
@@ -400,7 +432,7 @@ def tool_from_function(
         if param.default is inspect.Parameter.empty:
             required.append(param_name)
     
-    parameters = {
+    parameters: Dict[str, Any] = {
         "type": "object",
         "properties": properties,
     }
@@ -409,18 +441,18 @@ def tool_from_function(
     
     # Get description from docstring
     doc = description
-    if not doc and func.__doc__:
+    if not doc and func_for_schema.__doc__:
         # Use first paragraph of docstring
-        doc = func.__doc__.split("\n\n")[0].strip()
+        doc = func_for_schema.__doc__.split("\n\n")[0].strip()
         # Remove Args: section if present
         if "\nArgs:" in doc:
             doc = doc.split("\nArgs:")[0].strip()
     
     return Tool(
-        name=name or func.__name__,
-        description=doc or f"Execute {func.__name__}",
+        name=name or func_for_schema.__name__,
+        description=doc or f"Execute {func_for_schema.__name__}",
         parameters=parameters,
-        handler=func,
+        handler=handler,
         strict=strict,
     )
 

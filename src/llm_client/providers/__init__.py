@@ -5,6 +5,7 @@ This module provides a unified interface for interacting with different LLM prov
 """
 from .base import BaseProvider, Provider
 from .openai import OpenAIProvider
+from .anthropic import AnthropicProvider, ANTHROPIC_AVAILABLE
 from .types import (
     CompletionResult,
     EmbeddingResult,
@@ -25,6 +26,8 @@ __all__ = [
     "BaseProvider",
     # Provider implementations
     "OpenAIProvider",
+    "AnthropicProvider",
+    "ANTHROPIC_AVAILABLE",
     # Types
     "Role",
     "StreamEventType",

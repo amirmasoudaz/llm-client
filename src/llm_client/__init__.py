@@ -59,6 +59,8 @@ from .providers import (
     Provider,
     # Provider implementations
     OpenAIProvider,
+    AnthropicProvider,
+    ANTHROPIC_AVAILABLE,
     # Types
     CompletionResult,
     EmbeddingResult,
@@ -147,6 +149,8 @@ __all__ = [
     "Provider",
     "BaseProvider",
     "OpenAIProvider",
+    "AnthropicProvider",
+    "ANTHROPIC_AVAILABLE",
     # Agent framework
     "Agent",
     "AgentConfig",

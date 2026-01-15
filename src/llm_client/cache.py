@@ -6,7 +6,7 @@ import os
 import re
 import time
 import zlib
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Optional, Protocol, Tuple, Literal
 
@@ -14,6 +14,7 @@ import aiohttp
 import aiofiles
 import asyncpg
 from blake3 import blake3
+import redis
 import redis.asyncio as redis_lib
 from redis.exceptions import ConnectionError as RedisConnectionError
 

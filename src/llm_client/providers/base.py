@@ -6,19 +6,24 @@ enabling provider-agnostic agent and application code.
 """
 from __future__ import annotations
 
+import asyncio
 from abc import ABC, abstractmethod
 from typing import (
     TYPE_CHECKING,
     Any,
     AsyncIterator,
+    Callable,
     Dict,
     List,
     Optional,
     Protocol,
     Type,
+    TypeVar,
     Union,
     runtime_checkable,
 )
+
+T = TypeVar("T")
 
 from .types import (
     CompletionResult,
@@ -124,9 +129,29 @@ class Provider(Protocol):
             EmbeddingResult with embedding vectors
         """
         ...
+    
+    def count_tokens(self, content: Any) -> int:
+        """Count tokens in the given content."""
+        ...
+    
+    def parse_usage(self, raw_usage: Dict[str, Any]) -> Usage:
+        """Parse raw API usage into Usage object."""
+        ...
+    
+    async def close(self) -> None:
+        """Clean up provider resources."""
+        ...
+    
+    async def __aenter__(self) -> "Provider":
+        """Async context manager entry."""
+        ...
+    
+    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        """Async context manager exit."""
+        ...
 
 
-class BaseProvider(ABC):
+class BaseProvider(Provider, ABC):
     """
     Abstract base class for provider implementations.
     
@@ -208,6 +233,64 @@ class BaseProvider(ABC):
             for tool in tools
         ]
     
+    async def _with_retry(
+        self,
+        operation: Callable[[], Any],
+        *,
+        attempts: int = 3,
+        backoff: float = 1.0,
+        retryable_statuses: tuple[int, ...] = (429, 500, 502, 503, 504),
+    ) -> Any:
+        """
+        Execute an operation with retry and exponential backoff.
+        
+        Args:
+            operation: Async callable to execute
+            attempts: Maximum number of attempts
+            backoff: Initial backoff delay in seconds (doubles each retry)
+            retryable_statuses: HTTP status codes that should trigger retry
+            
+        Returns:
+            Result of the operation
+            
+        Note:
+            The operation should return a result with a 'status' attribute
+            or raise an exception on failure.
+        """
+        last_result = None
+        last_error = None
+        current_backoff = backoff
+        
+        for attempt in range(attempts):
+            try:
+                result = await operation()
+                
+                # Check if result indicates a retryable error
+                if hasattr(result, "status"):
+                    if result.status in retryable_statuses and attempt < attempts - 1:
+                        last_result = result
+                        await asyncio.sleep(current_backoff)
+                        current_backoff *= 2
+                        continue
+                
+                return result
+                
+            except Exception as e:
+                last_error = e
+                if attempt < attempts - 1:
+                    await asyncio.sleep(current_backoff)
+                    current_backoff *= 2
+                    continue
+                raise
+        
+        # Return last result if we have one, otherwise raise last error
+        if last_result is not None:
+            return last_result
+        if last_error is not None:
+            raise last_error
+        
+        raise RuntimeError("Retry logic failed unexpectedly")
+    
     @abstractmethod
     async def complete(
         self,
@@ -260,7 +343,7 @@ class BaseProvider(ABC):
         """
         pass
     
-    async def __aenter__(self) -> "BaseProvider":
+    async def __aenter__(self) -> "Provider":
         """Async context manager entry."""
         return self
     
