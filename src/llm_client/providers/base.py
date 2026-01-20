@@ -7,6 +7,7 @@ enabling provider-agnostic agent and application code.
 from __future__ import annotations
 
 import asyncio
+import random
 from abc import ABC, abstractmethod
 from typing import (
     TYPE_CHECKING,
@@ -269,7 +270,7 @@ class BaseProvider(Provider, ABC):
                 if hasattr(result, "status"):
                     if result.status in retryable_statuses and attempt < attempts - 1:
                         last_result = result
-                        await asyncio.sleep(current_backoff)
+                        await asyncio.sleep(current_backoff * random.uniform(0.8, 1.2))
                         current_backoff *= 2
                         continue
                 
@@ -278,7 +279,7 @@ class BaseProvider(Provider, ABC):
             except Exception as e:
                 last_error = e
                 if attempt < attempts - 1:
-                    await asyncio.sleep(current_backoff)
+                    await asyncio.sleep(current_backoff * random.uniform(0.8, 1.2))
                     current_backoff *= 2
                     continue
                 raise
@@ -356,4 +357,3 @@ __all__ = [
     "Provider",
     "BaseProvider",
 ]
-

@@ -45,12 +45,9 @@ For backward compatibility, the original `OpenAIClient` is still available:
     result = await client.get_response(messages=[...])
     ```
 
-Environment variables are automatically loaded from `.env` files.
+Environment loading is explicit via `llm_client.load_env`.
 """
-from dotenv import find_dotenv, load_dotenv
-
-# Load environment variables on import
-_ = load_dotenv(find_dotenv(), override=True)
+from .config import load_env
 
 # === Provider Layer ===
 from .providers import (
@@ -110,6 +107,13 @@ from .streaming import (
     format_sse_event,
     stream_to_string,
 )
+
+# === Execution Engine ===
+from .engine import ExecutionEngine, RetryConfig
+from .hooks import Hook, HookManager, InMemoryMetricsHook, OpenTelemetryHook
+from .resilience import CircuitBreaker, CircuitBreakerConfig
+from .routing import ProviderRouter, StaticRouter
+from .spec import RequestContext, RequestSpec
 
 # === Model Profiles ===
 from .models import (
@@ -211,4 +215,19 @@ __all__ = [
     "ResponseTimeoutError",
     # === Backward Compatible ===
     "OpenAIClient",
+    # Config
+    "load_env",
+    # Execution engine
+    "ExecutionEngine",
+    "RetryConfig",
+    "RequestContext",
+    "RequestSpec",
+    "Hook",
+    "HookManager",
+    "InMemoryMetricsHook",
+    "OpenTelemetryHook",
+    "CircuitBreaker",
+    "CircuitBreakerConfig",
+    "ProviderRouter",
+    "StaticRouter",
 ]

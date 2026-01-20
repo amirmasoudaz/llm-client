@@ -22,6 +22,12 @@ from typing import (
     Union,
     get_type_hints,
 )
+try:
+    from jsonschema import ValidationError as JsonSchemaValidationError
+    from jsonschema import validate as jsonschema_validate
+except Exception:  # pragma: no cover - import guard
+    JsonSchemaValidationError = Exception  # type: ignore[assignment]
+    jsonschema_validate = None  # type: ignore[assignment]
 
 
 @dataclass
@@ -111,6 +117,17 @@ class Tool:
         if self.strict:
             tool_def["function"]["strict"] = True
         return tool_def
+
+    def _validate_arguments(self, args: Dict[str, Any]) -> Optional[str]:
+        if not self.strict:
+            return None
+        if jsonschema_validate is None:
+            return "jsonschema is required for strict tool validation."
+        try:
+            jsonschema_validate(instance=args, schema=self.parameters)
+            return None
+        except JsonSchemaValidationError as exc:
+            return str(exc)
     
     async def execute(self, **kwargs: Any) -> ToolResult:
         """
@@ -120,6 +137,10 @@ class Tool:
             ToolResult with the execution outcome
         """
         try:
+            validation_error = self._validate_arguments(kwargs)
+            if validation_error:
+                return ToolResult.error_result(f"Tool validation failed: {validation_error}")
+
             result = await self.handler(**kwargs)
             
             # Normalize result to ToolResult
@@ -463,4 +484,3 @@ __all__ = [
     "ToolRegistry",
     "tool_from_function",
 ]
-

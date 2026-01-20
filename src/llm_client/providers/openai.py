@@ -27,6 +27,7 @@ from openai import AsyncOpenAI
 from blake3 import blake3
 
 from ..cache import CacheSettings, build_cache_core
+from ..serialization import stable_json_dumps
 from ..rate_limit import Limiter
 from .base import BaseProvider
 from .types import (
@@ -228,6 +229,10 @@ class OpenAIProvider(BaseProvider):
         
         # Assume it's a Pydantic model or similar for structured output
         return response_format
+
+    def _cache_key(self, api: str, params: Dict[str, Any]) -> str:
+        payload = {"api": api, "params": params}
+        return blake3(stable_json_dumps(payload).encode("utf-8")).hexdigest()
     
     async def complete(
         self,
@@ -328,8 +333,7 @@ class OpenAIProvider(BaseProvider):
         
         # Check cache
         if cache_response:
-            content_str = json.dumps(api_messages, sort_keys=True)
-            identifier = blake3(content_str.encode("utf-8")).hexdigest()
+            identifier = self._cache_key("chat.completions", params)
             
             effective_collection = cache_collection or self.default_cache_collection
             cached, _ = await self.cache.get_cached(
@@ -462,8 +466,7 @@ class OpenAIProvider(BaseProvider):
         
         # Check cache
         if cache_response:
-            content_str = json.dumps(api_messages, sort_keys=True)
-            identifier = blake3(content_str.encode("utf-8")).hexdigest()
+            identifier = self._cache_key("responses", responses_params)
             
             effective_collection = cache_collection or self.default_cache_collection
             cached, _ = await self.cache.get_cached(
@@ -882,4 +885,3 @@ class OpenAIProvider(BaseProvider):
 
 
 __all__ = ["OpenAIProvider"]
-

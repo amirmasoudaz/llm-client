@@ -15,7 +15,7 @@ Production-ready Python library for LLM interactions with **agent framework**, *
 - **Retry Logic**: Automatic retry with exponential backoff for transient errors
 - **Batch Processing**: Concurrent request handling with checkpointing
 
-Auto-loads environment variables from `.env` files on import.
+Environment loading is explicit via `llm_client.load_env`.
 
 ---
 

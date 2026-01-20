@@ -25,8 +25,11 @@ from typing import (
 
 from .conversation import Conversation
 from .providers.base import Provider
+from .engine import ExecutionEngine, RetryConfig
+from .spec import RequestSpec
 from .providers.types import (
     CompletionResult,
+    Message,
     StreamEvent,
     StreamEventType,
     ToolCall,
@@ -50,6 +53,7 @@ class AgentConfig:
     # Tool execution
     parallel_tool_execution: bool = True
     tool_timeout: float = 30.0
+    max_tool_output_chars: Optional[int] = None
     
     # Context management
     max_tokens: Optional[int] = None
@@ -162,6 +166,8 @@ class Agent:
         system_message: Optional[str] = None,
         conversation: Optional[Conversation] = None,
         config: Optional[AgentConfig] = None,
+        engine: Optional[ExecutionEngine] = None,
+        use_engine: bool = False,
         # Shortcuts for common config options
         max_turns: int = 10,
         max_tokens: Optional[int] = None,
@@ -179,6 +185,12 @@ class Agent:
             max_tokens: Maximum context tokens (shortcut)
         """
         self.provider = provider
+        if engine is not None:
+            self.engine = engine
+        elif use_engine:
+            self.engine = ExecutionEngine(provider=self.provider)
+        else:
+            self.engine = None
         
         # Set up tool registry
         if isinstance(tools, ToolRegistry):
@@ -247,15 +259,20 @@ class Agent:
         
         for turn_num in range(max_turns):
             # Get completion
-            messages = self.conversation.get_messages_dict(
-                model=self.model if self.config.max_tokens else None
-            )
-            
-            completion = await self.provider.complete(
-                messages,
-                tools=self.tools.tools if self.tools else None,
-                **kwargs,
-            )
+            if self.engine:
+                messages = self.conversation.get_messages(
+                    model=self.model if self.config.max_tokens else None
+                )
+                completion = await self._complete_with_engine(messages, **kwargs)
+            else:
+                messages = self.conversation.get_messages_dict(
+                    model=self.model if self.config.max_tokens else None
+                )
+                completion = await self.provider.complete(
+                    messages,
+                    tools=self.tools.tools if self.tools else None,
+                    **kwargs,
+                )
             
             # Track usage
             if completion.usage:
@@ -383,20 +400,49 @@ class Agent:
             )
             
             # Get messages for this turn
-            messages = self.conversation.get_messages_dict(
-                model=self.model if self.config.max_tokens else None
-            )
+            if self.engine:
+                messages = self.conversation.get_messages(
+                    model=self.model if self.config.max_tokens else None
+                )
+            else:
+                messages = self.conversation.get_messages_dict(
+                    model=self.model if self.config.max_tokens else None
+                )
             
             # Stream completion
             buffer = BufferingAdapter()
             
-            async for event in buffer.wrap(
-                self.provider.stream(
+            if self.engine:
+                spec = RequestSpec(
+                    provider=self.provider.__class__.__name__,
+                    model=self.provider.model_name,
+                    messages=messages,
+                    tools=self.tools.tools if self.tools else None,
+                    tool_choice=kwargs.get("tool_choice"),
+                    temperature=kwargs.get("temperature"),
+                    max_tokens=kwargs.get("max_tokens"),
+                    response_format=kwargs.get("response_format"),
+                    reasoning_effort=kwargs.get("reasoning_effort"),
+                    reasoning=kwargs.get("reasoning"),
+                    extra={k: v for k, v in kwargs.items() if k not in {
+                        "tool_choice",
+                        "temperature",
+                        "max_tokens",
+                        "response_format",
+                        "reasoning_effort",
+                        "reasoning",
+                    }},
+                    stream=True,
+                )
+                stream_iter = self.engine.stream(spec)
+            else:
+                stream_iter = self.provider.stream(
                     messages,
                     tools=self.tools.tools if self.tools else None,
                     **kwargs,
                 )
-            ):
+
+            async for event in buffer.wrap(stream_iter):
                 yield event
             
             result = buffer.get_result()
@@ -538,13 +584,91 @@ class Agent:
                 self.tools.execute(tool_call.name, tool_call.arguments),
                 timeout=self.config.tool_timeout,
             )
-            return result
+            return self._apply_tool_output_limit(result, tool_call.name)
         except asyncio.TimeoutError:
             return ToolResult.error_result(
                 f"Tool '{tool_call.name}' timed out after {self.config.tool_timeout}s"
             )
         except Exception as e:
             return ToolResult.error_result(f"Tool execution error: {e}")
+
+    async def _complete_with_engine(
+        self,
+        messages: List[Message],
+        **kwargs: Any,
+    ) -> CompletionResult:
+        engine = self.engine
+        if engine is None:
+            raise RuntimeError("Engine requested but not configured.")
+
+        cache_response = bool(kwargs.pop("cache_response", False))
+        cache_collection = kwargs.pop("cache_collection", None)
+        rewrite_cache = bool(kwargs.pop("rewrite_cache", False))
+        regen_cache = bool(kwargs.pop("regen_cache", False))
+
+        attempts = kwargs.pop("attempts", None)
+        backoff = kwargs.pop("backoff", None)
+
+        tool_choice = kwargs.pop("tool_choice", None)
+        temperature = kwargs.pop("temperature", None)
+        max_tokens = kwargs.pop("max_tokens", None)
+        response_format = kwargs.pop("response_format", None)
+        reasoning_effort = kwargs.pop("reasoning_effort", None)
+        reasoning = kwargs.pop("reasoning", None)
+
+        retry_cfg = None
+        if attempts is not None or backoff is not None:
+            retry_cfg = RetryConfig(
+                attempts=attempts or 3,
+                backoff=backoff or 1.0,
+            )
+
+        spec = RequestSpec(
+            provider=self.provider.__class__.__name__,
+            model=self.provider.model_name,
+            messages=messages,
+            tools=self.tools.tools if self.tools else None,
+            tool_choice=tool_choice,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            response_format=response_format,
+            reasoning_effort=reasoning_effort,
+            reasoning=reasoning,
+            extra=kwargs,
+            stream=False,
+        )
+
+        return await engine.complete(
+            spec,
+            cache_response=cache_response,
+            cache_collection=cache_collection,
+            rewrite_cache=rewrite_cache,
+            regen_cache=regen_cache,
+            retry=retry_cfg,
+        )
+
+    def _apply_tool_output_limit(self, result: ToolResult, tool_name: str) -> ToolResult:
+        limit = self.config.max_tool_output_chars
+        if not limit:
+            return result
+
+        output = result.to_string()
+        if len(output) <= limit:
+            return result
+
+        metadata = dict(result.metadata)
+        metadata.update({
+            "truncated": True,
+            "original_size": len(output),
+            "limit": limit,
+            "tool": tool_name,
+        })
+        return ToolResult(
+            content=output[:limit],
+            success=result.success,
+            error=result.error,
+            metadata=metadata,
+        )
     
     # === Conversation Management ===
     
@@ -596,6 +720,7 @@ class Agent:
                 "max_tool_calls_per_turn": self.config.max_tool_calls_per_turn,
                 "parallel_tool_execution": self.config.parallel_tool_execution,
                 "tool_timeout": self.config.tool_timeout,
+                "max_tool_output_chars": self.config.max_tool_output_chars,
                 "max_tokens": self.config.max_tokens,
                 "reserve_tokens": self.config.reserve_tokens,
                 "stop_on_tool_error": self.config.stop_on_tool_error,
@@ -660,6 +785,7 @@ class Agent:
             max_tool_calls_per_turn=config_data.get("max_tool_calls_per_turn", 10),
             parallel_tool_execution=config_data.get("parallel_tool_execution", True),
             tool_timeout=config_data.get("tool_timeout", 30.0),
+            max_tool_output_chars=config_data.get("max_tool_output_chars"),
             max_tokens=config_data.get("max_tokens"),
             reserve_tokens=config_data.get("reserve_tokens", 2000),
             stop_on_tool_error=config_data.get("stop_on_tool_error", False),
@@ -757,4 +883,3 @@ __all__ = [
     "TurnResult",
     "quick_agent",
 ]
-

@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 from pathlib import Path
 from typing import Any, Callable, Coroutine, Iterable, List, Union
 
@@ -7,6 +8,8 @@ try:
     from tqdm.asyncio import tqdm
 except ImportError:
     tqdm = None
+
+logger = logging.getLogger(__name__)
 
 
 class BatchManager:
@@ -47,9 +50,9 @@ class BatchManager:
                     if "_batch_index" in record:
                         self.processed_indices.add(record["_batch_index"])
                         self.results.append(record)
-            print(f"Loaded {len(self.processed_indices)} items from checkpoint.")
+            logger.info("Loaded %s items from checkpoint.", len(self.processed_indices))
         except Exception as e:
-            print(f"Error loading checkpoint: {e}")
+            logger.warning("Error loading checkpoint: %s", e)
 
     async def process_batch(
         self, 
@@ -77,7 +80,7 @@ class BatchManager:
                 items_to_process.append((i, item))
         
         if not items_to_process:
-            print("All items already processed in checkpoint.")
+            logger.info("All items already processed in checkpoint.")
             # Return sorted results by index to maintain order
             return sorted(self.results, key=lambda x: x.get("_batch_index", -1))
         
@@ -142,7 +145,7 @@ class BatchManager:
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                print(f"Worker critical error: {e}")
+                logger.error("Worker critical error: %s", e)
                 # If we got an item but failed, we still need to mark it done
                 if index is not None:
                     queue.task_done()
@@ -153,7 +156,7 @@ class BatchManager:
             with open(self.checkpoint_file, "a", encoding="utf-8") as f:
                 f.write(json.dumps(record) + "\n")
         except Exception as e:
-            print(f"Failed to write checkpoint: {e}")
+            logger.warning("Failed to write checkpoint: %s", e)
 
 # Backward compatibility alias
 class RequestManager(BatchManager):

@@ -314,6 +314,10 @@ class Conversation:
             for m in msgs:
                 if m.content:
                     total += model.count_tokens(m.content)
+                if m.tool_calls:
+                    for tc in m.tool_calls:
+                        total += model.count_tokens(tc.name)
+                        total += model.count_tokens(tc.arguments)
             return total
         
         if count(messages) <= max_tokens:
@@ -534,4 +538,3 @@ __all__ = [
     "ConversationConfig",
     "TruncationStrategy",
 ]
-

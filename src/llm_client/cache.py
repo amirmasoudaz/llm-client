@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import re
 import time
@@ -18,6 +19,7 @@ import redis
 import redis.asyncio as redis_lib
 from redis.exceptions import ConnectionError as RedisConnectionError
 
+logger = logging.getLogger(__name__)
 
 CacheBackendName = Literal["fs", "qdrant", "pg_redis", "none"]
 
@@ -331,7 +333,7 @@ class QdrantCache:
             async with s.put(url, headers=self._headers(), data=json.dumps(body)) as r:
                 if r.status not in (200, 202):
                     txt = await r.text()
-                    print(f"[QdrantCache] upsert failed: {r.status} {txt}")
+                    logger.warning("Qdrant upsert failed: %s %s", r.status, txt)
 
 
 def _sanitize_table_name(name: str) -> str:

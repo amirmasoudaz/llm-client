@@ -12,6 +12,8 @@ For new code, consider using the provider and agent APIs directly:
 from __future__ import annotations
 
 import asyncio
+import logging
+import random
 import base64
 import json
 import uuid
@@ -24,10 +26,16 @@ from openai import AsyncOpenAI
 from blake3 import blake3
 
 from .cache import CacheSettings, build_cache_core
+from .engine import ExecutionEngine, RetryConfig
 from .models import ModelProfile
+from .providers.openai import OpenAIProvider
+from .providers.types import StreamEventType, normalize_messages
 from .rate_limit import Limiter
+from .serialization import stable_json_dumps
+from .spec import RequestSpec
 from .streaming import PusherStreamer, format_sse_event
 
+logger = logging.getLogger(__name__)
 
 class OpenAIClient:
     """
@@ -71,6 +79,8 @@ class OpenAIClient:
         *,
         cache_dir: Union[str, Path, None] = None,
         responses_api_toggle: bool = False,
+        use_engine: bool = False,
+        engine: Optional[ExecutionEngine] = None,
         cache_backend: Literal["qdrant", "pg_redis", "fs", None] = None,
         cache_collection: str | None = None,
         pg_dsn: str | None = None,
@@ -139,6 +149,20 @@ class OpenAIClient:
                 compress=compress_pg,
             )
         )
+
+        self.use_engine = use_engine or engine is not None
+        self.engine: Optional[ExecutionEngine] = engine
+        self._engine_provider: Optional[OpenAIProvider] = None
+
+        if self.use_engine and self.engine is None:
+            self._engine_provider = OpenAIProvider(
+                model=self.model,
+                use_responses_api=self.responses_api_toggle,
+            )
+            self.engine = ExecutionEngine(
+                provider=self._engine_provider,
+                cache=self.cache,
+            )
 
     async def warm_cache(self) -> None:
         """Pre-warm the cache."""
@@ -298,13 +322,13 @@ class OpenAIClient:
                 limit_context.output_tokens = usage.get("output_tokens", 0)
             except openai.APIConnectionError as e:
                 status, error = 500, e.__cause__
-                print(f"API Connection Error in Completions: {error}")
+                logger.warning("API Connection Error in Completions: %s", error)
             except openai.RateLimitError as e:
                 status, error = 429, "Rate limit exceeded."
-                print(f"Rate Limit Error in Completions: {error} - {e}")
+                logger.warning("Rate Limit Error in Completions: %s - %s", error, e)
             except openai.APIStatusError as e:
                 status, error = e.status_code, e.response
-                print(f"API Status Error in Completions: {error}")
+                logger.warning("API Status Error in Completions: %s", error)
             finally:
                 usage = usage or {}
         result = dict(params=params, output=output, usage=usage, status=status, error=error)
@@ -420,13 +444,13 @@ class OpenAIClient:
                 limit_context.output_tokens = usage.get("output_tokens", 0)
             except openai.APIConnectionError as exc:
                 status, error = 500, exc.__cause__
-                print(f"API Connection Error in Completions: {error}")
+                logger.warning("API Connection Error in Completions: %s", error)
             except openai.RateLimitError:
                 status, error = 429, "Rate limit exceeded."
-                print(f"Rate Limit Error in Completions: {error}")
+                logger.warning("Rate Limit Error in Completions: %s", error)
             except openai.APIStatusError as exc:
                 status, error = exc.status_code, exc.response
-                print(f"API Status Error in Completions: {error}")
+                logger.warning("API Status Error in Completions: %s", error)
             finally:
                 usage = usage or {}
         result = dict(params=params, output=output, usage=usage, status=status, error=error)
@@ -459,13 +483,13 @@ class OpenAIClient:
                 status, error = 200, "OK"
             except openai.APIConnectionError as exc:
                 status, error = 500, exc.__cause__
-                print(f"API Connection Error in Embeddings: {error}")
+                logger.warning("API Connection Error in Embeddings: %s", error)
             except openai.RateLimitError:
                 status, error = 429, "Rate limit exceeded."
-                print(f"Rate Limit Error in Embeddings: {error}")
+                logger.warning("Rate Limit Error in Embeddings: %s", error)
             except openai.APIStatusError as exc:
                 status, error = exc.status_code, exc.response
-                print(f"API Status Error in Embeddings: {error}")
+                logger.warning("API Status Error in Embeddings: %s", error)
             finally:
                 usage = usage or {}
         result = dict(params=params, output=output, usage=usage, status=status, error=error)
@@ -508,15 +532,35 @@ class OpenAIClient:
         Returns:
             Dict with output, usage, status, error, and optional body/response
         """
+        if self.use_engine and self.model.category == "completions":
+            return await self._get_response_engine(
+                identifier=identifier,
+                attempts=attempts,
+                backoff=backoff,
+                body=body,
+                cache_response=cache_response,
+                return_response=return_response,
+                rewrite_cache=rewrite_cache,
+                regen_cache=regen_cache,
+                log_errors=log_errors,
+                timeout=timeout,
+                hash_as_identifier=hash_as_identifier,
+                cache_collection=cache_collection,
+                **kwargs,
+            )
         # Resolve effective cache collection
         effective_collection = cache_collection or self.default_cache_collection
 
         if not identifier:
             if hash_as_identifier:
-                content = kwargs.get("input", kwargs.get("messages", ""))
-                if isinstance(content, (list, dict)):
-                    content = json.dumps(content, sort_keys=True)
-                identifier = blake3(str(content).encode("utf-8")).hexdigest()
+                cache_payload = {
+                    "model": self.model.model_name,
+                    "responses_api": self.responses_api_toggle,
+                    "params": kwargs,
+                }
+                identifier = blake3(
+                    stable_json_dumps(cache_payload).encode("utf-8")
+                ).hexdigest()
             else:
                 identifier = blake3(str(uuid.uuid4()).encode("utf-8")).hexdigest()
 
@@ -552,7 +596,7 @@ class OpenAIClient:
                 attempts_left -= 1
                 if attempts_left == 0:
                     return {"status": 408, "error": "Timeout", "output": None, "usage": {}}
-                await asyncio.sleep(current_backoff)
+                await asyncio.sleep(current_backoff * random.uniform(0.8, 1.2))
                 current_backoff *= 2
                 continue
 
@@ -563,7 +607,7 @@ class OpenAIClient:
             if attempts_left == 0:
                 return result
 
-            await asyncio.sleep(current_backoff)
+            await asyncio.sleep(current_backoff * random.uniform(0.8, 1.2))
             current_backoff *= 2
 
         result.update({"identifier": identifier, "body": body})
@@ -591,6 +635,184 @@ class OpenAIClient:
         if return_response:
             result["response"] = response
 
+        return result
+
+    async def _get_response_engine(
+        self,
+        identifier: str | None = None,
+        attempts: int = 3,
+        backoff: int = 1,
+        body: dict | None = None,
+        cache_response: bool = False,
+        return_response: bool = False,
+        rewrite_cache: bool = False,
+        regen_cache: bool = False,
+        log_errors: bool = True,
+        timeout: float | None = None,
+        hash_as_identifier: bool = True,
+        cache_collection: str | None = None,
+        **kwargs,
+    ) -> dict:
+        engine = self.engine
+        if engine is None:
+            raise RuntimeError("ExecutionEngine is not configured.")
+
+        params = dict(kwargs)
+        messages = params.pop("messages", None)
+        if messages is None:
+            messages = params.pop("input", None)
+        if messages is None:
+            messages = ""
+
+        tool_choice = params.pop("tool_choice", None)
+        tools = params.pop("tools", None)
+        temperature = params.pop("temperature", None)
+        max_tokens = params.pop("max_tokens", None)
+        response_format = params.pop("response_format", None)
+        reasoning_effort = params.pop("reasoning_effort", None)
+        reasoning = params.pop("reasoning", None)
+
+        stream = bool(params.pop("stream", False))
+        stream_mode = params.pop("stream_mode", "pusher")
+        channel = params.pop("channel", None)
+
+        retry_cfg = None
+        if attempts is not None or backoff is not None:
+            retry_cfg = RetryConfig(
+                attempts=attempts or 3,
+                backoff=backoff or 1.0,
+            )
+
+        msg_objects = normalize_messages(messages)
+        spec = RequestSpec(
+            provider="OpenAIProvider",
+            model=self.model.model_name,
+            messages=msg_objects,
+            tools=tools,
+            tool_choice=tool_choice,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            response_format=response_format,
+            reasoning_effort=reasoning_effort,
+            reasoning=reasoning,
+            extra=params,
+            stream=stream,
+        )
+
+        if not identifier:
+            if hash_as_identifier:
+                identifier = spec.cache_key()
+            else:
+                identifier = blake3(str(uuid.uuid4()).encode("utf-8")).hexdigest()
+
+        if stream:
+            if stream_mode == "sse":
+                async def sse_generator():
+                    output = ""
+                    usage = {}
+                    status = 200
+                    error = "OK"
+
+                    yield format_sse_event("meta", json.dumps({
+                        "model": self.model.model_name,
+                        "stream_mode": "sse",
+                    }))
+
+                    async for event in engine.stream(spec):
+                        if event.type == StreamEventType.TOKEN:
+                            output += event.data
+                            yield format_sse_event("token", event.data)
+                        elif event.type == StreamEventType.USAGE:
+                            usage = event.data.to_dict() if hasattr(event.data, "to_dict") else event.data
+                        elif event.type == StreamEventType.ERROR:
+                            status = event.data.get("status", 500) if isinstance(event.data, dict) else 500
+                            error = event.data.get("error", "ERROR") if isinstance(event.data, dict) else "ERROR"
+                            yield format_sse_event("error", json.dumps({
+                                "error": error,
+                                "status": status,
+                            }))
+                            break
+                        elif event.type == StreamEventType.DONE:
+                            if event.data and getattr(event.data, "usage", None):
+                                usage = event.data.usage.to_dict() if event.data.usage else usage
+                            status = event.data.status if event.data else status
+                            yield format_sse_event("done", json.dumps({
+                                "usage": usage,
+                                "status": status,
+                                "output": output,
+                            }))
+                            break
+
+                return sse_generator()
+
+            output = ""
+            usage = {}
+            status = 200
+            error = "OK"
+
+            async with PusherStreamer(channel=channel or str(uuid.uuid4())) as streamer:
+                await streamer.push_event("new-response", "")
+                async for event in engine.stream(spec):
+                    if event.type == StreamEventType.TOKEN:
+                        output += event.data
+                        await streamer.push_event("new-token", event.data)
+                    elif event.type == StreamEventType.USAGE:
+                        usage = event.data.to_dict() if hasattr(event.data, "to_dict") else event.data
+                    elif event.type == StreamEventType.ERROR:
+                        status = event.data.get("status", 500) if isinstance(event.data, dict) else 500
+                        error = event.data.get("error", "ERROR") if isinstance(event.data, dict) else "ERROR"
+                        break
+                    elif event.type == StreamEventType.DONE:
+                        if event.data and getattr(event.data, "usage", None):
+                            usage = event.data.usage.to_dict() if event.data.usage else usage
+                        status = event.data.status if event.data else status
+                        break
+
+                await streamer.push_event("response-finished", error)
+
+            result = {
+                "params": {"model": self.model.model_name, "messages": messages},
+                "output": output,
+                "usage": usage,
+                "status": status,
+                "error": error,
+                "identifier": identifier,
+                "body": body,
+            }
+            if result.get("body"):
+                result["body"]["completion"] = result.get("output")
+            return result
+
+        async def _do_complete():
+            return await engine.complete(
+                spec,
+                cache_response=cache_response,
+                cache_collection=cache_collection,
+                rewrite_cache=rewrite_cache,
+                regen_cache=regen_cache,
+                cache_key=identifier if cache_response else None,
+                retry=retry_cfg,
+            )
+
+        if timeout is None:
+            completion = await _do_complete()
+        else:
+            completion = await asyncio.wait_for(_do_complete(), timeout=timeout)
+
+        error = completion.error or ("OK" if completion.status == 200 else "ERROR")
+        result = {
+            "params": {"model": self.model.model_name, "messages": messages},
+            "output": completion.content,
+            "usage": completion.usage.to_dict() if completion.usage else {},
+            "status": completion.status,
+            "error": error,
+            "identifier": identifier,
+            "body": body,
+        }
+        if result.get("body"):
+            result["body"]["completion"] = result.get("output")
+        if return_response:
+            result["response"] = None
         return result
 
     # === Batch API Methods ===

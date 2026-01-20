@@ -37,9 +37,14 @@ if TYPE_CHECKING:
     from ..models import ModelProfile
     from ..tools.base import Tool
 
-import anthropic
-from anthropic import AsyncAnthropic
-ANTHROPIC_AVAILABLE = True
+try:
+    import anthropic
+    from anthropic import AsyncAnthropic
+    ANTHROPIC_AVAILABLE = True
+except Exception:  # pragma: no cover - import guard
+    anthropic = None  # type: ignore[assignment]
+    AsyncAnthropic = None  # type: ignore[assignment]
+    ANTHROPIC_AVAILABLE = False
 
 
 
