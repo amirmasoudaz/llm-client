@@ -6,12 +6,14 @@ Demonstrates:
 1. Using reasoning models with different effort levels
 2. Comparing outputs across reasoning efforts
 """
+
 import asyncio
-import tempfile
-from pathlib import Path
 
 # Add src to path for development
 import sys
+import tempfile
+from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from llm_client import OpenAIClient
@@ -64,9 +66,11 @@ async def main():
             display_output = output
 
         print(f"\n{display_output}\n")
-        print(f"📊 Tokens: input={usage.get('input_tokens', 0)}, "
-              f"output={usage.get('output_tokens', 0)}, "
-              f"cost=${usage.get('total_cost', 0):.6f}")
+        print(
+            f"📊 Tokens: input={usage.get('input_tokens', 0)}, "
+            f"output={usage.get('output_tokens', 0)}, "
+            f"cost=${usage.get('total_cost', 0):.6f}"
+        )
         print()
 
     # --- Show cache structure ---

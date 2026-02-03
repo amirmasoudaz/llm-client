@@ -7,13 +7,16 @@ Demonstrates:
 2. Pydantic structured output parsing
 3. Caching structured responses
 """
+
 import asyncio
-import tempfile
-from pathlib import Path
-from pydantic import BaseModel
 
 # Add src to path for development
 import sys
+import tempfile
+from pathlib import Path
+
+from pydantic import BaseModel
+
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from llm_client import OpenAIClient
@@ -21,6 +24,7 @@ from llm_client import OpenAIClient
 
 class MovieReview(BaseModel):
     """Structured movie review schema."""
+
     title: str
     rating: float
     summary: str
@@ -46,15 +50,12 @@ async def main():
 
     response = await client.get_response(
         messages=[
-            {
-                "role": "system",
-                "content": "You are a helpful assistant that responds in JSON format."
-            },
+            {"role": "system", "content": "You are a helpful assistant that responds in JSON format."},
             {
                 "role": "user",
                 "content": "List 3 programming languages with their primary use case. "
-                           "Return as JSON with keys: languages (array of {name, use_case})."
-            }
+                "Return as JSON with keys: languages (array of {name, use_case}).",
+            },
         ],
         response_format="json_object",
         cache_response=True,
@@ -72,14 +73,8 @@ async def main():
 
     response = await client.get_response(
         messages=[
-            {
-                "role": "system",
-                "content": "You are a movie critic. Provide structured reviews."
-            },
-            {
-                "role": "user",
-                "content": "Write a brief review of the movie 'Inception' (2010)."
-            }
+            {"role": "system", "content": "You are a movie critic. Provide structured reviews."},
+            {"role": "user", "content": "Write a brief review of the movie 'Inception' (2010)."},
         ],
         response_format=MovieReview,
         cache_response=True,
@@ -101,18 +96,13 @@ async def main():
     print("=" * 60)
 
     import time
+
     start = time.perf_counter()
 
     response_cached = await client.get_response(
         messages=[
-            {
-                "role": "system",
-                "content": "You are a movie critic. Provide structured reviews."
-            },
-            {
-                "role": "user",
-                "content": "Write a brief review of the movie 'Inception' (2010)."
-            }
+            {"role": "system", "content": "You are a movie critic. Provide structured reviews."},
+            {"role": "user", "content": "Write a brief review of the movie 'Inception' (2010)."},
         ],
         response_format=MovieReview,
         cache_response=True,
@@ -120,7 +110,7 @@ async def main():
     )
 
     elapsed = time.perf_counter() - start
-    print(f"Fetched from cache in {elapsed*1000:.2f}ms")
+    print(f"Fetched from cache in {elapsed * 1000:.2f}ms")
     print(f"Same output? {output == response_cached.get('output')}")
 
     # --- Show cache structure ---

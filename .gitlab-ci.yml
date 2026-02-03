@@ -1,0 +1,29 @@
+stages:
+  - lint
+  - test
+
+variables:
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+
+cache:
+  paths:
+    - .cache/pip
+
+default:
+  image: python:3.10
+  before_script:
+    - python --version
+    - python -m pip install --upgrade pip
+    - python -m pip install -e '.[dev]'
+
+lint:
+  stage: lint
+  script:
+    - ruff check .
+    - ruff format --check .
+    - mypy src/llm_client
+
+test:
+  stage: test
+  script:
+    - pytest -q

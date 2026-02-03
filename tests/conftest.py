@@ -7,12 +7,13 @@ This module provides:
 - Sample conversations and messages
 - Tool fixtures for testing
 """
+
 from __future__ import annotations
 
 import asyncio
-import json
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
-from typing import Any, AsyncIterator, Dict, List, Optional
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -26,20 +27,19 @@ from llm_client.providers.types import (
     StreamEvent,
     StreamEventType,
     ToolCall,
-    ToolCallDelta,
     Usage,
 )
-from llm_client.tools.base import Tool, ToolResult
-
+from llm_client.tools.base import Tool
 
 # =============================================================================
 # Mock Response Factories
 # =============================================================================
 
+
 def make_completion_result(
     content: str = "Test response",
-    tool_calls: Optional[List[ToolCall]] = None,
-    usage: Optional[Usage] = None,
+    tool_calls: list[ToolCall] | None = None,
+    usage: Usage | None = None,
     model: str = "gpt-5-nano",
     finish_reason: str = "stop",
     status: int = 200,
@@ -67,7 +67,7 @@ def make_tool_call(
 def make_usage(
     input_tokens: int = 10,
     output_tokens: int = 20,
-    total_tokens: Optional[int] = None,
+    total_tokens: int | None = None,
 ) -> Usage:
     """Create a mock Usage."""
     return Usage(
@@ -81,26 +81,27 @@ def make_usage(
 # In-Memory Cache Backend (for testing)
 # =============================================================================
 
+
 @dataclass
 class InMemoryCacheBackend:
     """Simple in-memory cache for testing."""
-    
+
     name: str = "memory"
     default_collection: str = "test"
-    _store: Dict[str, Dict[str, Any]] = field(default_factory=dict)
-    
+    _store: dict[str, dict[str, Any]] = field(default_factory=dict)
+
     async def ensure_ready(self) -> None:
         pass
-    
+
     async def close(self) -> None:
         self._store.clear()
-    
+
     async def resolve_key(
         self,
         identifier: str,
         rewrite_cache: bool,
         regen_cache: bool,
-        collection: Optional[str] = None,
+        collection: str | None = None,
     ) -> tuple[str, bool]:
         col = collection or self.default_collection
         if rewrite_cache and not regen_cache:
@@ -110,75 +111,94 @@ class InMemoryCacheBackend:
                 suffix += 1
             return f"{identifier}_{suffix}", False
         return identifier, not regen_cache
-    
-    async def read(
-        self, 
-        effective_key: str, 
-        collection: Optional[str] = None
-    ) -> Optional[Dict[str, Any]]:
+
+    async def read(self, effective_key: str, collection: str | None = None) -> dict[str, Any] | None:
         col = collection or self.default_collection
         return self._store.get(col, {}).get(effective_key)
-    
+
     async def write(
         self,
         effective_key: str,
-        response: Dict[str, Any],
+        response: dict[str, Any],
         model_name: str,
-        collection: Optional[str] = None,
+        collection: str | None = None,
     ) -> None:
         col = collection or self.default_collection
         if col not in self._store:
             self._store[col] = {}
         self._store[col][effective_key] = response
-    
-    async def exists(
-        self, 
-        effective_key: str, 
-        collection: Optional[str] = None
-    ) -> bool:
+
+    async def exists(self, effective_key: str, collection: str | None = None) -> bool:
         col = collection or self.default_collection
         return effective_key in self._store.get(col, {})
-    
+
     async def warm(self) -> None:
         pass
+
+    # Methods expected by ExecutionEngine
+    async def get_cached(
+        self,
+        cache_key: str,
+        only_ok: bool = True,
+        collection: str | None = None,
+    ) -> tuple[dict[str, Any] | None, str | None]:
+        """Get cached response by key."""
+        col = collection or self.default_collection
+        cached = self._store.get(col, {}).get(cache_key)
+        return cached, cache_key if cached else None
+
+    async def put_cached(
+        self,
+        cache_key: str,
+        response: dict[str, Any],
+        collection: str | None = None,
+    ) -> None:
+        """Store response in cache."""
+        col = collection or self.default_collection
+        if col not in self._store:
+            self._store[col] = {}
+        self._store[col][cache_key] = response
 
 
 # =============================================================================
 # Mock Providers
 # =============================================================================
 
+
 class MockOpenAIProvider:
     """Mock OpenAI provider for testing."""
-    
+
     def __init__(
         self,
         model: str = "gpt-5-nano",
-        responses: Optional[List[CompletionResult]] = None,
+        responses: list[CompletionResult] | None = None,
     ):
         self._model_name = model
         self._responses = responses or [make_completion_result()]
         self._call_count = 0
-        self._call_history: List[Dict[str, Any]] = []
-    
+        self._call_history: list[dict[str, Any]] = []
+
     @property
     def model_name(self) -> str:
         return self._model_name
-    
+
     async def complete(
         self,
         messages,
         tools=None,
         **kwargs,
     ) -> CompletionResult:
-        self._call_history.append({
-            "messages": messages,
-            "tools": tools,
-            "kwargs": kwargs,
-        })
+        self._call_history.append(
+            {
+                "messages": messages,
+                "tools": tools,
+                "kwargs": kwargs,
+            }
+        )
         result = self._responses[min(self._call_count, len(self._responses) - 1)]
         self._call_count += 1
         return result
-    
+
     async def stream(
         self,
         messages,
@@ -186,19 +206,19 @@ class MockOpenAIProvider:
     ) -> AsyncIterator[StreamEvent]:
         response = self._responses[min(self._call_count, len(self._responses) - 1)]
         self._call_count += 1
-        
+
         # Yield tokens character by character
         if response.content:
             for char in response.content:
                 yield StreamEvent(type=StreamEventType.TOKEN, data=char)
-        
+
         # Yield usage
         if response.usage:
             yield StreamEvent(type=StreamEventType.USAGE, data=response.usage)
-        
+
         # Yield done
         yield StreamEvent(type=StreamEventType.DONE, data=response)
-    
+
     async def embed(
         self,
         inputs,
@@ -206,17 +226,20 @@ class MockOpenAIProvider:
     ) -> EmbeddingResult:
         if isinstance(inputs, str):
             inputs = [inputs]
+        if not hasattr(self, '_embed_count'):
+            self._embed_count = 0
+        self._embed_count += 1
         return EmbeddingResult(
             embeddings=[[0.1] * 1536 for _ in inputs],
             usage=make_usage(input_tokens=len(inputs) * 10, output_tokens=0),
             model="text-embedding-3-small",
         )
-    
+
     def count_tokens(self, content: Any) -> int:
         if isinstance(content, str):
             return len(content) // 4
         return 100
-    
+
     async def close(self) -> None:
         pass
 
@@ -224,6 +247,7 @@ class MockOpenAIProvider:
 # =============================================================================
 # Test Tools
 # =============================================================================
+
 
 async def simple_tool_handler(message: str) -> str:
     """Simple test tool that echoes the message."""
@@ -251,15 +275,13 @@ def make_test_tool(
     """Create a test tool with the given handler."""
     if handler is None:
         handler = simple_tool_handler
-    
+
     return Tool(
         name=name,
         description=description,
         parameters={
             "type": "object",
-            "properties": {
-                "message": {"type": "string", "description": "A message"}
-            },
+            "properties": {"message": {"type": "string", "description": "A message"}},
             "required": ["message"],
         },
         handler=handler,
@@ -269,6 +291,7 @@ def make_test_tool(
 # =============================================================================
 # Pytest Fixtures
 # =============================================================================
+
 
 @pytest.fixture
 def mock_completion_result():
@@ -297,8 +320,10 @@ def memory_cache():
 @pytest.fixture
 def mock_provider():
     """Fixture providing a factory for mock providers."""
+
     def _factory(responses=None, model="gpt-5-nano"):
         return MockOpenAIProvider(model=model, responses=responses)
+
     return _factory
 
 
@@ -327,9 +352,7 @@ def error_tool():
         description="A tool that can fail",
         parameters={
             "type": "object",
-            "properties": {
-                "should_fail": {"type": "boolean", "default": False}
-            },
+            "properties": {"should_fail": {"type": "boolean", "default": False}},
         },
         handler=error_tool_handler,
     )
@@ -343,9 +366,7 @@ def slow_tool():
         description="A slow tool",
         parameters={
             "type": "object",
-            "properties": {
-                "delay": {"type": "number", "default": 0.1}
-            },
+            "properties": {"delay": {"type": "number", "default": 0.1}},
         },
         handler=slow_tool_handler,
     )
@@ -355,13 +376,14 @@ def slow_tool():
 # Mock Patching Helpers
 # =============================================================================
 
+
 @pytest.fixture
 def mock_openai_client():
     """Fixture that patches the OpenAI AsyncOpenAI client."""
     with patch("openai.AsyncOpenAI") as mock_class:
         mock_instance = AsyncMock()
         mock_class.return_value = mock_instance
-        
+
         # Setup default responses
         mock_completion = MagicMock()
         mock_completion.choices = [MagicMock()]
@@ -373,11 +395,9 @@ def mock_openai_client():
         mock_completion.usage.completion_tokens = 20
         mock_completion.usage.total_tokens = 30
         mock_completion.model = "gpt-5-nano"
-        
-        mock_instance.chat.completions.create = AsyncMock(
-            return_value=mock_completion
-        )
-        
+
+        mock_instance.chat.completions.create = AsyncMock(return_value=mock_completion)
+
         yield mock_instance
 
 
@@ -387,7 +407,7 @@ def mock_anthropic_client():
     with patch("anthropic.AsyncAnthropic") as mock_class:
         mock_instance = AsyncMock()
         mock_class.return_value = mock_instance
-        
+
         mock_response = MagicMock()
         mock_response.content = [MagicMock()]
         mock_response.content[0].type = "text"
@@ -397,7 +417,7 @@ def mock_anthropic_client():
         mock_response.usage.input_tokens = 10
         mock_response.usage.output_tokens = 20
         mock_response.model = "claude-3-5-sonnet-20241022"
-        
+
         mock_instance.messages.create = AsyncMock(return_value=mock_response)
-        
+
         yield mock_instance

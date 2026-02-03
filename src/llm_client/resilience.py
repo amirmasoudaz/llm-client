@@ -1,11 +1,13 @@
 """
 Resilience primitives (circuit breaker).
 """
+
 from __future__ import annotations
 
 import asyncio
 import time
 from dataclasses import dataclass
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -72,6 +74,16 @@ class CircuitBreaker:
                 self._state = "open"
                 self._opened_at = time.time()
                 self._success_count = 0
+
+    def get_state(self) -> dict[str, Any]:
+        """Get current circuit breaker state for monitoring."""
+        return {
+            "state": self._state,
+            "failure_count": self._failure_count,
+            "success_count": self._success_count,
+            "is_open": self._state == "open",
+            "is_half_open": self._state == "half_open",
+        }
 
 
 __all__ = ["CircuitBreakerConfig", "CircuitBreaker"]

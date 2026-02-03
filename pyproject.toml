@@ -20,11 +20,17 @@ dependencies = [
   "tiktoken>=0.7",
   "numpy>=1.26",
   "tqdm>=4.66",
-  "six>=1.16",
 ]
 
 [project.optional-dependencies]
 anthropic = ["anthropic>=0.40.0"]
+google = ["google-genai>=1.0.0"]
+performance = ["orjson>=3.9"]
+telemetry = [
+    "prometheus-client>=0.19",
+    "opentelemetry-api>=1.20",
+    "opentelemetry-sdk>=1.20",
+]
 test = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
@@ -34,7 +40,14 @@ test = [
     "freezegun>=1.2",
     "httpx>=0.27",
 ]
-all = ["anthropic>=0.40.0"]
+all = [
+    "anthropic>=0.40.0",
+    "google-genai>=1.0.0",
+    "orjson>=3.9",
+    "prometheus-client>=0.19",
+    "opentelemetry-api>=1.20",
+    "opentelemetry-sdk>=1.20",
+]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
@@ -44,6 +57,14 @@ dev = [
     "freezegun>=1.2",
     "httpx>=0.27",
     "anthropic>=0.40.0",
+    "google-genai>=1.0.0",
+    "orjson>=3.9",
+    "prometheus-client>=0.19",
+    "opentelemetry-api>=1.20",
+    "opentelemetry-sdk>=1.20",
+    "ruff>=0.14",
+    "mypy>=1.10",
+    "pre-commit>=4.0",
 ]
 
 [tool.pytest.ini_options]
@@ -65,6 +86,22 @@ exclude_lines = [
     "if TYPE_CHECKING:",
     "raise NotImplementedError",
 ]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_return_any = false
+disallow_untyped_defs = false
+check_untyped_defs = false
 
 [project.urls]
 Source = "https://example.com/llm-client"

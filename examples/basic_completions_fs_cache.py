@@ -7,12 +7,14 @@ Demonstrates:
 2. File-system caching with dynamic collections
 3. Cache hit detection
 """
+
 import asyncio
-import tempfile
-from pathlib import Path
 
 # Add src to path for development
 import sys
+import tempfile
+from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from llm_client import OpenAIClient

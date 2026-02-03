@@ -1,22 +1,28 @@
 """
 Execution engine for request orchestration, caching, and hooks.
 """
+
 from __future__ import annotations
 
 import asyncio
-import random
-from dataclasses import dataclass
 import inspect
+import random
 import time
-from typing import Any, AsyncIterator, Dict, Iterable, Optional, Tuple
+from collections.abc import AsyncIterator, Iterable
+from dataclasses import dataclass
+from typing import Any
+
+from blake3 import blake3
 
 from .cache import CacheCore
-from .serialization import stable_json_dumps
+from .cache.serializers import cache_dict_to_result, result_to_cache_dict
+from .cancellation import CancelledError
+from .hashing import content_hash
 from .hooks import HookManager
 from .providers.base import Provider
-from .providers.types import CompletionResult, StreamEvent, StreamEventType, ToolCall, Usage
+from .providers.types import CompletionResult, StreamEvent, StreamEventType
 from .resilience import CircuitBreaker, CircuitBreakerConfig
-from .routing import ProviderRouter, StaticRouter
+from .routing import ProviderRouter
 from .spec import RequestContext, RequestSpec
 
 
@@ -25,55 +31,63 @@ class RetryConfig:
     attempts: int = 3
     backoff: float = 1.0
     max_backoff: float = 20.0
-    retryable_statuses: Tuple[int, ...] = (429, 500, 502, 503, 504)
+    retryable_statuses: tuple[int, ...] = (429, 500, 502, 503, 504)
 
 
 class ExecutionEngine:
     def __init__(
         self,
-        provider: Optional[Provider] = None,
+        provider: Provider | None = None,
         *,
-        router: Optional[ProviderRouter] = None,
-        cache: Optional[CacheCore] = None,
-        hooks: Optional[HookManager] = None,
-        retry: Optional[RetryConfig] = None,
-        breaker_config: Optional[CircuitBreakerConfig] = None,
-        fallback_statuses: Tuple[int, ...] = (429, 500, 502, 503, 504),
+        router: ProviderRouter | None = None,
+        cache: CacheCore | None = None,
+        hooks: HookManager | None = None,
+        retry: RetryConfig | None = None,
+        breaker_config: CircuitBreakerConfig | None = None,
+        fallback_statuses: tuple[int, ...] = (429, 500, 502, 503, 504),
+        max_concurrency: int = 20,
     ) -> None:
         if provider is None and router is None:
             raise ValueError("ExecutionEngine requires a provider or a router.")
         self.provider = provider
         self.router = router
+        self.cache: CacheCore | None
         if cache is not None:
             self.cache = cache
         elif provider is not None and hasattr(provider, "cache"):
-            self.cache = getattr(provider, "cache")
+            self.cache = provider.cache
         else:
             self.cache = None
         self.hooks = hooks or HookManager()
         self.retry = retry or RetryConfig()
         self.breaker_config = breaker_config or CircuitBreakerConfig()
-        self._breakers: Dict[str, CircuitBreaker] = {}
+        self._breakers: dict[str, CircuitBreaker] = {}
         self.fallback_statuses = fallback_statuses
+        self._semaphore = asyncio.Semaphore(max_concurrency)
 
     async def complete(
         self,
         spec: RequestSpec,
         *,
-        context: Optional[RequestContext] = None,
+        context: RequestContext | None = None,
         cache_response: bool = False,
-        cache_collection: Optional[str] = None,
+        cache_collection: str | None = None,
         rewrite_cache: bool = False,
         regen_cache: bool = False,
-        cache_key: Optional[str] = None,
-        retry: Optional[RetryConfig] = None,
+        cache_key: str | None = None,
+        retry: RetryConfig | None = None,
     ) -> CompletionResult:
-        ctx = context or RequestContext()
+        ctx = RequestContext.ensure(context)
         start_time = time.monotonic()
         await self.hooks.emit("request.start", {"spec": spec.to_dict()}, ctx)
 
+        # Validate request
+        from .validation import validate_spec
+
+        validate_spec(spec)
+
         providers = self._select_providers(spec)
-        last_result: Optional[CompletionResult] = None
+        last_result: CompletionResult | None = None
 
         for provider in providers:
             provider_id = self._provider_id(provider)
@@ -84,7 +98,7 @@ class ExecutionEngine:
                 last_result = CompletionResult(status=503, error="Circuit open")
                 continue
 
-            effective_cache_key = cache_key or self._cache_key(spec, provider)
+            effective_cache_key = cache_key or self._cache_key(spec, provider, ctx)
 
             if cache_response and self.cache:
                 cached, _ = await self.cache.get_cached(
@@ -113,13 +127,23 @@ class ExecutionEngine:
             current_backoff = use_retry.backoff
 
             for attempt in range(use_retry.attempts):
+                # Check cancellation before each attempt
+                ctx.cancellation_token.raise_if_cancelled()
+                
                 await self.hooks.emit(
                     "request.attempt",
                     {"attempt": attempt + 1, "provider": provider_id},
                     ctx,
                 )
 
-                result = await self._call_provider(provider, spec)
+                try:
+                    result = await self._call_provider(provider, spec)
+                except Exception as e:
+                    result = CompletionResult(
+                        status=500,
+                        error=f"Internal provider error: {str(e)}",
+                        model=spec.model or "unknown",
+                    )
                 last_result = result
 
                 if result.ok:
@@ -132,6 +156,8 @@ class ExecutionEngine:
                     break
 
                 if attempt < use_retry.attempts - 1:
+                    # Check cancellation before sleeping
+                    ctx.cancellation_token.raise_if_cancelled()
                     await asyncio.sleep(current_backoff * random.uniform(0.8, 1.2))
                     current_backoff = min(current_backoff * 2, use_retry.max_backoff)
 
@@ -146,9 +172,7 @@ class ExecutionEngine:
                         log_errors=True,
                         collection=cache_collection,
                     )
-                await self.hooks.emit(
-                    "provider.success", {"provider": provider_id}, ctx
-                )
+                await self.hooks.emit("provider.success", {"provider": provider_id}, ctx)
                 await self.hooks.emit(
                     "request.end",
                     {
@@ -189,10 +213,15 @@ class ExecutionEngine:
         self,
         spec: RequestSpec,
         *,
-        context: Optional[RequestContext] = None,
+        context: RequestContext | None = None,
     ) -> AsyncIterator[StreamEvent]:
-        ctx = context or RequestContext()
+        ctx = RequestContext.ensure(context)
         await self.hooks.emit("stream.start", {"spec": spec.to_dict()}, ctx)
+
+        # Validate request
+        from .validation import validate_spec
+
+        validate_spec(spec)
 
         providers = list(self._select_providers(spec))
         token_seen = False
@@ -220,6 +249,9 @@ class ExecutionEngine:
                     reasoning=spec.reasoning,
                     **spec.extra,
                 ):
+                    # Check cancellation between stream events
+                    ctx.cancellation_token.raise_if_cancelled()
+                    
                     if event.type in (
                         StreamEventType.TOKEN,
                         StreamEventType.REASONING,
@@ -249,8 +281,12 @@ class ExecutionEngine:
                                 {"provider": provider_id, "status": status},
                                 ctx,
                             )
+                            # Break inner loop to try next provider
                             break
-                        yield event
+                        yield StreamEvent(
+                            type=StreamEventType.ERROR,
+                            data={"status": status, "error": event.data.get("error", "Provider error")},
+                        )
                         await self.hooks.emit("stream.end", {"status": status}, ctx)
                         return
 
@@ -268,6 +304,11 @@ class ExecutionEngine:
                     {"provider": provider_id, "error": str(exc)},
                     ctx,
                 )
+                if not token_seen:
+                    # Fallback for connection errors etc
+                    await self.hooks.emit("router.fallback", {"provider": provider_id, "error": str(exc)}, ctx)
+                    continue
+
                 yield StreamEvent(
                     type=StreamEventType.ERROR,
                     data={"status": 500, "error": str(exc)},
@@ -295,10 +336,13 @@ class ExecutionEngine:
             self._breakers[provider_id] = breaker
         return breaker
 
-    def _cache_key(self, spec: RequestSpec, provider: Provider) -> str:
+    def _cache_key(self, spec: RequestSpec, provider: Provider, ctx: RequestContext | None = None) -> str:
         payload = spec.to_dict()
         payload["provider"] = self._provider_id(provider)
-        return blake3(stable_json_dumps(payload).encode("utf-8")).hexdigest()
+        # Include tenant_id for tenant isolation
+        if ctx and ctx.tenant_id:
+            payload["tenant_id"] = ctx.tenant_id
+        return content_hash(payload)
 
     async def _call_provider(self, provider: Provider, spec: RequestSpec) -> CompletionResult:
         provider_kwargs = dict(spec.extra)
@@ -323,33 +367,173 @@ class ExecutionEngine:
             **provider_kwargs,
         )
 
-    def _result_to_cache(self, result: CompletionResult, params: Dict[str, Any]) -> Dict[str, Any]:
+    # Cache serialization methods imported from cache.serializers
+    _result_to_cache = staticmethod(result_to_cache_dict)
+    _cached_to_result = staticmethod(cache_dict_to_result)
+
+    async def embed(
+        self,
+        inputs: str | Iterable[str],
+        *,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        cache_response: bool = False,
+        cache_collection: str | None = None,
+        **kwargs: Any,
+    ) -> Any:  # Returns EmbeddingResult (avoiding circular import issues if possible, or use Any)
+        """
+        Generate embeddings for the given inputs.
+
+        Args:
+            inputs: List of strings to embed
+            context: Request context
+            timeout: Request timeout
+            cache_response: Whether to cache the response
+            cache_collection: Optional cache collection name
+            **kwargs: Additional provider-specific arguments
+
+        Returns:
+            The embedding result from the provider
+        """
+        ctx = RequestContext.ensure(context)
+        if isinstance(inputs, str):
+            inputs_list = [inputs]
+        else:
+            inputs_list = list(inputs)
+
+        await self.hooks.emit("embed.start", {"count": len(inputs_list)}, ctx)
+
+        # Validate inputs
+        from .validation import validate_embedding_inputs
+
+        validate_embedding_inputs(inputs_list)
+
+        # Handle cache lookup
+        cache_key = None
+        if cache_response and self.cache:
+            cache_key = self._embed_cache_key(inputs_list)
+            cached, _ = await self.cache.get_cached(
+                cache_key,
+                only_ok=True,
+                collection=cache_collection,
+            )
+            if cached:
+                await self.hooks.emit("cache.hit", {"key": cache_key, "type": "embed"}, ctx)
+                return self._cached_to_embedding_result(cached)
+            await self.hooks.emit("cache.miss", {"key": cache_key, "type": "embed"}, ctx)
+
+        # Select provider (default to self.provider if no router logic for embeddings yet)
+        provider = self.provider
+        if not provider and self.router:
+            # Select first available provider for embeddings
+            # Embedding routing could be enhanced in the future
+            provider = self.router.select(RequestSpec(messages=[]), context=ctx)
+
+        if not provider:
+            raise ValueError("No provider available for embeddings")
+
+        provider_id = self._provider_id(provider)
+        breaker = self._get_breaker(provider_id)
+
+        if not await breaker.allow():
+            await self.hooks.emit("circuit.open", {"provider": provider_id}, ctx)
+            raise RuntimeError("Circuit open for provider")
+
+        try:
+            call = provider.embed(inputs_list, **kwargs)
+            result = await asyncio.wait_for(call, timeout=timeout) if timeout else await call
+            await breaker.on_success()
+            await self.hooks.emit("embed.end", {"status": 200}, ctx)
+
+            # Cache the result
+            if cache_response and self.cache and cache_key:
+                await self.cache.put_cached(
+                    cache_key,
+                    response=self._embedding_to_cache(result),
+                    collection=cache_collection,
+                )
+
+            return result
+
+        except Exception as exc:
+            await breaker.on_failure()
+            await self.hooks.emit("embed.error", {"error": str(exc)}, ctx)
+            raise
+
+    def _embed_cache_key(self, inputs: list[str]) -> str:
+        """Generate cache key for embedding inputs."""
+        payload = {
+            "type": "embedding",
+            "inputs": inputs,
+            "model": self.provider.model_name if self.provider else "default",
+        }
+        return content_hash(payload)
+
+    @staticmethod
+    def _embedding_to_cache(result: Any) -> dict[str, Any]:
+        """Convert EmbeddingResult to cache-friendly dict."""
         return {
-            "params": params,
-            "output": result.content,
-            "usage": result.usage.to_dict() if result.usage else {},
-            "status": result.status,
-            "error": result.error or "OK",
-            "tool_calls": [
-                {"id": tc.id, "name": tc.name, "arguments": tc.arguments}
-                for tc in (result.tool_calls or [])
-            ],
+            "embeddings": result.embeddings,
+            "usage": {
+                "input_tokens": result.usage.input_tokens if result.usage else 0,
+                "output_tokens": result.usage.output_tokens if result.usage else 0,
+                "total_tokens": result.usage.total_tokens if result.usage else 0,
+            } if result.usage else None,
+            "model": result.model,
         }
 
-    def _cached_to_result(self, cached: Dict[str, Any]) -> CompletionResult:
-        tool_calls = None
-        if cached.get("tool_calls"):
-            tool_calls = [
-                ToolCall(id=tc["id"], name=tc["name"], arguments=tc["arguments"])
-                for tc in cached["tool_calls"]
-            ]
-        return CompletionResult(
-            content=cached.get("output"),
-            tool_calls=tool_calls,
-            usage=Usage.from_dict(cached.get("usage", {})),
-            status=cached.get("status", 200),
-            error=cached.get("error") if cached.get("error") != "OK" else None,
+    @staticmethod
+    def _cached_to_embedding_result(cached: dict[str, Any]) -> Any:
+        """Convert cached dict back to EmbeddingResult."""
+        from .providers.types import EmbeddingResult, Usage
+
+        usage = None
+        if cached.get("usage"):
+            usage = Usage(
+                input_tokens=cached["usage"].get("input_tokens", 0),
+                output_tokens=cached["usage"].get("output_tokens", 0),
+                total_tokens=cached["usage"].get("total_tokens", 0),
+            )
+
+        return EmbeddingResult(
+            embeddings=cached["embeddings"],
+            usage=usage,
+            model=cached.get("model"),
         )
+
+    async def batch_complete(
+        self,
+        specs: Iterable[RequestSpec],
+        *,
+        max_concurrency: int | None = None,
+        **kwargs: Any,
+    ) -> list[CompletionResult]:
+        """
+        Execute a batch of requests concurrently.
+
+        Args:
+            specs: List of request specifications
+            max_concurrency: Override default concurrency limit for this batch (lower only effectively)
+            **kwargs: Arguments passed to complete() (e.g. cache settings)
+
+        Returns:
+            List of CompletionResults in the same order as specs.
+        """
+        semaphore = self._semaphore
+        if max_concurrency is not None:
+            # Create a new local semaphore if specific concurrency requested
+            semaphore = asyncio.Semaphore(max_concurrency)
+
+        async def _wrapped(spec: RequestSpec) -> CompletionResult:
+            async with semaphore:
+                try:
+                    return await self.complete(spec, **kwargs)
+                except Exception as e:
+                    return CompletionResult(status=500, error=str(e), model=spec.model or "unknown")
+
+        tasks = [asyncio.create_task(_wrapped(s)) for s in specs]
+        results = await asyncio.gather(*tasks, return_exceptions=False)
+        return results
 
 
 __all__ = ["ExecutionEngine", "RetryConfig"]

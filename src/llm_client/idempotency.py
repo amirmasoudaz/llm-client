@@ -6,6 +6,7 @@ This module provides:
 - Request deduplication logic
 - Tracking of in-flight requests
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -13,7 +14,7 @@ import json
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional, Set
+from typing import Any
 
 
 def generate_idempotency_key(
@@ -22,11 +23,11 @@ def generate_idempotency_key(
 ) -> str:
     """
     Generate a unique idempotency key.
-    
+
     Args:
         prefix: Key prefix
         include_timestamp: Include timestamp for traceability
-        
+
     Returns:
         Unique idempotency key string
     """
@@ -40,16 +41,16 @@ def generate_idempotency_key(
 def compute_request_hash(
     messages: Any,
     model: str,
-    tools: Optional[list] = None,
-    temperature: Optional[float] = None,
-    max_tokens: Optional[int] = None,
+    tools: list | None = None,
+    temperature: float | None = None,
+    max_tokens: int | None = None,
     **kwargs,
 ) -> str:
     """
     Compute a content-based hash for a request.
-    
+
     This can be used as an idempotency key for identical requests.
-    
+
     Args:
         messages: Request messages
         model: Model name
@@ -57,7 +58,7 @@ def compute_request_hash(
         temperature: Sampling temperature
         max_tokens: Max tokens to generate
         **kwargs: Additional parameters
-        
+
     Returns:
         SHA256 hash of the request content
     """
@@ -65,18 +66,12 @@ def compute_request_hash(
     if hasattr(messages, "to_dict"):
         messages = messages.to_dict()
     elif isinstance(messages, list):
-        messages = [
-            m.to_dict() if hasattr(m, "to_dict") else m 
-            for m in messages
-        ]
-    
+        messages = [m.to_dict() if hasattr(m, "to_dict") else m for m in messages]
+
     # Normalize tools
     if tools:
-        tools = [
-            t.to_openai_format() if hasattr(t, "to_openai_format") else t
-            for t in tools
-        ]
-    
+        tools = [t.to_openai_format() if hasattr(t, "to_openai_format") else t for t in tools]
+
     # Build canonical representation
     canonical = {
         "messages": messages,
@@ -86,21 +81,21 @@ def compute_request_hash(
         "max_tokens": max_tokens,
     }
     canonical.update(kwargs)
-    
+
     # Sort keys for consistent hashing
     canonical_json = json.dumps(canonical, sort_keys=True, ensure_ascii=True)
-    
+
     return hashlib.sha256(canonical_json.encode()).hexdigest()[:32]
 
 
 @dataclass
 class PendingRequest:
     """Tracks a pending request for deduplication."""
-    
+
     key: str
     started_at: float = field(default_factory=time.time)
-    request_hash: Optional[str] = None
-    
+    request_hash: str | None = None
+
     def is_expired(self, timeout: float = 60.0) -> bool:
         """Check if this pending request has expired."""
         return (time.time() - self.started_at) > timeout
@@ -109,14 +104,14 @@ class PendingRequest:
 class IdempotencyTracker:
     """
     Tracks in-flight requests for deduplication.
-    
+
     Prevents duplicate requests with the same idempotency key
     from being processed simultaneously.
-    
+
     Example:
         ```python
         tracker = IdempotencyTracker()
-        
+
         # Check if we can process this request
         if tracker.can_start(idempotency_key):
             tracker.start_request(idempotency_key)
@@ -130,93 +125,90 @@ class IdempotencyTracker:
             pass
         ```
     """
-    
+
     def __init__(self, request_timeout: float = 60.0):
-        self._pending: Dict[str, PendingRequest] = {}
-        self._completed: Dict[str, Any] = {}
+        self._pending: dict[str, PendingRequest] = {}
+        self._completed: dict[str, Any] = {}
         self._timeout = request_timeout
-    
+
     def can_start(self, key: str) -> bool:
         """
         Check if a request with this key can be started.
-        
+
         Returns False if a request is already in flight.
         Returns True if no request exists or previous timed out.
         """
         self._cleanup_expired()
-        
+
         if key in self._pending:
             return False
-        
+
         return True
-    
+
     def start_request(
-        self, 
-        key: str, 
-        request_hash: Optional[str] = None,
+        self,
+        key: str,
+        request_hash: str | None = None,
     ) -> bool:
         """
         Mark a request as started.
-        
+
         Returns True if started, False if already in flight.
         """
         self._cleanup_expired()
-        
+
         if key in self._pending:
             return False
-        
+
         self._pending[key] = PendingRequest(
             key=key,
             request_hash=request_hash,
         )
         return True
-    
-    def complete_request(self, key: str, result: Optional[Any] = None) -> None:
+
+    def complete_request(self, key: str, result: Any | None = None) -> None:
         """Mark a request as completed."""
         if key in self._pending:
             del self._pending[key]
-        
+
         if result is not None:
             self._completed[key] = result
-    
+
     def fail_request(self, key: str) -> None:
         """Mark a request as failed."""
         if key in self._pending:
             del self._pending[key]
-    
-    def get_result(self, key: str) -> Optional[Any]:
+
+    def get_result(self, key: str) -> Any | None:
         """Get a completed result if available."""
         return self._completed.get(key)
-    
+
     def has_result(self, key: str) -> bool:
         """Check if a completed result exists."""
         return key in self._completed
-    
+
     def is_pending(self, key: str) -> bool:
         """Check if a request is currently pending."""
         self._cleanup_expired()
         return key in self._pending
-    
+
     def _cleanup_expired(self) -> None:
         """Remove expired pending requests."""
-        expired = [
-            k for k, v in self._pending.items()
-            if v.is_expired(self._timeout)
-        ]
+        expired = [k for k, v in self._pending.items() if v.is_expired(self._timeout)]
         for k in expired:
             del self._pending[k]
-    
+
     def clear(self) -> None:
         """Clear all tracked requests."""
         self._pending.clear()
         self._completed.clear()
-    
+
     @property
     def pending_count(self) -> int:
         """Number of pending requests."""
         self._cleanup_expired()
         return len(self._pending)
-    
+
     @property
     def completed_count(self) -> int:
         """Number of cached completed results."""
@@ -224,7 +216,7 @@ class IdempotencyTracker:
 
 
 # Global tracker instance
-_global_tracker: Optional[IdempotencyTracker] = None
+_global_tracker: IdempotencyTracker | None = None
 
 
 def get_tracker() -> IdempotencyTracker:
