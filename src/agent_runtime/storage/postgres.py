@@ -12,6 +12,7 @@ Requires asyncpg to be installed: pip install asyncpg
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timezone
 import json
 import re
 import time
@@ -50,6 +51,15 @@ def _sanitize_table_name(name: str) -> str:
     if not re.fullmatch(r"[a-zA-Z0-9_]+", name):
         raise ValueError(f"Invalid table name: {name!r}")
     return name
+
+
+def _to_timestamptz(value: Any) -> Any:
+    """Convert epoch seconds floats into timezone-aware datetimes for TIMESTAMPTZ columns."""
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return datetime.fromtimestamp(float(value), tz=timezone.utc)
+    return value
 
 
 # =============================================================================
@@ -143,10 +153,10 @@ class PostgresJobStore(JobStore):
             "parent_job_id": job.parent_job_id,
             "idempotency_key": job.idempotency_key,
             "status": job.status.value,
-            "created_at": job.created_at,
-            "updated_at": job.updated_at,
-            "started_at": job.started_at,
-            "completed_at": job.completed_at,
+            "created_at": _to_timestamptz(job.created_at),
+            "updated_at": _to_timestamptz(job.updated_at),
+            "started_at": _to_timestamptz(job.started_at),
+            "completed_at": _to_timestamptz(job.completed_at),
             "deadline": job.deadline,
             "progress": job.progress,
             "current_turn": job.current_turn,
@@ -455,9 +465,9 @@ class PostgresActionStore(ActionStore):
             "payload": json.dumps(action.payload),
             "resolution": json.dumps(action.resolution) if action.resolution else None,
             "resolution_error": action.resolution_error,
-            "created_at": action.created_at,
-            "expires_at": action.expires_at,
-            "resolved_at": action.resolved_at,
+            "created_at": _to_timestamptz(action.created_at),
+            "expires_at": _to_timestamptz(action.expires_at),
+            "resolved_at": _to_timestamptz(action.resolved_at),
             "resume_token": action.resume_token,
             "metadata": json.dumps(action.metadata),
             "schema_version": action.schema_version,
@@ -706,7 +716,7 @@ class PostgresLedgerWriter(LedgerWriter):
         return {
             "event_id": event.event_id,
             "type": event.type.value,
-            "timestamp": event.timestamp,
+            "timestamp": _to_timestamptz(event.timestamp),
             "job_id": event.job_id,
             "run_id": event.run_id,
             "scope_id": event.scope_id,

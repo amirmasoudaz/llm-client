@@ -48,10 +48,13 @@ class CancellationToken:
     
     _event: asyncio.Event = field(default_factory=asyncio.Event, init=False)
     _callbacks: list[Callable[[], Any]] = field(default_factory=list, init=False)
+    _noop: bool = field(default=False, init=False, repr=False)
     
     @property
     def is_cancelled(self) -> bool:
         """Check if cancellation was requested."""
+        if self._noop:
+            return False
         return self._event.is_set()
     
     def cancel(self) -> None:
@@ -60,6 +63,8 @@ class CancellationToken:
         Can be called multiple times safely. Triggers all registered
         callbacks on first call.
         """
+        if self._noop:
+            return
         if not self._event.is_set():
             self._event.set()
             for cb in self._callbacks:
@@ -75,6 +80,10 @@ class CancellationToken:
         Blocks until cancel() is called. Useful for cleanup coroutines
         that need to wait for cancellation signal.
         """
+        if self._noop:
+            # Never resolves: this token never cancels.
+            await asyncio.Future()
+            return
         await self._event.wait()
     
     def on_cancel(self, callback: Callable[[], Any]) -> None:
@@ -86,6 +95,8 @@ class CancellationToken:
             callback: Zero-argument callable to invoke on cancellation.
         """
         self._callbacks.append(callback)
+        if self._noop:
+            return
         if self._event.is_set():
             try:
                 callback()
@@ -101,6 +112,8 @@ class CancellationToken:
         Raises:
             CancelledError: If cancellation was requested.
         """
+        if self._noop:
+            return
         if self._event.is_set():
             raise CancelledError("Operation was cancelled")
     
@@ -123,7 +136,9 @@ def _get_never_cancel() -> CancellationToken:
     """Get or create the singleton no-op token."""
     global _NEVER_CANCEL
     if _NEVER_CANCEL is None:
-        _NEVER_CANCEL = CancellationToken()
+        token = CancellationToken()
+        token._noop = True
+        _NEVER_CANCEL = token
     return _NEVER_CANCEL
 
 

@@ -58,7 +58,8 @@ class JobStatus(str, Enum):
 
 # Valid state transitions
 VALID_TRANSITIONS: dict[JobStatus, set[JobStatus]] = {
-    JobStatus.QUEUED: {JobStatus.RUNNING, JobStatus.CANCELLED},
+    # A job can fail before it ever starts running (e.g. policy/budget denied at admission time).
+    JobStatus.QUEUED: {JobStatus.RUNNING, JobStatus.CANCELLED, JobStatus.FAILED},
     JobStatus.RUNNING: {
         JobStatus.WAITING_ACTION,
         JobStatus.SUCCEEDED,

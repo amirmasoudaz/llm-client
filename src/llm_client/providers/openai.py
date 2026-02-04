@@ -410,7 +410,7 @@ class OpenAIProvider(BaseProvider):
                 except openai.APIStatusError as e:
                     return CompletionResult(
                         status=e.status_code,
-                        error=str(e.response),
+                        error=str(e),
                     )
 
         result = await self._with_retry(_do_completion, attempts=attempts, backoff=backoff)
@@ -517,7 +517,7 @@ class OpenAIProvider(BaseProvider):
                 except openai.APIStatusError as e:
                     return CompletionResult(
                         status=e.status_code,
-                        error=str(e.response),
+                        error=str(e),
                     )
 
         result = await self._with_retry(_do_responses, attempts=attempts, backoff=backoff)
@@ -736,7 +736,7 @@ class OpenAIProvider(BaseProvider):
                     type=StreamEventType.ERROR, data={"status": 429, "error": f"Rate limit exceeded: {e}"}
                 )
             except openai.APIStatusError as e:
-                yield StreamEvent(type=StreamEventType.ERROR, data={"status": e.status_code, "error": str(e.response)})
+                yield StreamEvent(type=StreamEventType.ERROR, data={"status": e.status_code, "error": str(e)})
             except Exception as e:
                 yield StreamEvent(type=StreamEventType.ERROR, data={"status": 500, "error": str(e)})
 

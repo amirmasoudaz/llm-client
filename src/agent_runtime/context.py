@@ -17,13 +17,13 @@ if TYPE_CHECKING:
 
 
 def _default_cancel_token() -> Any:
-    """Create a default no-op cancellation token.
-    
-    Returns CancellationToken if llm_client is available, None otherwise.
+    """Create a per-execution cancellation token (preferred).
+
+    Returns CancellationToken() if llm_client is available, None otherwise.
     """
     try:
         from llm_client.cancellation import CancellationToken
-        return CancellationToken.none()
+        return CancellationToken()
     except ImportError:
         return None
 

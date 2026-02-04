@@ -21,6 +21,7 @@ from .bus import (
     InMemoryEventBus,
     EventSubscription,
 )
+from .postgres_bus import PostgresPersistedEventBus
 from .adapters import (
     SSEEventAdapter,
     WebhookEventAdapter,
@@ -41,6 +42,7 @@ __all__ = [
     "EventBus",
     "InMemoryEventBus",
     "EventSubscription",
+    "PostgresPersistedEventBus",
     # Adapters
     "SSEEventAdapter",
     "WebhookEventAdapter",

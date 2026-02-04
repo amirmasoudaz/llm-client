@@ -1,0 +1,476 @@
+// prisma/schema.prisma
+// Dana AI Copilot Database Schema
+
+generator client {
+  provider             = "prisma-client-py"
+  interface            = "asyncio"
+  recursive_type_depth = 5
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// EXISTING TABLES (from CanApply Platform)
+// These models map to existing tables - DO NOT modify structure
+// ============================================================================
+
+model Student {
+  id                  BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  first_name          String?  @db.VarChar(255)
+  last_name           String?  @db.VarChar(255)
+  email               String   @unique @db.VarChar(255)
+  mobile_number       String?  @db.VarChar(255)
+  date_of_birth       DateTime? @db.Date
+  gender              String?  @db.VarChar(50)
+  country_of_citizenship String? @db.VarChar(255)
+  created_at          DateTime? @db.Timestamp(0)
+  updated_at          DateTime? @db.Timestamp(0)
+  
+  // Relations
+  funding_requests    FundingRequest[]
+  chat_threads        ChatThread[]
+  ai_jobs             AIJob[]
+  ai_memories         AIMemory[]
+  student_documents   StudentDocument[]
+  funding_credentials FundingCredential?
+  
+  @@map("students")
+}
+
+model FundingProfessor {
+  id                  Int      @id @default(autoincrement()) @db.UnsignedInt
+  prof_hash           Bytes    @unique @db.Binary(32)
+  full_name           String   @db.VarChar(512)
+  first_name          String   @db.VarChar(512)
+  middle_name         String?  @db.VarChar(512)
+  last_name           String   @db.VarChar(512)
+  occupation          String?  @db.VarChar(512)
+  department          String   @db.VarChar(255)
+  email_address       String   @db.VarChar(320)
+  url                 String?  @db.VarChar(1024)
+  funding_institute_id Int     @db.UnsignedInt
+  other_contact_info  Json?
+  research_areas      Json
+  credentials         String?  @db.Text
+  area_of_expertise   Json?
+  categories          Json
+  others              Json?
+  is_active           Boolean  @default(true)
+  canspider_digest_id Int?     @db.UnsignedInt
+  source              String   @default("manual") @db.VarChar(20)
+  
+  // Relations
+  institute           FundingInstitute @relation(fields: [funding_institute_id], references: [id])
+  funding_requests    FundingRequest[]
+  
+  @@index([funding_institute_id], map: "fk_prof_inst")
+  @@map("funding_professors")
+}
+
+model FundingInstitute {
+  id               Int      @id @default(autoincrement()) @db.UnsignedInt
+  institution_name String   @db.VarChar(255)
+  department_name  String   @db.VarChar(255)
+  institution_url  String?  @db.VarChar(1024)
+  logo_address     String?  @db.VarChar(1024)
+  city             String?  @db.VarChar(255)
+  province         String?  @db.VarChar(255)
+  country          String?  @db.VarChar(255)
+  is_active        Boolean  @default(true)
+  source           String   @default("manual") @db.VarChar(20)
+  
+  // Relations
+  professors       FundingProfessor[]
+  
+  @@unique([institution_name, department_name, source])
+  @@map("funding_institutes")
+}
+
+model FundingRequest {
+  id                   BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  student_id           BigInt   @db.UnsignedBigInt
+  professor_id         BigInt   @db.UnsignedBigInt
+  match_status         Int      @db.TinyInt
+  research_interest    String?  @db.Text
+  paper_title          String?  @db.Text
+  journal              String?  @db.Text
+  year                 Int?     @db.UnsignedInt
+  research_connection  String?  @db.Text
+  attachments          Json?
+  student_template_ids Json?
+  status               String?  @default("0") @db.VarChar(100)
+  ai_status            String?  @db.VarChar(255)
+  ai_response          Json?
+  ai_updated_at        DateTime? @db.Timestamp(0)
+  email_subject        String?  @db.Text
+  email_content        String?  @db.Text
+  created_at           DateTime? @db.Timestamp(0)
+  updated_at           DateTime? @db.Timestamp(0)
+  deleted_at           DateTime? @db.Timestamp(0)
+  
+  // Relations
+  student              Student @relation(fields: [student_id], references: [id], onDelete: Cascade)
+  professor            FundingProfessor @relation(fields: [professor_id], references: [id])
+  chat_threads         ChatThread[]
+  funding_email        FundingEmail?
+  funding_reply        FundingReply?
+  request_attachments  FundingRequestAttachment[]
+  
+  @@map("funding_requests")
+}
+
+model FundingEmail {
+  id                     Int      @id @default(autoincrement())
+  funding_request_id     BigInt   @unique @db.UnsignedBigInt
+  student_id             BigInt   @db.UnsignedBigInt
+  professor_email        String?  @db.VarChar(255)
+  professor_name         String?  @db.VarChar(255)
+  main_email_subject     String?  @db.VarChar(255)
+  main_email_body        String?  @db.LongText
+  attachments            Json?
+  gmail_msg_id           String?  @db.VarChar(64)
+  gmail_thread_id        String?  @db.VarChar(64)
+  main_sent              Boolean  @default(false)
+  main_sent_at           DateTime? @db.DateTime(0)
+  professor_replied      Boolean  @default(false)
+  professor_replied_at   DateTime? @db.DateTime(0)
+  professor_reply_body   String?  @db.LongText
+  reminder_one_sent      Boolean  @default(false)
+  reminder_one_sent_at   DateTime? @db.DateTime(0)
+  reminder_one_subject   String?  @db.VarChar(255)
+  reminder_one_body      String?  @db.LongText
+  reminder_two_sent      Boolean  @default(false)
+  reminder_two_sent_at   DateTime? @db.DateTime(0)
+  reminder_two_subject   String?  @db.VarChar(255)
+  reminder_two_body      String?  @db.LongText
+  reminder_three_sent    Boolean  @default(false)
+  reminder_three_sent_at DateTime? @db.DateTime(0)
+  reminder_three_subject String?  @db.VarChar(255)
+  reminder_three_body    String?  @db.LongText
+  no_more_reminders      Boolean  @default(false)
+  no_more_checks         Boolean  @default(false)
+  last_reply_check_at    DateTime? @db.DateTime(0)
+  next_reply_check_at    DateTime? @db.DateTime(0)
+  created_at             DateTime? @db.DateTime(0)
+  updated_at             DateTime? @db.DateTime(0)
+  
+  // Relations
+  funding_request        FundingRequest @relation(fields: [funding_request_id], references: [id], onDelete: Cascade)
+  
+  @@index([next_reply_check_at])
+  @@index([main_sent, professor_replied, no_more_reminders, no_more_checks])
+  @@index([student_id, created_at])
+  @@map("funding_emails")
+}
+
+model FundingReply {
+  id                  BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  funding_request_id  BigInt   @db.UnsignedBigInt
+  reply_body          String   @db.LongText
+  engagement_label    String?  @db.VarChar(100)
+  engagement_bool     Boolean?
+  activity_status     String?  @db.VarChar(100)
+  activity_bool       Boolean?
+  short_rationale     String?  @db.Text
+  key_phrases         Json?
+  confidence          Float?
+  created_at          DateTime @default(now()) @db.Timestamp(0)
+  
+  // Relations
+  funding_request     FundingRequest @relation(fields: [funding_request_id], references: [id])
+  
+  @@unique([funding_request_id])
+  @@index([funding_request_id])
+  @@map("funding_replies")
+}
+
+model FundingCredential {
+  id            Int      @id @default(autoincrement())
+  user_id       BigInt   @unique @db.UnsignedBigInt
+  token_blob    Json
+  reminders_on  Boolean  @default(true)
+  last_refresh  DateTime? @db.DateTime(0)
+  created_at    DateTime  @default(now()) @db.DateTime(0)
+  updated_at    DateTime  @default(now()) @updatedAt @db.DateTime(0)
+  
+  // Relations
+  student       Student @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  
+  @@map("funding_credentials")
+}
+
+model FundingStudentTemplate {
+  id                  BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  student_id          BigInt   @db.UnsignedBigInt
+  funding_template_id BigInt   @db.UnsignedBigInt
+  content             String   @db.LongText
+  formatted_content   String?  @db.LongText
+  subject             String   @db.VarChar(255)
+  formatted_subject   String?  @db.VarChar(255)
+  variables           Json
+  active              Boolean  @default(true)
+  created_at          DateTime? @db.Timestamp(0)
+  updated_at          DateTime? @db.Timestamp(0)
+  
+  @@unique([student_id, funding_template_id])
+  @@map("funding_student_templates")
+}
+
+// ============================================================================
+// NEW TABLES (Dana AI Copilot)
+// ============================================================================
+
+/// Chat thread for a funding request
+model ChatThread {
+  id                  BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  funding_request_id  BigInt   @db.UnsignedBigInt
+  student_id          BigInt   @db.UnsignedBigInt
+  
+  title               String?  @db.VarChar(255)
+  summary             String?  @db.Text
+  suggestions         Json?    // Cached follow-up suggestions
+  
+  status              String   @default("active") @db.VarChar(20)
+  // Status: active, running, completed, archived, failed
+  
+  created_at          DateTime @default(now()) @db.Timestamp(0)
+  updated_at          DateTime @default(now()) @updatedAt @db.Timestamp(0)
+  
+  // Relations
+  funding_request     FundingRequest @relation(fields: [funding_request_id], references: [id], onDelete: Cascade)
+  student             Student @relation(fields: [student_id], references: [id], onDelete: Cascade)
+  messages            ChatThreadMessage[]
+  ai_jobs             AIJob[]
+  
+  @@index([student_id, created_at])
+  @@index([funding_request_id])
+  @@map("chat_threads")
+}
+
+/// Individual message in a chat thread
+model ChatThreadMessage {
+  id            BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  thread_id     BigInt   @db.UnsignedBigInt
+  message_idx   Int      @db.UnsignedInt
+  
+  role          String   @db.VarChar(20)
+  // Role: user, assistant, system, tool
+  
+  message_type  String   @default("message") @db.VarChar(20)
+  // Type: message, tool_call, tool_result
+  
+  content       Json     // Message content
+  
+  tool_name     String?  @db.VarChar(128)
+  tool_payload  Json?
+  
+  created_at    DateTime @default(now()) @db.Timestamp(0)
+  updated_at    DateTime @default(now()) @updatedAt @db.Timestamp(0)
+  
+  // Relations
+  thread        ChatThread @relation(fields: [thread_id], references: [id], onDelete: Cascade)
+  
+  @@unique([thread_id, message_idx])
+  @@index([thread_id, created_at])
+  @@map("chat_thread_messages")
+}
+
+/// AI job tracking for usage and billing
+model AIJob {
+  id              BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  student_id      BigInt   @db.UnsignedBigInt
+  
+  job_type        String   @db.VarChar(50)
+  // Types: doc_to_json, resume_generation, resume_review, resume_optimization,
+  //        email_generate, email_review, email_optimize, letter_generate,
+  //        letter_review, letter_optimize, alignment_professor, alignment_program,
+  //        chat_thread, chat_tool_call, chat_switchboard, chat_completion,
+  //        recommendation_professor, recommendation_program, thread_summarization,
+  //        thread_moderation, embeddings
+  
+  status          String   @default("queued") @db.VarChar(20)
+  // Status: queued, running, succeeded, failed, cancelled
+  
+  progress        Int      @default(0) @db.UnsignedTinyInt
+  // Progress: 0-100
+  
+  target_type     String   @db.VarChar(30)
+  // Target: content_item, content_revision, chat_thread
+  
+  target_id       BigInt   @db.UnsignedBigInt
+  
+  thread_id       BigInt?  @db.UnsignedBigInt
+  parent_job_id   BigInt?  @db.UnsignedBigInt
+  
+  input_payload   Json?
+  result_payload  Json?
+  
+  attempt         Int      @default(0) @db.UnsignedInt
+  
+  error_code      String?  @db.VarChar(64)
+  error_message   String?  @db.Text
+  
+  // Timing
+  created_at      DateTime @default(now()) @db.Timestamp(0)
+  started_at      DateTime? @db.Timestamp(0)
+  finished_at     DateTime? @db.Timestamp(0)
+  updated_at      DateTime @default(now()) @updatedAt @db.Timestamp(0)
+  
+  // Model and trace
+  model           String   @db.VarChar(64)
+  trace_id        String   @default("") @db.VarChar(64)
+  trace_type      String   @default("openai") @db.VarChar(20)
+  // Trace type: openai, cache
+  
+  // Token usage
+  token_input     Int      @default(0) @db.UnsignedInt
+  token_output    Int?     @db.UnsignedInt
+  token_total     Int      @default(0) @db.UnsignedInt
+  
+  // Cost (in USD, 6 decimal places)
+  cost_input      Decimal  @default(0) @db.Decimal(10, 6)
+  cost_output     Decimal? @db.Decimal(10, 6)
+  cost_total      Decimal  @default(0) @db.Decimal(10, 6)
+  
+  // Relations
+  student         Student @relation(fields: [student_id], references: [id], onDelete: Cascade)
+  thread          ChatThread? @relation(fields: [thread_id], references: [id], onDelete: SetNull)
+  parent_job      AIJob? @relation("JobChain", fields: [parent_job_id], references: [id])
+  child_jobs      AIJob[] @relation("JobChain")
+  
+  @@index([status, created_at])
+  @@index([target_type, target_id])
+  @@index([student_id, created_at])
+  @@index([thread_id, created_at])
+  @@index([trace_id])
+  @@map("ai_jobs")
+}
+
+/// Long-term memory storage for user preferences
+model AIMemory {
+  id              BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  student_id      BigInt   @db.UnsignedBigInt
+  
+  memory_type     String   @db.VarChar(30)
+  // Types: tone, do_dont, preference, goal, bio, instruction, guardrail, other
+  
+  content         String   @db.Text
+  content_hash    String?  @db.Char(64)
+
+  source          String   @default("inferred") @db.VarChar(20)
+  // Source: user, system, inferred
+  
+  confidence      Decimal  @default(0.700) @db.Decimal(4, 3)
+  
+  embedding       Bytes?   @db.Blob
+  // Vector embedding for semantic search
+  
+  is_active       Boolean  @default(true)
+  expires_at      DateTime? @db.Timestamp(0)
+  
+  created_at      DateTime @default(now()) @db.Timestamp(0)
+  updated_at      DateTime @default(now()) @updatedAt @db.Timestamp(0)
+  
+  // Relations
+  student         Student @relation(fields: [student_id], references: [id], onDelete: Cascade)
+  
+  @@index([student_id, memory_type, is_active])
+  @@index([content_hash])
+  @@index([expires_at])
+  @@map("ai_memory")
+}
+
+/// Document storage for CVs, SOPs, etc.
+model StudentDocument {
+  id                      BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  student_id              BigInt   @db.UnsignedBigInt
+  
+  title                   String   @db.VarChar(255)
+  document_type           String   @db.VarChar(30)
+  // Types: resume, sop, transcript, portfolio, other
+  
+  source_file_path        String   @db.VarChar(1024)
+  exported_pdf_path       String?  @db.VarChar(1024)
+  
+  source_file_hash        String   @db.Char(64)
+  extracted_text_hash     String?  @db.Char(64)
+  processed_content_hash  String?  @db.Char(64)
+  
+  upload_status           String   @default("uploaded") @db.VarChar(30)
+  // Status: uploaded, queued_processing, processing, processed,
+  //         queued_export, exporting, exported, failed
+  
+  raw_extracted_text      String?  @db.LongText
+  processed_content       Json?
+  missing_fields          Json?
+  processor_version       String?  @db.VarChar(64)
+  
+  last_job_ids            Json?
+  error_code              String?  @db.VarChar(64)
+  error_message           String?  @db.Text
+  
+  created_at              DateTime @default(now()) @db.Timestamp(0)
+  updated_at              DateTime @default(now()) @updatedAt @db.Timestamp(0)
+  
+  // Relations
+  student                 Student @relation(fields: [student_id], references: [id], onDelete: Cascade)
+  request_attachments     FundingRequestAttachment[]
+  
+  @@index([student_id, document_type, created_at])
+  @@index([upload_status])
+  @@index([source_file_hash])
+  @@map("student_documents")
+}
+
+/// Junction table for request-document attachments
+model FundingRequestAttachment {
+  id                  BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  funding_request_id  BigInt   @db.UnsignedBigInt
+  student_document_id BigInt   @db.UnsignedBigInt
+  
+  purpose             String   @default("other") @db.VarChar(30)
+  // Purpose: cv, sop, transcript, portfolio, other
+  
+  created_at          DateTime @default(now()) @db.Timestamp(0)
+  
+  // Relations
+  funding_request     FundingRequest @relation(fields: [funding_request_id], references: [id], onDelete: Cascade)
+  student_document    StudentDocument @relation(fields: [student_document_id], references: [id], onDelete: Cascade)
+  
+  @@unique([funding_request_id, student_document_id])
+  @@index([funding_request_id, created_at])
+  @@map("funding_request_attachments")
+}
+
+/// User onboarding status tracking
+model OnboardingStatus {
+  id              BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  student_id      BigInt   @unique @db.UnsignedBigInt
+  
+  // Onboarding steps completion
+  basic_info_complete       Boolean @default(false)
+  background_info_complete  Boolean @default(false)
+  gmail_connected           Boolean @default(false)
+  templates_finalized       Boolean @default(false)
+  documents_uploaded        Boolean @default(false)
+  
+  // Current step tracking
+  current_step              String  @default("basic_info") @db.VarChar(50)
+  last_prompt_at            DateTime? @db.Timestamp(0)
+  
+  // Onboarding data (temporary storage during onboarding)
+  pending_data              Json?
+  
+  created_at                DateTime @default(now()) @db.Timestamp(0)
+  updated_at                DateTime @default(now()) @updatedAt @db.Timestamp(0)
+  
+  @@map("onboarding_status")
+}
+
+
+
+
+

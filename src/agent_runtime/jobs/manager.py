@@ -28,6 +28,7 @@ class JobSpec:
     # Correlation
     parent_job_id: str | None = None
     idempotency_key: str | None = None
+    run_id: str | None = None  # workflow_id/query_id (canonical execution id)
     
     # Configuration
     budgets: BudgetSpec | None = None
@@ -81,20 +82,23 @@ class JobManager:
         if spec.deadline_seconds:
             deadline = time.time() + spec.deadline_seconds
         
-        # Create job record
-        job = JobRecord(
-            scope_id=spec.scope_id,
-            principal_id=spec.principal_id,
-            session_id=spec.session_id,
-            parent_job_id=spec.parent_job_id,
-            idempotency_key=spec.idempotency_key,
-            status=JobStatus.QUEUED,
-            deadline=deadline,
-            budgets=spec.budgets,
-            policy_ref=spec.policy_ref,
-            metadata=dict(spec.metadata or {}),
-            tags=dict(spec.tags or {}),
-        )
+        job_kwargs: dict[str, Any] = {
+            "scope_id": spec.scope_id,
+            "principal_id": spec.principal_id,
+            "session_id": spec.session_id,
+            "parent_job_id": spec.parent_job_id,
+            "idempotency_key": spec.idempotency_key,
+            "status": JobStatus.QUEUED,
+            "deadline": deadline,
+            "budgets": spec.budgets,
+            "policy_ref": spec.policy_ref,
+            "metadata": dict(spec.metadata or {}),
+            "tags": dict(spec.tags or {}),
+        }
+        if spec.run_id is not None:
+            job_kwargs["run_id"] = spec.run_id
+
+        job = JobRecord(**job_kwargs)
         
         job = await self._store.create(job)
         

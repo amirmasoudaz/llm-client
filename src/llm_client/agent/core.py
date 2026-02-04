@@ -219,27 +219,28 @@ class Agent:
             # Create turn result
             turn = TurnResult(
                 completion=completion,
-                tool_calls=completion.tool_calls or [],
+                tool_calls=(completion.tool_calls or [])[: self.config.max_tool_calls_per_turn],
                 turn_number=turn_num,
             )
 
             # Handle tool calls
             if completion.has_tool_calls:
+                tool_calls = (completion.tool_calls or [])[: self.config.max_tool_calls_per_turn]
                 # Add assistant message with tool calls
                 self.conversation.add_assistant_with_tools(
                     completion.content,
-                    completion.tool_calls or [],
+                    tool_calls,
                 )
 
                 # Execute tools with context
                 tool_results = await self._execute_tools(
-                    completion.tool_calls or [],
+                    tool_calls,
                     request_context=context,
                 )
                 turn.tool_results = tool_results
 
                 # Add tool results to conversation
-                for tc, result in zip(completion.tool_calls or [], tool_results, strict=False):
+                for tc, result in zip(tool_calls, tool_results, strict=False):
                     self.conversation.add_tool_result(
                         tc.id,
                         result.to_string(),
@@ -390,7 +391,7 @@ class Agent:
             # Create turn result
             turn = TurnResult(
                 completion=result,
-                tool_calls=result.tool_calls or [],
+                tool_calls=(result.tool_calls or [])[: self.config.max_tool_calls_per_turn],
                 turn_number=turn_num,
             )
 
@@ -412,21 +413,33 @@ class Agent:
 
             # Handle tool calls
             if result.has_tool_calls:
+                tool_calls = (result.tool_calls or [])[: self.config.max_tool_calls_per_turn]
                 # Add assistant message with tool calls
                 self.conversation.add_assistant_with_tools(
                     result.content,
-                    result.tool_calls or [],
+                    tool_calls,
                 )
 
                 # Execute tools with context
                 tool_results = await self._execute_tools(
-                    result.tool_calls or [],
+                    tool_calls,
                     request_context=context,
                 )
                 turn.tool_results = tool_results
 
-                # Yield tool results as events
-                for tc, tr in zip(result.tool_calls or [], tool_results, strict=False):
+                # IMPORTANT: Add ALL tool results to conversation FIRST before yielding events.
+                # This ensures the conversation state is always consistent (tool_calls are always
+                # followed by matching tool results). If we interleave yields with add_tool_result,
+                # a GeneratorExit from a closed consumer could leave the conversation corrupted.
+                for tc, tr in zip(tool_calls, tool_results, strict=False):
+                    self.conversation.add_tool_result(
+                        tc.id,
+                        tr.to_string(),
+                        tc.name,
+                    )
+
+                # Now yield tool result events (safe to fail without corrupting conversation)
+                for tc, tr in zip(tool_calls, tool_results, strict=False):
                     yield StreamEvent(
                         type=StreamEventType.META,
                         data={
@@ -436,13 +449,6 @@ class Agent:
                             "success": tr.success,
                             "content": tr.to_string()[:500],  # Truncate for event
                         },
-                    )
-
-                    # Add to conversation
-                    self.conversation.add_tool_result(
-                        tc.id,
-                        tr.to_string(),
-                        tc.name,
                     )
 
                 # Optionally stop on tool error (match non-streaming run() behavior)

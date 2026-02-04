@@ -390,6 +390,55 @@ class Conversation:
 
     # === Truncation ===
 
+    @staticmethod
+    def _group_tool_call_pairs(messages: list[Message]) -> list[list[Message]]:
+        """
+        Group messages into atomic units that must be kept together.
+        
+        An assistant message with tool_calls MUST be followed by tool result 
+        messages for EACH tool_call_id. OpenAI API will reject messages where
+        tool_calls don't have matching tool result responses.
+        
+        Returns:
+            List of message groups. Each group is a list of messages that 
+            must be kept or removed together.
+        """
+        groups: list[list[Message]] = []
+        i = 0
+        
+        while i < len(messages):
+            msg = messages[i]
+            
+            # Check if this is an assistant message with tool_calls
+            if msg.role == Role.ASSISTANT and msg.tool_calls:
+                # Collect the tool_call_ids we need responses for
+                expected_ids = {tc.id for tc in msg.tool_calls}
+                group = [msg]
+                
+                # Collect all following tool result messages that match
+                j = i + 1
+                while j < len(messages) and expected_ids:
+                    next_msg = messages[j]
+                    if next_msg.role == Role.TOOL and next_msg.tool_call_id in expected_ids:
+                        group.append(next_msg)
+                        expected_ids.remove(next_msg.tool_call_id)
+                        j += 1
+                    elif next_msg.role == Role.TOOL:
+                        # Tool result for a different call - keep collecting
+                        j += 1
+                    else:
+                        # Non-tool message - stop collecting
+                        break
+                
+                groups.append(group)
+                i = j  # Skip past all collected messages
+            else:
+                # Single message group
+                groups.append([msg])
+                i += 1
+        
+        return groups
+
     def _truncate(
         self,
         messages: list[Message],
@@ -426,19 +475,26 @@ class Conversation:
             # Default to sliding
             return self._truncate_sliding(messages, model, max_tokens, count)
 
-    @staticmethod
+    @classmethod
     def _truncate_sliding(
+        cls,
         messages: list[Message],
         model: type[ModelProfile],
         max_tokens: int,
         count_fn,
     ) -> list[Message]:
-        """Keep most recent messages that fit."""
+        """Keep most recent message groups that fit.
+        
+        Preserves tool call/response pairs as atomic units.
+        """
+        # Group messages to preserve tool call pairs
+        groups = cls._group_tool_call_pairs(messages)
+        
         result: list[Message] = []
 
-        # Start from most recent and work backwards
-        for msg in reversed(messages):
-            candidate = [msg] + result
+        # Start from most recent groups and work backwards
+        for group in reversed(groups):
+            candidate = group + result
             if count_fn(candidate) <= max_tokens:
                 result = candidate
             else:
@@ -446,49 +502,60 @@ class Conversation:
 
         return result
 
-    @staticmethod
+    @classmethod
     def _truncate_drop_oldest(
+        cls,
         messages: list[Message],
         model: type[ModelProfile],
         max_tokens: int,
         count_fn,
     ) -> list[Message]:
-        """Drop the oldest messages until within limit."""
-        result = list(messages)
+        """Drop the oldest message groups until within limit.
+        
+        Preserves tool call/response pairs as atomic units.
+        """
+        # Group messages to preserve tool call pairs
+        groups = cls._group_tool_call_pairs(messages)
+        
+        # Flatten remaining groups
+        while groups and count_fn([m for g in groups for m in g]) > max_tokens:
+            groups.pop(0)
 
-        while result and count_fn(result) > max_tokens:
-            result.pop(0)
+        return [m for g in groups for m in g]
 
-        return result
-
-    @staticmethod
+    @classmethod
     def _truncate_drop_middle(
+        cls,
         messages: list[Message],
         model: type[ModelProfile],
         max_tokens: int,
         count_fn,
     ) -> list[Message]:
         """
-        Keep first and last messages, drop middle.
+        Keep first and last message groups, drop middle.
 
         Preserves initial context and recent history.
+        Preserves tool call/response pairs as atomic units.
         """
-        if len(messages) <= 2:
+        # Group messages to preserve tool call pairs
+        groups = cls._group_tool_call_pairs(messages)
+        
+        if len(groups) <= 2:
             return messages
 
-        # Always keep first message
-        first = [messages[0]]
+        # Always keep first group
+        first_group = groups[0]
 
-        # Find how many recent messages we can keep
-        recent: list[Message] = []
-        for msg in reversed(messages[1:]):
-            candidate = first + recent + [msg]
+        # Find how many recent groups we can keep
+        recent_groups: list[list[Message]] = []
+        for group in reversed(groups[1:]):
+            candidate = first_group + [m for g in recent_groups for m in g] + group
             if count_fn(candidate) <= max_tokens:
-                recent = [msg] + recent
+                recent_groups = [group] + recent_groups
             else:
                 break
 
-        return first + recent
+        return first_group + [m for g in recent_groups for m in g]
 
     # === Conversation Management ===
 
