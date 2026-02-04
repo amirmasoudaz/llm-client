@@ -1,0 +1,23 @@
+{
+  "name": "FundingRequest.Fields.Update.Propose",
+  "type": "operator",
+  "version": "1.0.0",
+  "owner": "canapply",
+  "description": "Create a PlatformPatch.Proposal outcome to update funding request fields in the platform DB (applied by platform backend).",
+  "schemas": {
+    "input": "schemas/operators/funding_request_fields_update_propose.input.v1.json",
+    "output": "schemas/operators/funding_request_fields_update_propose.output.v1.json"
+  },
+  "requires": {
+    "tools": [],
+    "capabilities": [],
+    "context_fields": []
+  },
+  "policy_tags": ["apply_proposal", "platform_write"],
+  "effects": ["produce_outcome"],
+  "observability": {
+    "log_level": "info",
+    "emit_samples": false
+  }
+}
+

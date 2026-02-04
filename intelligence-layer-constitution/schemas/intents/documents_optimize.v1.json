@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/intents/documents_optimize.v1.json",
+  "title": "Intent: Documents.Optimize (v1)",
+  "allOf": [
+    { "$ref": "../common/intent_base.v1.json" },
+    {
+      "type": "object",
+      "required": ["thread_id"],
+      "properties": {
+        "schema_version": { "const": "1.0" },
+        "intent_type": { "const": "Documents.Optimize" },
+        "inputs": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["document_id"],
+          "properties": {
+            "document_id": { "$ref": "../common/defs.v1.json#/$defs/DocumentId" },
+            "requested_edits": { "type": "array", "items": { "type": "string" }, "default": [] },
+            "custom_instructions": { "type": "string" },
+            "export_format": { "type": "string", "enum": ["pdf"], "default": "pdf" }
+          }
+        }
+      }
+    }
+  ]
+}

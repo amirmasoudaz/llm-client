@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/intents/funding_outreach_email_optimize.v1.json",
+  "title": "Intent: Funding.Outreach.Email.Optimize (v1)",
+  "allOf": [
+    { "$ref": "../common/intent_base.v1.json" },
+    {
+      "type": "object",
+      "required": ["thread_id"],
+      "properties": {
+        "schema_version": { "const": "1.0" },
+        "intent_type": { "const": "Funding.Outreach.Email.Optimize" },
+        "inputs": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "email_text_override": { "type": "string" },
+            "email_subject_override": { "type": "string" },
+            "requested_edits": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "shorten",
+                  "humanize",
+                  "paraphrase",
+                  "add_bullets",
+                  "improve_clarity",
+                  "change_subject",
+                  "add_custom_hook"
+                ]
+              },
+              "default": []
+            },
+            "subject_override": { "type": "string" },
+            "custom_instructions": { "type": "string" }
+          },
+          "default": {}
+        }
+      }
+    }
+  ]
+}

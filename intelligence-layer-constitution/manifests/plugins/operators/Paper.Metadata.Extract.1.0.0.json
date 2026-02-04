@@ -1,0 +1,23 @@
+{
+  "name": "Paper.Metadata.Extract",
+  "type": "operator",
+  "version": "1.0.0",
+  "owner": "canapply",
+  "description": "Extract paper metadata fields from a URL, document, S3 object, or manual inputs and produce a Paper.Metadata outcome.",
+  "schemas": {
+    "input": "schemas/operators/paper_metadata_extract.input.v1.json",
+    "output": "schemas/operators/paper_metadata_extract.output.v1.json"
+  },
+  "requires": {
+    "tools": [],
+    "capabilities": [],
+    "context_fields": []
+  },
+  "policy_tags": ["draft_only", "public_web"],
+  "effects": ["produce_outcome"],
+  "observability": {
+    "log_level": "info",
+    "emit_samples": false
+  }
+}
+

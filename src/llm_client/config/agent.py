@@ -4,7 +4,11 @@ Agent configuration.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ..tools.middleware import MiddlewareChain
 
 
 @dataclass
@@ -31,6 +35,10 @@ class AgentConfig:
     stream_tool_calls: bool = True
     batch_concurrency: int = 20
 
+    # Middleware support
+    middleware_chain: MiddlewareChain | None = None
+    use_default_middleware: bool = False  # If True, uses MiddlewareChain.production_defaults()
+
     def __post_init__(self):
         if self.max_turns < 1:
             raise ValueError("max_turns must be at least 1")
@@ -38,6 +46,15 @@ class AgentConfig:
             raise ValueError("tool_timeout must be positive")
         if self.tool_retry_attempts < 0:
             raise ValueError("tool_retry_attempts cannot be negative")
+
+    def get_middleware_chain(self) -> MiddlewareChain | None:
+        """Get the effective middleware chain."""
+        if self.middleware_chain is not None:
+            return self.middleware_chain
+        if self.use_default_middleware:
+            from ..tools.middleware import MiddlewareChain
+            return MiddlewareChain.production_defaults()
+        return None
 
 
 __all__ = ["AgentConfig"]

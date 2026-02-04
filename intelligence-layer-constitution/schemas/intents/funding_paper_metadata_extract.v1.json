@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/intents/funding_paper_metadata_extract.v1.json",
+  "title": "Intent: Funding.Paper.Metadata.Extract (v1)",
+  "allOf": [
+    { "$ref": "../common/intent_base.v1.json" },
+    {
+      "type": "object",
+      "required": ["thread_id"],
+      "properties": {
+        "schema_version": { "const": "1.0" },
+        "intent_type": { "const": "Funding.Paper.Metadata.Extract" },
+        "inputs": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["source"],
+          "properties": {
+            "source": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["kind", "url"],
+                  "properties": {
+                    "kind": { "const": "url" },
+                    "url": { "$ref": "../common/defs.v1.json#/$defs/Url" }
+                  }
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["kind", "document_id"],
+                  "properties": {
+                    "kind": { "const": "document" },
+                    "document_id": { "$ref": "../common/defs.v1.json#/$defs/DocumentId" }
+                  }
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["kind", "object_uri"],
+                  "properties": {
+                    "kind": { "const": "s3" },
+                    "object_uri": { "$ref": "../common/defs.v1.json#/$defs/S3Uri" }
+                  }
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["kind", "title"],
+                  "properties": {
+                    "kind": { "const": "manual" },
+                    "title": { "type": "string", "minLength": 1 },
+                    "year": { "type": "integer", "minimum": 1900, "maximum": 2100 },
+                    "journal": { "type": "string" },
+                    "abstract": { "type": "string" }
+                  }
+                }
+              ]
+            },
+            "target_fields": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": ["paper_title", "year", "journal", "abstract"]
+              },
+              "default": ["paper_title", "year", "journal", "abstract"]
+            }
+          }
+        }
+      }
+    }
+  ]
+}

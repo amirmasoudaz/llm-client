@@ -625,6 +625,7 @@ ExecutionEngine(
     breaker_config: CircuitBreakerConfig | None = None,
     fallback_statuses: tuple[int, ...] = (429, 500, 502, 503, 504),
     max_concurrency: int = 20,
+    idempotency_tracker: IdempotencyTracker | None = None,
 )
 ```
 
@@ -647,6 +648,7 @@ Arguments:
   - `regen_cache: bool = False`
   - `cache_key: str | None = None` (if not given, engine derives from spec+provider)
 - `retry: RetryConfig | None = None` (overrides engine default)
+- `idempotency_key: str | None = None` (for request deduplication; also read from `spec.extra["idempotency_key"]` or `context.tags["idempotency_key"]`)
 
 Behavior:
 
@@ -821,6 +823,7 @@ Agent(
     config: AgentConfig | None = None,
     engine: ExecutionEngine | None = None,
     use_engine: bool = False,
+    use_middleware: bool = False,
     max_turns: int = 10,
     max_tokens: int | None = None,
 )
@@ -830,9 +833,10 @@ Notes:
 
 - If `use_engine=True` (or `engine` is provided), the agent uses the engine for completions; otherwise it calls the
   provider directly.
+- If `use_middleware=True`, the agent uses a default production middleware chain for tool execution.
 - `conversation` is created automatically if not supplied; it uses `max_tokens` and `reserve_tokens` from config.
 
-#### `await agent.run(prompt: str, *, max_turns: int | None = None, **kwargs) -> AgentResult`
+#### `await agent.run(prompt: str, *, context: RequestContext | None = None, max_turns: int | None = None, **kwargs) -> AgentResult`
 
 Behavior:
 
@@ -845,9 +849,11 @@ Behavior:
    - appends tool results to conversation
 3) Stops when model returns no tool calls (final answer), or max turns, or error.
 
+The optional `context: RequestContext` parameter propagates correlation IDs (trace_id, job_id, session_id) through tool execution and engine calls, enabling distributed tracing and integration with `agent-runtime`.
+
 `**kwargs` are forwarded to the provider call (temperature, max_tokens, response_format, reasoning params, etc.).
 
-#### `agent.stream(prompt: str, ...) -> AsyncIterator[StreamEvent]`
+#### `agent.stream(prompt: str, *, context: RequestContext | None = None, ...) -> AsyncIterator[StreamEvent]`
 
 The agent exposes streaming (token-by-token) and may optionally emit tool-call events depending on provider output and
 `AgentConfig.stream_tool_calls`.
@@ -1323,6 +1329,38 @@ Global instance:
 
 - `get_tracker() -> IdempotencyTracker`
 
+### Integration with ExecutionEngine
+
+The `IdempotencyTracker` can be integrated directly with the `ExecutionEngine` for automatic request deduplication:
+
+```python
+from llm_client import ExecutionEngine, IdempotencyTracker
+
+tracker = IdempotencyTracker(request_timeout=60.0)
+engine = ExecutionEngine(
+    provider=provider,
+    idempotency_tracker=tracker,
+)
+
+# Requests with the same idempotency key return cached results
+result1 = await engine.complete(spec, idempotency_key="unique-request-123")
+
+# This returns the cached result immediately (if within timeout)
+result2 = await engine.complete(spec, idempotency_key="unique-request-123")
+```
+
+The idempotency key can be provided via:
+- `idempotency_key` parameter to `complete()` or `stream()`
+- `spec.extra["idempotency_key"]`
+- `context.tags["idempotency_key"]`
+
+Hook events emitted:
+- `idempotency.start`: Request tracking started
+- `idempotency.hit`: Returning cached result
+- `idempotency.conflict`: Request already in-flight (status 409)
+- `idempotency.complete`: Request completed successfully
+- `idempotency.fail`: Request failed
+
 ---
 
 ## Validation (`llm_client.validation`)
@@ -1492,6 +1530,42 @@ Cancellation is checked in:
 - `ExecutionEngine.stream()` between chunks
 - `Agent.run()` between turns
 - `Tool.execute_with_timeout()`
+
+### `RequestContext` (`llm_client.spec`)
+
+The `RequestContext` carries correlation IDs and metadata through the request lifecycle.
+
+```python
+from llm_client import RequestContext
+
+ctx = RequestContext(
+    request_id="req-123",      # Unique request identifier
+    trace_id="trace-456",      # Distributed tracing ID
+    span_id="span-789",        # Current span ID
+    tenant_id="tenant-abc",    # Multi-tenant isolation
+    user_id="user-def",        # User identifier
+    session_id="session-ghi",  # Conversation/session bucket
+    job_id="job-jkl",          # Job lifecycle identifier (for agent-runtime integration)
+    tags={"env": "production"},
+    cancellation_token=token,
+)
+
+# Create child context for nested operations
+child_ctx = ctx.child()
+
+# Add job correlation
+job_ctx = ctx.with_job("job-xyz")
+
+# Add session correlation
+session_ctx = ctx.with_session("session-xyz")
+```
+
+Key methods:
+- `ensure(context)` - Returns existing context or creates new one
+- `child()` - Create child context with new span_id
+- `with_job(job_id)` - Create context with job correlation
+- `with_session(session_id)` - Create context with session correlation
+- `to_dict()` / `from_dict()` - Serialization
 
 ---
 

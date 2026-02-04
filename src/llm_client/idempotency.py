@@ -5,6 +5,50 @@ This module provides:
 - Idempotency key generation and validation
 - Request deduplication logic
 - Tracking of in-flight requests
+
+Idempotency Boundaries
+----------------------
+There are TWO levels of idempotency when using llm-client with agent-runtime:
+
+1. ENGINE IDEMPOTENCY (this module, llm-client layer):
+   - Scope: "Don't send the same LLM request twice"
+   - Granularity: Per-completion call
+   - Use case: Prevent duplicate API calls during retries, concurrent requests
+   - Key format: Typically content-hash or caller-provided unique ID
+   - Lifetime: Short-lived (seconds to minutes)
+
+2. RUNTIME IDEMPOTENCY (agent-runtime layer):
+   - Scope: "Don't start the same job twice"
+   - Granularity: Per-job lifecycle
+   - Use case: Prevent duplicate job creation from retried webhooks, queue replays
+   - Key format: Business-level identifier (e.g., "order-123:process")
+   - Lifetime: Long-lived (hours to days, persisted in JobStore)
+
+Key Format Recommendations
+--------------------------
+To prevent accidental key collisions between unrelated calls within the same job,
+agent-runtime should generate structured idempotency keys for engine calls:
+
+    {job_id}:{run_id}:{turn}:{operation}
+    
+Examples:
+    - "job-abc:run-123:turn-0:completion"  # First model call
+    - "job-abc:run-123:turn-1:completion"  # Second turn
+    - "job-abc:run-123:turn-1:tool:search" # Tool call within turn
+
+This ensures that:
+- Each model call within a job has a unique key
+- Retries of the same call get deduplicated
+- Different turns/tools don't accidentally merge
+
+Integration
+-----------
+When ExecutionEngine has an IdempotencyTracker:
+- Caller provides idempotency_key via engine.complete(..., idempotency_key=...)
+- Or via spec.extra["idempotency_key"] or context.tags["idempotency_key"]
+- Engine checks for in-flight/completed requests before calling provider
+- Returns cached result for completed keys (within timeout)
+- Returns 409 status for in-flight duplicate keys
 """
 
 from __future__ import annotations

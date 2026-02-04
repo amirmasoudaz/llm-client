@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/operators/workflow_gate_resolve.output.v1.json",
+  "title": "Operator: Workflow.Gate.Resolve (output) (v1)",
+  "allOf": [
+    { "$ref": "operator_result_base.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "result": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["action_id", "status", "resolved_at"],
+          "properties": {
+            "action_id": { "$ref": "../common/defs.v1.json#/$defs/Uuid" },
+            "status": { "type": "string", "enum": ["accepted", "declined"] },
+            "resolved_at": { "$ref": "../common/defs.v1.json#/$defs/ISODateTime" },
+            "resumed_workflow_id": { "$ref": "../common/defs.v1.json#/$defs/Uuid" },
+            "resumed_query_id": { "$ref": "../common/defs.v1.json#/$defs/Uuid" },
+            "message": { "type": "string" }
+          }
+        }
+      }
+    }
+  ]
+}
+

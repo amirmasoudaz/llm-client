@@ -1,0 +1,65 @@
+{
+  "schema_version": "1.0",
+  "plan_template_id": "Documents.Review@1.0.0",
+  "intent_type": "Documents.Review",
+  "plan_version": "planner-1.0",
+  "description": "Ensure a document is processed, then review it and produce a Document.Review outcome.",
+  "steps": [
+    {
+      "step_id": "s1",
+      "kind": "operator",
+      "name": "Platform.Context.Load",
+      "operator_name": "Platform.Context.Load",
+      "operator_version": "1.0.0",
+      "effects": ["read_only"],
+      "policy_tags": ["read_only", "platform_read"],
+      "risk_level": "low",
+      "cache_policy": "ttl_only",
+      "idempotency_template": "platform_context:{tenant_id}:{thread_id}",
+      "payload": { "thread_id": { "from": "intent.thread_id" } },
+      "produces": [
+        "context.platform",
+        "context.intelligence",
+        "context.platform_context_hash",
+        "context.student_background_hash",
+        "context.composer_prereqs_hash"
+      ]
+    },
+    {
+      "step_id": "s2",
+      "kind": "operator",
+      "name": "Documents.Process",
+      "operator_name": "Documents.Process",
+      "operator_version": "1.0.0",
+      "effects": ["produce_outcome"],
+      "policy_tags": ["documents", "pii_allowed"],
+      "risk_level": "low",
+      "cache_policy": "use_if_safe",
+      "idempotency_template": "doc_process:{tenant_id}:{intent.inputs.document_id}:default",
+      "payload": {
+        "document_id": { "from": "intent.inputs.document_id" },
+        "processing_profile": { "const": "default" }
+      },
+      "produces": ["outcome.document_processed"]
+    },
+    {
+      "step_id": "s3",
+      "kind": "operator",
+      "name": "Documents.Review",
+      "operator_name": "Documents.Review",
+      "operator_version": "1.0.0",
+      "effects": ["produce_outcome"],
+      "policy_tags": ["documents", "draft_only"],
+      "risk_level": "low",
+      "cache_policy": "use_if_safe",
+      "idempotency_template": "doc_review:{tenant_id}:{intent.inputs.document_id}:{outcome.document_processed.hash.value}:{intent.inputs.review_goal}",
+      "payload": {
+        "document_id": { "from": "intent.inputs.document_id" },
+        "document_processed": { "from": "outcome.document_processed" },
+        "review_goal": { "from": "intent.inputs.review_goal" },
+        "custom_instructions": { "from": "intent.inputs.custom_instructions" }
+      },
+      "produces": ["outcome.document_review"]
+    }
+  ]
+}

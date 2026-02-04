@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/outcomes/paper_metadata.v1.json",
+  "title": "Outcome: Paper.Metadata (v1)",
+  "allOf": [
+    { "$ref": "outcome_base.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "outcome_type": { "const": "Paper.Metadata" },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["fields"],
+          "properties": {
+            "source": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["kind", "url"],
+                  "properties": {
+                    "kind": { "const": "url" },
+                    "url": { "$ref": "../common/defs.v1.json#/$defs/Url" }
+                  }
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["kind", "document_id"],
+                  "properties": {
+                    "kind": { "const": "document" },
+                    "document_id": { "$ref": "../common/defs.v1.json#/$defs/DocumentId" }
+                  }
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["kind", "object_uri"],
+                  "properties": {
+                    "kind": { "const": "s3" },
+                    "object_uri": { "$ref": "../common/defs.v1.json#/$defs/S3Uri" }
+                  }
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["kind", "title"],
+                  "properties": {
+                    "kind": { "const": "manual" },
+                    "title": { "type": "string", "minLength": 1 },
+                    "year": { "type": "integer", "minimum": 1900, "maximum": 2100 },
+                    "journal": { "type": "string" },
+                    "abstract": { "type": "string" }
+                  }
+                }
+              ]
+            },
+            "fields": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "paper_title": { "type": "string" },
+                "journal": { "type": "string" },
+                "year": { "type": "integer", "minimum": 1900, "maximum": 2100 },
+                "abstract": { "type": "string" },
+                "authors": { "type": "array", "items": { "type": "string" }, "default": [] },
+                "doi": { "type": "string" },
+                "url": { "$ref": "../common/defs.v1.json#/$defs/Url" }
+              }
+            },
+            "field_confidence": { "type": "object", "default": {} }
+          }
+        }
+      }
+    }
+  ]
+}

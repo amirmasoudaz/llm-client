@@ -1,0 +1,23 @@
+{
+  "name": "Professor.Summarize",
+  "type": "operator",
+  "version": "1.0.0",
+  "owner": "canapply",
+  "description": "Produce a structured professor summary outcome from a retrieved profile.",
+  "schemas": {
+    "input": "schemas/operators/professor_summarize.input.v1.json",
+    "output": "schemas/operators/professor_summarize.output.v1.json"
+  },
+  "requires": {
+    "tools": [],
+    "capabilities": [],
+    "context_fields": []
+  },
+  "policy_tags": ["draft_only", "public_web"],
+  "effects": ["produce_outcome"],
+  "observability": {
+    "log_level": "info",
+    "emit_samples": false
+  }
+}
+

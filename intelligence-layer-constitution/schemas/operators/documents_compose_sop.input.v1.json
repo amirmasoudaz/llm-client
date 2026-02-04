@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/operators/documents_compose_sop.input.v1.json",
+  "title": "Operator: Documents.Compose.SOP (input) (v1)",
+  "allOf": [
+    { "$ref": "operator_call_base.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "student",
+            "funding_request",
+            "professor",
+            "professor_summary",
+            "background",
+            "composer_prereqs"
+          ],
+          "properties": {
+            "student": { "type": "object" },
+            "funding_request": { "type": "object" },
+            "professor": { "type": "object" },
+            "professor_summary": { "$ref": "../outcomes/professor_summary.v1.json" },
+            "background": { "type": "object" },
+            "composer_prereqs": { "type": "object" },
+            "requested_topics": { "type": "array", "items": { "type": "string" }, "default": [] },
+            "additional_notes": { "type": "string" }
+          }
+        }
+      }
+    }
+  ]
+}
+

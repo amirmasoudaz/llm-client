@@ -19,6 +19,7 @@ from .cache.serializers import cache_dict_to_result, result_to_cache_dict
 from .cancellation import CancelledError
 from .hashing import content_hash
 from .hooks import HookManager
+from .idempotency import IdempotencyTracker
 from .providers.base import Provider
 from .providers.types import CompletionResult, StreamEvent, StreamEventType
 from .resilience import CircuitBreaker, CircuitBreakerConfig
@@ -46,6 +47,7 @@ class ExecutionEngine:
         breaker_config: CircuitBreakerConfig | None = None,
         fallback_statuses: tuple[int, ...] = (429, 500, 502, 503, 504),
         max_concurrency: int = 20,
+        idempotency_tracker: IdempotencyTracker | None = None,
     ) -> None:
         if provider is None and router is None:
             raise ValueError("ExecutionEngine requires a provider or a router.")
@@ -64,6 +66,7 @@ class ExecutionEngine:
         self._breakers: dict[str, CircuitBreaker] = {}
         self.fallback_statuses = fallback_statuses
         self._semaphore = asyncio.Semaphore(max_concurrency)
+        self._idempotency = idempotency_tracker
 
     async def complete(
         self,
@@ -76,6 +79,7 @@ class ExecutionEngine:
         regen_cache: bool = False,
         cache_key: str | None = None,
         retry: RetryConfig | None = None,
+        idempotency_key: str | None = None,
     ) -> CompletionResult:
         ctx = RequestContext.ensure(context)
         start_time = time.monotonic()
@@ -85,6 +89,37 @@ class ExecutionEngine:
         from .validation import validate_spec
 
         validate_spec(spec)
+
+        # Handle idempotency
+        idem_key = idempotency_key or spec.extra.get("idempotency_key") or ctx.tags.get("idempotency_key")
+        if idem_key and self._idempotency:
+            # Check for existing completed result
+            if self._idempotency.has_result(idem_key):
+                await self.hooks.emit("idempotency.hit", {"key": idem_key}, ctx)
+                result = self._idempotency.get_result(idem_key)
+                await self.hooks.emit(
+                    "request.end",
+                    {
+                        "status": result.status,
+                        "latency_ms": int((time.monotonic() - start_time) * 1000),
+                        "idempotent": True,
+                    },
+                    ctx,
+                )
+                return result
+            
+            # Check if request is in-flight
+            if not self._idempotency.can_start(idem_key):
+                await self.hooks.emit("idempotency.conflict", {"key": idem_key}, ctx)
+                return CompletionResult(
+                    status=409,
+                    error=f"Request with idempotency key '{idem_key}' is already in flight",
+                    model=spec.model or "unknown",
+                )
+            
+            # Start tracking this request
+            self._idempotency.start_request(idem_key)
+            await self.hooks.emit("idempotency.start", {"key": idem_key}, ctx)
 
         providers = self._select_providers(spec)
         last_result: CompletionResult | None = None
@@ -172,6 +207,11 @@ class ExecutionEngine:
                         log_errors=True,
                         collection=cache_collection,
                     )
+                # Complete idempotency tracking on success
+                if idem_key and self._idempotency:
+                    self._idempotency.complete_request(idem_key, last_result)
+                    await self.hooks.emit("idempotency.complete", {"key": idem_key}, ctx)
+                
                 await self.hooks.emit("provider.success", {"provider": provider_id}, ctx)
                 await self.hooks.emit(
                     "request.end",
@@ -199,6 +239,12 @@ class ExecutionEngine:
                 break
 
         final = last_result or CompletionResult(status=500, error="No result")
+        
+        # Fail idempotency tracking on error
+        if idem_key and self._idempotency:
+            self._idempotency.fail_request(idem_key)
+            await self.hooks.emit("idempotency.fail", {"key": idem_key}, ctx)
+        
         await self.hooks.emit(
             "request.end",
             {
@@ -214,6 +260,7 @@ class ExecutionEngine:
         spec: RequestSpec,
         *,
         context: RequestContext | None = None,
+        idempotency_key: str | None = None,
     ) -> AsyncIterator[StreamEvent]:
         ctx = RequestContext.ensure(context)
         await self.hooks.emit("stream.start", {"spec": spec.to_dict()}, ctx)
@@ -222,6 +269,22 @@ class ExecutionEngine:
         from .validation import validate_spec
 
         validate_spec(spec)
+
+        # Handle idempotency for streaming (prevent duplicate streams)
+        idem_key = idempotency_key or spec.extra.get("idempotency_key") or ctx.tags.get("idempotency_key")
+        if idem_key and self._idempotency:
+            # Check if stream is already in-flight (can't return cached results for streams)
+            if self._idempotency.is_pending(idem_key):
+                await self.hooks.emit("idempotency.conflict", {"key": idem_key, "type": "stream"}, ctx)
+                yield StreamEvent(
+                    type=StreamEventType.ERROR,
+                    data={"status": 409, "error": f"Stream with idempotency key '{idem_key}' is already in flight"},
+                )
+                return
+            
+            # Start tracking this stream
+            self._idempotency.start_request(idem_key)
+            await self.hooks.emit("idempotency.start", {"key": idem_key, "type": "stream"}, ctx)
 
         providers = list(self._select_providers(spec))
         token_seen = False
@@ -283,6 +346,10 @@ class ExecutionEngine:
                             )
                             # Break inner loop to try next provider
                             break
+                        # Fail idempotency tracking on stream error
+                        if idem_key and self._idempotency:
+                            self._idempotency.fail_request(idem_key)
+                            await self.hooks.emit("idempotency.fail", {"key": idem_key, "type": "stream"}, ctx)
                         yield StreamEvent(
                             type=StreamEventType.ERROR,
                             data={"status": status, "error": event.data.get("error", "Provider error")},
@@ -292,6 +359,10 @@ class ExecutionEngine:
 
                     if event.type == StreamEventType.DONE:
                         await breaker.on_success()
+                        # Complete idempotency tracking on stream success
+                        if idem_key and self._idempotency:
+                            self._idempotency.complete_request(idem_key)
+                            await self.hooks.emit("idempotency.complete", {"key": idem_key, "type": "stream"}, ctx)
                         yield event
                         await self.hooks.emit("stream.end", {"status": 200}, ctx)
                         return
@@ -309,6 +380,10 @@ class ExecutionEngine:
                     await self.hooks.emit("router.fallback", {"provider": provider_id, "error": str(exc)}, ctx)
                     continue
 
+                # Fail idempotency tracking on exception
+                if idem_key and self._idempotency:
+                    self._idempotency.fail_request(idem_key)
+                    await self.hooks.emit("idempotency.fail", {"key": idem_key, "type": "stream"}, ctx)
                 yield StreamEvent(
                     type=StreamEventType.ERROR,
                     data={"status": 500, "error": str(exc)},
@@ -316,6 +391,10 @@ class ExecutionEngine:
                 await self.hooks.emit("stream.end", {"status": 500}, ctx)
                 return
 
+        # Fail idempotency tracking if all providers exhausted
+        if idem_key and self._idempotency:
+            self._idempotency.fail_request(idem_key)
+            await self.hooks.emit("idempotency.fail", {"key": idem_key, "type": "stream"}, ctx)
         await self.hooks.emit("stream.end", {"status": 500}, ctx)
 
     def _select_providers(self, spec: RequestSpec) -> Iterable[Provider]:

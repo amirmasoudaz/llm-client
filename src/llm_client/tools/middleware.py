@@ -351,7 +351,27 @@ class MiddlewareChain:
     def production_defaults(cls) -> "MiddlewareChain":
         """Create a chain with production-ready defaults.
         
-        Canonical ordering:
+        IMPORTANT: Middleware Ownership Boundary
+        ----------------------------------------
+        This middleware chain is OPT-IN for Agent and is intended for standalone
+        llm-client usage where agent-runtime is NOT being used.
+        
+        When using agent-runtime:
+        - Budget enforcement should be centralized in agent-runtime's Ledger
+        - Policy enforcement should be centralized in agent-runtime's PolicyEngine
+        - Telemetry should be centralized in agent-runtime's OpenTelemetryAdapter
+        
+        Using both this middleware chain AND agent-runtime will cause DOUBLE
+        ENFORCEMENT of budgets/policies, leading to:
+        - Inconsistent behavior between streaming/non-streaming calls
+        - Duplicate telemetry spans
+        - Subtle mismatches in multi-agent and replay scenarios
+        
+        Recommended patterns:
+        - Standalone llm-client: Use production_defaults() via Agent(use_middleware=True)
+        - With agent-runtime: Use minimal_defaults() or no middleware; let runtime enforce
+        
+        Canonical ordering (when used):
         1. Telemetry (outermost - captures full duration)
         2. Logging
         3. Policy (fail fast)
@@ -373,6 +393,33 @@ class MiddlewareChain:
             TimeoutMiddleware(),
             RetryMiddleware(),
             CircuitBreakerMiddleware(),
+            ResultSizeMiddleware(),
+            RedactionMiddleware(),
+        ])
+
+    @classmethod
+    def minimal_defaults(cls) -> "MiddlewareChain":
+        """Create a minimal chain suitable for use WITH agent-runtime.
+        
+        This chain includes only "safe but dumb" middleware that doesn't
+        conflict with agent-runtime's centralized enforcement:
+        - Logging: Local execution logging (agent-runtime has its own event bus)
+        - Timeout: Local timeout (agent-runtime may have job-level timeouts)
+        - Retry: Local retry (agent-runtime has job-level retry/resume)
+        - ResultSize: Truncation (purely local concern)
+        - Redaction: PII scrubbing (purely local concern)
+        
+        Excludes:
+        - Telemetry: Use agent-runtime's OpenTelemetryAdapter instead
+        - Policy: Use agent-runtime's PolicyEngine instead  
+        - Budget: Use agent-runtime's Ledger instead
+        - ConcurrencyLimit: Use agent-runtime's orchestration controls instead
+        - CircuitBreaker: Use agent-runtime's job state management instead
+        """
+        return cls([
+            LoggingMiddleware(),
+            TimeoutMiddleware(),
+            RetryMiddleware(),
             ResultSizeMiddleware(),
             RedactionMiddleware(),
         ])

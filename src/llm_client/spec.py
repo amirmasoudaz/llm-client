@@ -1,11 +1,29 @@
 """
 Request specification and context for deterministic execution.
+
+Identity Taxonomy Note
+----------------------
+This module uses llm-client naming conventions for identity fields:
+    - tenant_id -> maps to scope_id in agent-runtime
+    - user_id -> maps to principal_id in agent-runtime
+    
+The canonical taxonomy (per agent-runtime) is:
+    - scope_id: tenant/org/workspace
+    - principal_id: user/service actor
+    - session_id: thread/conversation bucket
+    - job_id: lifecycle record
+    - run_id: specific execution (maps to request_id here)
+    - trace_id/span_id: observability
+
+For interop with agent-runtime, use the scope_id/principal_id aliases which
+emit deprecation warnings to encourage migration to the canonical taxonomy.
 """
 
 from __future__ import annotations
 
 import time
 import uuid
+import warnings
 from dataclasses import dataclass, field
 from typing import Any, TYPE_CHECKING
 
@@ -31,16 +49,25 @@ class RequestContext:
     
     Frozen dataclass ensures stable identity for cache keys and tracing.
     Mutable objects (like CancellationToken) remain mutable inside.
+    
+    Identity fields (for agent-runtime integration):
+    - request_id: Unique identifier for this request/run (maps to run_id)
+    - session_id: Conversation/thread bucket for grouping related requests
+    - job_id: Lifecycle record ID for job state management
+    - tenant_id: Scope/org/workspace identifier for multi-tenancy (maps to scope_id)
+    - user_id: User/service actor identifier (maps to principal_id)
     """
     request_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     trace_id: str | None = None
     span_id: str | None = None  # For distributed tracing
-    tenant_id: str | None = None
-    user_id: str | None = None  # For per-user tracking
+    tenant_id: str | None = None  # scope_id in runtime terminology
+    user_id: str | None = None  # principal_id in runtime terminology
+    session_id: str | None = None  # thread_id / conversation bucket
+    job_id: str | None = None  # lifecycle record id for runtime jobs
     tags: dict[str, str] = field(default_factory=dict)
     created_at: float = field(default_factory=time.time)
     cancellation_token: CancellationToken = field(default_factory=_default_cancel_token)
-    schema_version: int = 1
+    schema_version: int = 2  # Bumped for session_id/job_id addition
 
     @classmethod
     def ensure(cls, ctx: RequestContext | None) -> RequestContext:
@@ -50,7 +77,7 @@ class RequestContext:
     def child(self, *, new_span: bool = True) -> RequestContext:
         """Create a child context for nested operations.
         
-        Preserves request_id, trace_id, tenant_id, user_id, cancellation_token.
+        Preserves request_id, trace_id, tenant_id, user_id, session_id, job_id, cancellation_token.
         Generates new span_id if new_span=True.
         """
         return RequestContext(
@@ -59,8 +86,42 @@ class RequestContext:
             span_id=str(uuid.uuid4()) if new_span else self.span_id,
             tenant_id=self.tenant_id,
             user_id=self.user_id,
+            session_id=self.session_id,
+            job_id=self.job_id,
             tags=dict(self.tags),
             cancellation_token=self.cancellation_token,  # Propagate cancellation
+            schema_version=self.schema_version,
+        )
+
+    def with_job(self, job_id: str) -> RequestContext:
+        """Create a new context with job_id set. Useful for runtime integration."""
+        return RequestContext(
+            request_id=self.request_id,
+            trace_id=self.trace_id,
+            span_id=self.span_id,
+            tenant_id=self.tenant_id,
+            user_id=self.user_id,
+            session_id=self.session_id,
+            job_id=job_id,
+            tags=dict(self.tags),
+            created_at=self.created_at,
+            cancellation_token=self.cancellation_token,
+            schema_version=self.schema_version,
+        )
+
+    def with_session(self, session_id: str) -> RequestContext:
+        """Create a new context with session_id set. Useful for conversation tracking."""
+        return RequestContext(
+            request_id=self.request_id,
+            trace_id=self.trace_id,
+            span_id=self.span_id,
+            tenant_id=self.tenant_id,
+            user_id=self.user_id,
+            session_id=session_id,
+            job_id=self.job_id,
+            tags=dict(self.tags),
+            created_at=self.created_at,
+            cancellation_token=self.cancellation_token,
             schema_version=self.schema_version,
         )
 
@@ -72,10 +133,67 @@ class RequestContext:
             "span_id": self.span_id,
             "tenant_id": self.tenant_id,
             "user_id": self.user_id,
+            "session_id": self.session_id,
+            "job_id": self.job_id,
             "tags": dict(self.tags),
             "created_at": self.created_at,
             "schema_version": self.schema_version,
         }
+    
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> RequestContext:
+        """Create a RequestContext from a dictionary.
+        
+        Accepts both llm-client names (tenant_id, user_id) and 
+        agent-runtime names (scope_id, principal_id) for compatibility.
+        """
+        # Support both naming conventions
+        tenant = data.get("tenant_id") or data.get("scope_id")
+        user = data.get("user_id") or data.get("principal_id")
+        
+        return cls(
+            request_id=data.get("request_id") or data.get("run_id", str(uuid.uuid4())),
+            trace_id=data.get("trace_id"),
+            span_id=data.get("span_id"),
+            tenant_id=tenant,
+            user_id=user,
+            session_id=data.get("session_id"),
+            job_id=data.get("job_id"),
+            tags=dict(data.get("tags", {})),
+            created_at=data.get("created_at", time.time()),
+            schema_version=data.get("schema_version", 2),
+        )
+
+    # === Aliases for agent-runtime compatibility ===
+    # The canonical taxonomy uses scope_id and principal_id.
+    # These aliases provide interop while encouraging migration.
+
+    @property
+    def scope_id(self) -> str | None:
+        """Alias for tenant_id (agent-runtime canonical name).
+        
+        Prefer using tenant_id directly. This alias exists for
+        compatibility with agent-runtime's canonical taxonomy.
+        """
+        return self.tenant_id
+
+    @property
+    def principal_id(self) -> str | None:
+        """Alias for user_id (agent-runtime canonical name).
+        
+        Prefer using user_id directly. This alias exists for
+        compatibility with agent-runtime's canonical taxonomy.
+        """
+        return self.user_id
+
+    @property
+    def run_id(self) -> str:
+        """Alias for request_id (agent-runtime canonical name).
+        
+        Prefer using request_id directly. This alias exists for
+        compatibility with agent-runtime's canonical taxonomy.
+        """
+        return self.request_id
 
 
 @dataclass(frozen=True)

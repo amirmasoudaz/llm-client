@@ -14,6 +14,7 @@ from typing import (
     Any,
 )
 
+from ..cancellation import CancelledError
 from ..config import AgentConfig
 from ..conversation import Conversation
 from ..engine import ExecutionEngine, RetryConfig
@@ -25,7 +26,7 @@ from ..providers.types import (
     StreamEventType,
     Usage,
 )
-from ..spec import RequestSpec
+from ..spec import RequestContext, RequestSpec
 from ..streaming import BufferingAdapter
 from ..tools.base import Tool, ToolRegistry, ToolResult
 from .execution import apply_tool_output_limit, execute_tools
@@ -85,6 +86,8 @@ class Agent:
         # Shortcuts for common config options
         max_turns: int = 10,
         max_tokens: int | None = None,
+        # Middleware support
+        use_middleware: bool = False,
     ) -> None:
         """
         Initialize the agent.
@@ -97,6 +100,7 @@ class Agent:
             config: Full agent configuration
             max_turns: Maximum turns (shortcut for config.max_turns)
             max_tokens: Maximum context tokens (shortcut)
+            use_middleware: Enable production middleware for tool execution
         """
         self.provider = provider
         self.engine: ExecutionEngine | None = (
@@ -117,6 +121,8 @@ class Agent:
             self.config.max_turns = max_turns
         if max_tokens is not None:
             self.config.max_tokens = max_tokens
+        if use_middleware:
+            self.config.use_default_middleware = True
 
         # Set up conversation
         if conversation:
@@ -130,6 +136,9 @@ class Agent:
                 reserve_tokens=self.config.reserve_tokens,
             )
 
+        # Request context for tool execution (can be set per-run)
+        self._request_context: RequestContext | None = None
+
     @property
     def model(self) -> type[ModelProfile]:
         """Get the provider's model profile."""
@@ -142,6 +151,7 @@ class Agent:
         prompt: str,
         *,
         max_turns: int | None = None,
+        context: RequestContext | None = None,
         **kwargs: Any,
     ) -> AgentResult:
         """
@@ -155,6 +165,7 @@ class Agent:
         Args:
             prompt: User message to start/continue with
             max_turns: Override max turns for this run
+            context: Request context for correlation, tracing, and middleware
             **kwargs: Additional arguments passed to provider
 
         Returns:
@@ -169,6 +180,10 @@ class Agent:
         total_usage = Usage()
 
         for turn_num in range(max_turns):
+            # Check for cancellation at the start of each turn
+            if context and context.cancellation_token:
+                context.cancellation_token.raise_if_cancelled()
+
             # Get completion
             if self.engine:
                 engine_messages = self.conversation.get_messages(model=self.model if self.config.max_tokens else None)
@@ -216,8 +231,11 @@ class Agent:
                     completion.tool_calls or [],
                 )
 
-                # Execute tools
-                tool_results = await self._execute_tools(completion.tool_calls or [])
+                # Execute tools with context
+                tool_results = await self._execute_tools(
+                    completion.tool_calls or [],
+                    request_context=context,
+                )
                 turn.tool_results = tool_results
 
                 # Add tool results to conversation
@@ -271,6 +289,7 @@ class Agent:
         prompt: str,
         *,
         max_turns: int | None = None,
+        context: RequestContext | None = None,
         **kwargs: Any,
     ) -> AsyncIterator[StreamEvent]:
         """
@@ -286,6 +305,7 @@ class Agent:
         Args:
             prompt: User message
             max_turns: Override max turns
+            context: Request context for correlation, tracing, and middleware
             **kwargs: Additional provider arguments
 
         Yields:
@@ -300,6 +320,10 @@ class Agent:
         turns: list[TurnResult] = []
 
         for turn_num in range(max_turns):
+            # Check for cancellation at the start of each turn
+            if context and context.cancellation_token:
+                context.cancellation_token.raise_if_cancelled()
+
             # Yield turn start
             yield StreamEvent(type=StreamEventType.META, data={"event": "turn_start", "turn": turn_num})
 
@@ -335,7 +359,7 @@ class Agent:
                     },
                     stream=True,
                 )
-                stream_iter = self.engine.stream(spec)
+                stream_iter = self.engine.stream(spec, context=context)
             else:
                 provider_messages = self.conversation.get_messages_dict(
                     model=self.model if self.config.max_tokens else None
@@ -394,8 +418,11 @@ class Agent:
                     result.tool_calls or [],
                 )
 
-                # Execute tools
-                tool_results = await self._execute_tools(result.tool_calls or [])
+                # Execute tools with context
+                tool_results = await self._execute_tools(
+                    result.tool_calls or [],
+                    request_context=context,
+                )
                 turn.tool_results = tool_results
 
                 # Yield tool results as events
@@ -468,18 +495,25 @@ class Agent:
             ),
         )
 
-    async def chat(self, message: str, **kwargs: Any) -> str:
+    async def chat(
+        self,
+        message: str,
+        *,
+        context: RequestContext | None = None,
+        **kwargs: Any,
+    ) -> str:
         """
         Simple chat interface - returns just the response text.
 
         Args:
             message: User message
+            context: Request context for correlation, tracing, and middleware
             **kwargs: Additional arguments
 
         Returns:
             Assistant's response text
         """
-        result = await self.run(message, **kwargs)
+        result = await self.run(message, context=context, **kwargs)
         return result.content or ""
 
     # === Tool Management ===
@@ -497,10 +531,20 @@ class Agent:
     async def _execute_tools(
         self,
         tool_calls: list,
+        request_context: RequestContext | None = None,
     ) -> list[ToolResult]:
-        """Execute tool calls using the execution module."""
+        """Execute tool calls using the execution module with middleware support."""
         limited_calls = tool_calls[: self.config.max_tool_calls_per_turn]
-        results = await execute_tools(limited_calls, self.tools, self.config)
+        
+        # Use provided context or fall back to agent's context
+        ctx = request_context or self._request_context
+        
+        results = await execute_tools(
+            limited_calls,
+            self.tools,
+            self.config,
+            request_context=ctx,
+        )
         # Apply output limits
         return [
             apply_tool_output_limit(r, tc.name, self.config.max_tool_output_chars)
