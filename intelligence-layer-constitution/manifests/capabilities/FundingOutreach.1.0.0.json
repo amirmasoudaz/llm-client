@@ -29,6 +29,7 @@
         "Email.ReviewDraft@1.0.0",
         "Email.OptimizeDraft@1.0.0",
         "Email.ApplyToPlatform.Propose@1.0.0",
+        "Conversation.Suggestions.Generate@1.0.0",
         "Paper.Metadata.Extract@1.0.0",
         "FundingRequest.Fields.Update.Propose@1.0.0"
       ],
@@ -78,6 +79,7 @@
       { "type": "Alignment.Score", "schema": "schemas/outcomes/alignment_score.v1.json" },
       { "type": "Email.Draft", "schema": "schemas/outcomes/email_draft.v1.json" },
       { "type": "Email.Review", "schema": "schemas/outcomes/email_review.v1.json" },
+      { "type": "Conversation.Suggestions", "schema": "schemas/outcomes/conversation_suggestions.v1.json" },
       { "type": "Paper.Metadata", "schema": "schemas/outcomes/paper_metadata.v1.json" },
       { "type": "PlatformPatch.Proposal", "schema": "schemas/outcomes/platform_patch_proposal.v1.json" },
       { "type": "PlatformPatch.Receipt", "schema": "schemas/outcomes/platform_patch_receipt.v1.json" }
@@ -94,4 +96,3 @@
     }
   }
 }
-

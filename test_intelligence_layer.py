@@ -67,6 +67,33 @@ def _parse_json(body: str):
     return out
 
 
+# Event types that are collapsed when consecutive: print first, "... N more <type> events ...", last.
+_COLLAPSE_EVENT_TYPES = frozenset({"model_token"})
+
+
+def _flush_sse_run(
+    run: list[tuple[str, list[str]]],
+    *,
+    quiet: bool,
+) -> None:
+    """Print a run of same-type events, collapsing long runs for _COLLAPSE_EVENT_TYPES."""
+    if quiet or not run:
+        return
+    event_type = run[0][0]
+    if event_type in _COLLAPSE_EVENT_TYPES and len(run) > 2:
+        # First event full
+        for ln in run[0][1]:
+            print(ln)
+        print(f"... {len(run) - 2} more {event_type} events ...")
+        # Last event full
+        for ln in run[-1][1]:
+            print(ln)
+    else:
+        for _t, lines in run:
+            for ln in lines:
+                print(ln)
+
+
 def stream_sse_events(
     path: str,
     *,
@@ -77,6 +104,8 @@ def stream_sse_events(
     """Stream SSE events from path and return parsed events.
 
     Stops on terminal event or max_events. Raises if no terminal event observed.
+    When not quiet, long runs of the same event type (e.g. model_token) are
+    printed as: first event, "... N more <type> events ...", last event.
     """
     url = f"{BASE_URL}{path}"
     req = Request(url)
@@ -85,16 +114,17 @@ def stream_sse_events(
         with urlopen(req, timeout=timeout_sec) as resp:
             count = 0
             last_event: str | None = None
+            last_event_line: str = ""
             events: list[tuple[str, dict]] = []
+            run: list[tuple[str, list[str]]] = []  # (event_type, [line1, line2])
             start = time.time()
             for line in resp:
                 if (time.time() - start) > timeout_sec:
                     break
                 line = line.decode("utf-8").rstrip()
-                if not quiet:
-                    print(line)
                 if line.startswith("event:"):
                     last_event = line.split(":", 1)[1].strip()
+                    last_event_line = line
                 if line.startswith("data:"):
                     count += 1
                     raw = line.split(":", 1)[1].strip()
@@ -102,11 +132,24 @@ def stream_sse_events(
                         payload = json.loads(raw)
                     except json.JSONDecodeError:
                         payload = {"_raw": raw}
-                    events.append((last_event or "message", payload))
-                    if last_event in {"final_result", "final_error", "job_cancelled"}:
+                    event_type = last_event or "message"
+                    event_lines = [last_event_line, line]
+
+                    # Flush run if type changed
+                    if run and run[0][0] != event_type:
+                        _flush_sse_run(run, quiet=quiet)
+                        run = []
+                    run.append((event_type, event_lines))
+
+                    events.append((event_type, payload))
+                    if event_type in {"final_result", "final_error", "job_cancelled"}:
+                        _flush_sse_run(run, quiet=quiet)
                         return events
                     if max_events is not None and count >= max_events:
+                        _flush_sse_run(run, quiet=quiet)
+                        run = []
                         break
+            _flush_sse_run(run, quiet=quiet)
     except HTTPError as e:
         print(f"SSE error: {e.code} {e.read().decode('utf-8')}", file=sys.stderr)
         return []
@@ -141,8 +184,8 @@ def main() -> None:
     # ------------------------------------------------------------------
     # Contract 1: init is idempotent (same ids -> same thread)
     # ------------------------------------------------------------------
-    print(f"\n=== 1) POST /v1/threads/init (student_id={student_id}, funding_request_id={funding_request_id}) ===")
-    status, body = _post("/v1/threads/init", {"student_id": student_id, "funding_request_id": funding_request_id})
+    print(f"\n=== 1) POST /v1/threads/init (funding_request_id={funding_request_id}) ===")
+    status, body = _post("/v1/threads/init", {"funding_request_id": funding_request_id})
     # body is raw string; may be double JSON-encoded by the API
     try:
         init_resp = _parse_json(body)
@@ -154,7 +197,7 @@ def main() -> None:
     _assert(thread_id is not None, f"init missing thread_id: {init_resp}")
     _assert(isinstance(init_resp.get("is_new"), bool), f"init missing is_new bool: {init_resp}")
 
-    status2, body2 = _post("/v1/threads/init", {"student_id": student_id, "funding_request_id": funding_request_id})
+    status2, body2 = _post("/v1/threads/init", {"funding_request_id": funding_request_id})
     init_resp2 = _parse_json(body2) if body2 else {}
     _assert(status2 in {200, 201}, f"second init expected 200/201, got {status2}: {body2[:200]}")
     _assert(init_resp2.get("thread_id") == thread_id, f"init not idempotent: {thread_id} vs {init_resp2.get('thread_id')}")
@@ -163,8 +206,8 @@ def main() -> None:
     print(f"\nThread ID: {thread_id}")
 
     # Create a second thread for cross-thread idempotency tests.
-    print(f"\n=== 1b) POST /v1/threads/init (student_id={student_id}, funding_request_id={funding_request_id_2}) ===")
-    status_b, body_b = _post("/v1/threads/init", {"student_id": student_id, "funding_request_id": funding_request_id_2})
+    print(f"\n=== 1b) POST /v1/threads/init (funding_request_id={funding_request_id_2}) ===")
+    status_b, body_b = _post("/v1/threads/init", {"funding_request_id": funding_request_id_2})
     init_b = _parse_json(body_b)
     thread_id_2 = init_b.get("thread_id")
     _assert(status_b in {200, 201}, f"init2 expected 200/201, got {status_b}: {body_b[:200]}")
@@ -183,6 +226,40 @@ def main() -> None:
     _assert(int(platform_ctx.get("request_id", -1)) == funding_request_id, "platform context request_id mismatch")
     _assert(int(platform_ctx.get("user_id", -1)) == student_id, "platform context user_id mismatch")
     print("PASS: platform context read")
+
+    # ------------------------------------------------------------------
+    # Contract 2b: operator execution (Thread.CreateOrLoad) + idempotency
+    # ------------------------------------------------------------------
+    print("\n=== 2b) POST /v1/debug/operators/thread_create_or_load ===")
+    op_id_key = f"contract-thread-init-{uuidlib.uuid4()}"
+    status, body = _post(
+        "/v1/debug/operators/thread_create_or_load",
+        {
+            "student_id": student_id,
+            "funding_request_id": funding_request_id,
+            "idempotency_key": op_id_key,
+        },
+    )
+    _assert(status == 200, f"operator debug expected 200, got {status}: {body[:200]}")
+    op_resp = _parse_json(body)
+    _assert(op_resp.get("status") == "succeeded", f"operator status not succeeded: {op_resp}")
+    result = op_resp.get("result") or {}
+    _assert(result.get("thread_id") is not None, f"operator result missing thread_id: {op_resp}")
+
+    status2, body2 = _post(
+        "/v1/debug/operators/thread_create_or_load",
+        {
+            "student_id": student_id,
+            "funding_request_id": funding_request_id,
+            "idempotency_key": op_id_key,
+        },
+    )
+    _assert(status2 == 200, f"operator debug repeat expected 200, got {status2}: {body2[:200]}")
+    op_resp2 = _parse_json(body2)
+    _assert(op_resp2.get("status") == "succeeded", f"operator repeat status not succeeded: {op_resp2}")
+    result2 = op_resp2.get("result") or {}
+    _assert(result2.get("thread_id") == result.get("thread_id"), "operator idempotency thread_id mismatch")
+    print("PASS: operator execution + idempotency")
 
     # ------------------------------------------------------------------
     # Contract 3: query submit returns query_id and SSE reaches terminal
@@ -212,6 +289,24 @@ def main() -> None:
     if terminal[0] != "final_result":
         _fail(f"query did not succeed; terminal={terminal[0]} payload={terminal[1]}")
     print("PASS: SSE reaches terminal and returns final_result")
+
+    # ------------------------------------------------------------------
+    # Contract 3b: ledger-backed workflow SSE stream
+    # ------------------------------------------------------------------
+    print(f"\n=== 4b) Ledger SSE stream (/v1/workflows/{query_id}/events) ===")
+    ledger_events = stream_sse_events(f"/v1/workflows/{query_id}/events", timeout_sec=timeout_sec, max_events=None, quiet=False)
+    ledger_types = [t for (t, _d) in ledger_events]
+    _assert(
+        ledger_types.count("final_result") + ledger_types.count("final_error") + ledger_types.count("job_cancelled") == 1,
+        "ledger SSE expected exactly one terminal event",
+    )
+    _assert("job_started" in ledger_types, "ledger SSE missing job_started event")
+    _assert(any(t == "model_token" for t in ledger_types), "ledger SSE expected at least one model_token event")
+    terminal_ledger = [e for e in ledger_events if e[0] in {"final_result", "final_error", "job_cancelled"}][0]
+    if terminal_ledger[0] != "final_result":
+        _fail(f"ledger SSE did not succeed; terminal={terminal_ledger[0]} payload={terminal_ledger[1]}")
+    print("PASS: ledger SSE reaches terminal and returns final_result")
+
 
     # ------------------------------------------------------------------
     # Contract 4: query_id idempotency and cross-thread conflict

@@ -40,6 +40,7 @@ This is a navigation aid for the schema and workflow template files in this repo
 - `schemas/outcomes/alignment_score.v1.json`
 - `schemas/outcomes/email_draft.v1.json`
 - `schemas/outcomes/email_review.v1.json`
+- `schemas/outcomes/conversation_suggestions.v1.json`
 - `schemas/outcomes/paper_metadata.v1.json`
 - `schemas/outcomes/platform_patch_proposal.v1.json`
 - `schemas/outcomes/platform_patch_receipt.v1.json`
@@ -70,6 +71,8 @@ This is a navigation aid for the schema and workflow template files in this repo
 - `schemas/operators/email_generate_draft.output.v1.json`
 - `schemas/operators/email_review_draft.input.v1.json`
 - `schemas/operators/email_review_draft.output.v1.json`
+- `schemas/operators/conversation_suggestions_generate.input.v1.json`
+- `schemas/operators/conversation_suggestions_generate.output.v1.json`
 - `schemas/operators/email_optimize_draft.input.v1.json`
 - `schemas/operators/email_optimize_draft.output.v1.json`
 - `schemas/operators/email_apply_to_platform_propose.input.v1.json`
@@ -103,4 +106,3 @@ This is a navigation aid for the schema and workflow template files in this repo
 - `schemas/sse/artifact_ready.v1.json`
 - `schemas/sse/final.v1.json`
 - `schemas/sse/error.v1.json`
-

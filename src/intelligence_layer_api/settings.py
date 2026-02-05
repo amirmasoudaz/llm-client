@@ -7,6 +7,12 @@ from os import getenv
 @dataclass(frozen=True)
 class Settings:
     debug: bool = getenv("IL_DEBUG", getenv("DEBUG_MODE", "false")).lower().strip() in {"1", "true", "yes"}
+    use_workflow_kernel: bool = getenv("IL_USE_WORKFLOW_KERNEL", "false").lower().strip() in {"1", "true", "yes"}
+    auth_bypass: bool = getenv("IL_AUTH_BYPASS", "false").lower().strip() in {"1", "true", "yes"}
+    credits_bootstrap: bool = getenv("IL_CREDITS_BOOTSTRAP", "true").lower().strip() in {"1", "true", "yes"}
+    credits_bootstrap_amount: int = int(getenv("IL_CREDITS_BOOTSTRAP_AMOUNT", "1000"))
+    credits_reservation_ttl_sec: int = int(getenv("IL_CREDITS_RESERVATION_TTL_SEC", "900"))
+    credits_min_reserve: int = int(getenv("IL_CREDITS_MIN_RESERVE", "1"))
 
     # Intelligence layer Postgres (ledgers/runtime)
     il_pg_dsn: str = getenv("IL_PG_DSN", getenv("PG_DSN", "postgresql://postgres:postgres@localhost:5432/intelligence_layer"))

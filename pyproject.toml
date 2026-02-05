@@ -61,6 +61,7 @@ layer2 = [
     "gunicorn>=21.2",
     "aiomysql>=0.2.0",
     "PyMySQL>=1.1.0",
+    "Jinja2>=3.1",
     "asyncpg>=0.27.0",
 ]
 
@@ -95,6 +96,7 @@ all = [
     "asyncpg>=0.27.0",
     "redis>=4.2.0",
     "aiokafka>=0.10.0",
+    "Jinja2>=3.1",
 ]
 
 # Development (includes all extras and dev tools)
@@ -123,6 +125,7 @@ dev = [
     "gunicorn>=21.2",
     "aiomysql>=0.2.0",
     "PyMySQL>=1.1.0",
+    "Jinja2>=3.1",
 ]
 
 [tool.pytest.ini_options]

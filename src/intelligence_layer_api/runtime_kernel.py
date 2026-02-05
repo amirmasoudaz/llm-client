@@ -24,12 +24,14 @@ from llm_client.config.agent import AgentConfig
 from llm_client.tools.middleware import MiddlewareChain
 
 from intelligence_layer_ops.plugins.platform_plugin import PlatformContextToolsPlugin
+from intelligence_layer_kernel.events import EventWriter, RuntimeEventBridge
 
 
 @dataclass(frozen=True)
 class KernelContainer:
     kernel: RuntimeKernel
     engine: ExecutionEngine
+    event_bridge: RuntimeEventBridge
 
 
 def _build_engine() -> ExecutionEngine:
@@ -101,4 +103,6 @@ async def build_kernel(*, pg_pool: asyncpg.Pool) -> KernelContainer:
         engine=engine,
         agent_factory=agent_factory,
     )
-    return KernelContainer(kernel=kernel, engine=engine)
+    bridge = RuntimeEventBridge(event_bus=event_bus, writer=EventWriter(pool=pg_pool), tenant_id=1)
+    bridge.start()
+    return KernelContainer(kernel=kernel, engine=engine, event_bridge=bridge)

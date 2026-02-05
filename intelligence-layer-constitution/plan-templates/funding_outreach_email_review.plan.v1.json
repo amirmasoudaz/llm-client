@@ -60,6 +60,24 @@
         "custom_instructions": { "from": "intent.inputs.custom_instructions" }
       },
       "produces": ["outcome.email_review"]
+    },
+    {
+      "step_id": "s4",
+      "kind": "operator",
+      "name": "Conversation.Suggestions.Generate",
+      "operator_name": "Conversation.Suggestions.Generate",
+      "operator_version": "1.0.0",
+      "effects": ["produce_outcome"],
+      "policy_tags": ["read_only"],
+      "risk_level": "low",
+      "cache_policy": "use_if_safe",
+      "idempotency_template": "suggestions:{tenant_id}:{thread_id}:{computed.email_body_hash}",
+      "payload": {
+        "intent_type": { "from": "intent.intent_type" },
+        "platform": { "from": "context.platform" },
+        "outcomes": { "from": "outcome" }
+      },
+      "produces": ["outcome.suggestions"]
     }
   ]
 }
