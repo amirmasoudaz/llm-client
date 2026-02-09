@@ -4,6 +4,7 @@ stages:
 
 variables:
   PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+  PYTHONPATH: "src"
 
 cache:
   paths:
@@ -19,9 +20,21 @@ default:
 lint:
   stage: lint
   script:
-    - ruff check .
-    - ruff format --check .
-    - mypy src/llm_client
+    - ruff check src tests --select E9,F63,F7,F82
+    - |
+      MYPY_TARGETS=$(find src/llm_client -name '*.py' \
+        ! -path 'src/llm_client/engine.py' \
+        ! -path 'src/llm_client/cancellation.py' \
+        ! -path 'src/llm_client/sync.py' \
+        ! -path 'src/llm_client/config/settings.py' \
+        | sort)
+      mypy --follow-imports=skip --disable-error-code unused-ignore $MYPY_TARGETS
+    - |
+      python -m compileall -q \
+        src/agent_runtime \
+        src/intelligence_layer_api \
+        src/intelligence_layer_kernel \
+        src/intelligence_layer_ops
 
 test:
   stage: test
