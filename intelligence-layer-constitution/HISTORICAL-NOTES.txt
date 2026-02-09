@@ -1,0 +1,872 @@
+GOAL: INTELLIGENCE LAYER -> an advisor and assistant to the user along the request from the minute the request is made up to the end in a way that the user doesn't have to think about anything when they want to outreach to a professor or institution.
+
+USER FLOW:
+
+A complete and comprehensive explanation of how this system must behave. We'll go through this by analyzing a real scenario:
+
+A student comes to our platform, the student is either a new user who we need to collect their required data for our agents (email, SOP, CV, etc.), or we already have their data, so we need to store the user state, whether they're onboarded or not, whether we have their complete data or not, and we need to decide based on this state to adjust the layer's bahvior next. We don't have direct contact with the user and we'll determine the user state with the requests we get from the platform frontend or the platform backend. Everything and all the processes will be done on our end and the results will only be pushed to the platform front/back ends and we don't care who talks to the intelligence layer. Whoever talks, the intelligence layer answers. We won't bother for the authentication, we'll only read the cookies the backend has saved for a user session and we'll only validate the cookies we receive in the request header to the intelligence layer with the one backend has stored somewhere. So, in order to make the usage of the system easier, we'll need to provide whoever talking to the intelligence layer with a numbers of super simple API endpoints and do the heavy liftings in the intelligence layer. For brevity, I'll call the side who talks to the intelligence layer "The Client" and our intelligence layer "The Server".
+
+Okay, so, first, the server will receive a request for initiating a thread, getting some parameters that will be unique to that thread and that thread only, which in our case, will be a funding_request_id: int and a student_id: int. Our layer will check if there are any threads assotiated with this funding_request_id + student_id combination. If there exists a thread, it should return the thread_id and the status of the thread (whether its new or is already ongoing or etc.). Then, from that point onwards, the talker will only send the thread_id plus other stuff when calling and talking the APIs of the server for that thread. The main communication point will be an endpoint that gets a thread_id and a query of the user, along with other necessary parameters, but the required params are thread_id and the query. When the server receives this request, it immidiately returns an ID (call it whatever meaningful you want, like query_id, thread_msg_id, job_id, etc or whatever you decide it's best, I'll call it query_id for now until we decide another better name for it), and that ID will be used when streaming events, tokens, or call for any actions. That ID is what the client will be looking for when waiting for anything from the server. Then after the handshake between the client and the server is being made on that query_id, the server starts taking actions and doing what it should be doing, making decisions, calling tools, calling agents, storing data, manipulation of entries, etc. and on each action and each change, the progress and what it did must be streamed to the talker as "the progress" and inform the talker of any actions it must do, such as preloading any docs, changing anything, refreshing the session or page, updating any states, etc. (the details will come later in this message). Then finally when everything is finished and the server is finished processing the user query, the results must be sent to the talker, be it LLM conversation response tokens via streaming, or the file paths, links, citations, metadata via webhooks or the rest api, or calling any API of the talker to inform of changes made to the database, showing any buttons to the user and await their action, etc. And this cycle goes on! 
+
+
+Named operators invoked by the Switchboard:
+0) Onboarding ->
+	When a new user comes to our system and the request to initiate a thread is made to us, our system should look for the data we already have on the user and based on that data, it should decide whether the onboarding cycle should run first or not. If the data we have on user is sufficient, the state of that user must change to something that lets the server know that user is ready. If we have no data or the data has missing points, the onboarding cycle must be activated and ask the user, through prompts, to provide the needed data, step by step. The data we need is the following:
+
+	DATA AND PREREQUISITES:
+	- GENERAL (Base Data):
+		- first_name
+		- last_name
+		- email
+		- mobile_number
+		- date_of_birth
+		- gender
+		- country_of_citizenship
+	- INTELLIGENCE:
+		- PERSONALIZATION PREFERENCES:
+			- The name they wanna use in their documents and emails
+			- Contacts info and social media pages they wanna include in the headings of the letters/CV and the signature part of the emails (e.g. LinkedIn, GitHub/GitLab, Email Address, Phone Number, Portfolio Websites, Websites, ORCID, etc.)
+			- Affiliation they wanna use, titles, etc.
+		- BACKGROUND DATA:
+			- They can upload their resume if they haven't or if they have a more recent and updated resume they want to replace the old data with it. (Recommended) -> if they uploaded or wanted to use the uploaded resume on their account -> find the missing fields, prompt the user and ask them about the information that completes them. -> if everything is completed, toggle user background data complete to true so that agent doesn't ask it again.
+			- if not, they can enter them manually ->
+				- user's degrees ->
+					- for each degree the user wants to enlist or mention in their outreach requests or in their resume ->
+						- GPA
+						- achievements
+						- activities
+						- thesis and awards
+						- rank or accreditations
+						- anything the user wants to use in future outreach requests
+				- research interests ->
+					- topics + why + reasoning (will be used to draft their sop/cv/email)
+				- professional/work experiences ->
+					- title/position/role
+					- location/company
+					- timeline
+					- activities/tasks/achievements
+				- selected coursework ->
+					- they can upload their transcrip and Dana digests it and lists the items and courses related to the user's research interests
+				- publications and presentations ->
+					- for each, the must provide -> 
+						- name of the author or their name
+						- title of the paper/publication/presentation
+						- publication/journal/conference name
+						- year of the work
+						- type of the paper -> conference/thesis/journal/case report/etc.
+				- workshops and certificates -> 
+					- for each they must provide at least the name of it.
+				- Skills -> a comprehensive list of all the things the user can do, Dana must suggest a good combination of skills infered from the user's data, but the use can ask Dana to add or remove items to it.
+				- language competence and test scores ->
+					- for each language -> fluency level (beginer, intermediate, advanced, fluent, bilingual, native) level, as well as the test scores they might have. 
+					- If they don't have any test scores, they can provide an estimate skill scores they can get and an estimated date of the exam they wanna take.
+				- references ->
+					- for each they must provide full name, email address (or available upon request - not recommended), and the position & organization (affiliation).
+		- COMPOSER DATA:
+			- Data required for drafting SOPs and email fine tunings ->
+				- These data will be extracted and captured when the first SOP is being requested to generate, and the next SOP generation requests will require less input data as the user data will be save into Dana's memory. -> 
+					- Clear Research Direction (Not Vague Interest), user must state what they want to work on in concrete terms. Not “I am interested in AI”, But “I want to work on X problem, using Y methods, applied to Z context”.
+					- Motivation With Causality, Not Emotion -> Why this research area, and why you? This is not a childhood story. It is a causal chain ->
+						- What exposed you to the problem
+						- What you noticed was missing or broken
+						- Why that gap matters scientifically or practically
+						- Why you want to fix it
+					- Academic and Technical Preparation -> This is where the user quietly prove competence. ->
+						- Relevant coursework (only the useful ones)
+						- Core technical skills (methods, tools, frameworks)
+						- Research methods you already understand or used
+						- Any lab, thesis, or project experience tied to the topic
+					- Research Experience and Evidence of Output -> This is the funding trigger. -> 
+						- Theses, capstones, serious projects
+						- Publications, preprints, posters, reports (if any)
+						- What you did, not what the group did
+						- What went wrong and what you learned
+					- Fit With the Supervisor and Group -> 
+						- You understand the supervisor’s research direction
+						- Where your interests overlap
+						- How your background complements their work
+						- That you can integrate into their lab ecosystem
+					- Why This Institution (Functionally) ->
+						- Facilities, datasets, labs, or collaborations
+						- Interdisciplinary structure
+						- Funding model or training style
+						- Why this environment accelerates your goals
+					- Career Trajectory and Return on Investment -> 
+						- Where this degree takes you next
+						- Academia, industry research, applied R&D, policy, etc.
+						- How the training supports that path
+					- Resilience and Research Temperament ->
+						- Persistence through difficulty
+						- Independence and self-direction
+						- Comfort with uncertainty
+						- Willingness to iterate and fail
+					- Professional Closing ->
+						- Your readiness
+						- Your alignment
+						- Your commitment to contributing, not just receiving
+					- Things a Good SOP Must Avoid
+						- This is just as important.
+						- Avoid ->
+							- Life stories unrelated to research
+							- Repeating your CV line by line
+							- Overclaiming or buzzword stuffing
+							- Excessive praise of the university
+							- Emotional desperation
+							- Vague “passion” with no evidence
+		- TEMPLATES (TEMPLATE AGENT'S BEHAVIOR WILL BE DECIDED LATER):
+			- if the toggle for the templates finalized is false -> prompt the user if they've completed and finalized their email templates 
+				-> if no -> read the templates of the user and guide them towards modifying and finalizing their templates and then toggle the templates finalized somewhere so that we don't ask them again. we can modify the funding_students_templates for the user -> canapply_api.funding_students_templates
+				-> if yes -> toggle the templates finalized somewhere so that we don't ask them again.
+	- DRIVERS:
+		- GMail API is Active or Not (Check canapply_api.funding_credentials to see if there is a record for the user_id = student_id). Based on this we can populate our own database (the intelligence layer)
+		- If GMail API is not active, the gmail onboarder cycle will 
+		- GMAIL ONBOARDER CYCLE:
+			- Gmail Onboarder -> Steps to connect their desired gmail account to CanApply Intelligence Layer -> 
+				- 1. go to console.cloud.google.com
+				- 2. add/login or select the desired google account they wanna connect to CanApply (from the toggle of the upper right corner, the circle that contains their initials or their photo)
+				- 3. open the project picker (next to the Google Cloud icon in the upper left corner), click on "New project" in the upper right corner of the opened card.
+				- 4. set a name in the opened tab, like, "CanApply Outreach Intelligence", click on the blue "Create" botton. Then, ensure that project is selected, if the text in the rectangle next to the google cloud icon isn't showing the project name, they should click on the "Select project" and then choose the project they just created.
+				- 5. next, open the google cloud menu if not openned (the stacked lines button on the upper left corner), find the APIs & Services, find the "Library", click on it.
+				- 6. Search for Gmail API, or scroll down to find it and click on it and click on the blue "Enable" button.
+				- 7. Now, find the OAuth consent screen from the menu in the left, click on it, then if it says "Google Auth Platform not configured yet", click on the blue "Get started", button. In the opened page, choose an App name, like "CanApply App". Choose their own email in teh User support email drop down menu, and click "next", then, choose the "External" audience, next, in the Contact information, add your email, next, click "I agree to the Google API Services: User Data Policy. ", then click continue, then click on the blue "Create" button. if it's already configured, the may proceed to the next step.
+				- 8. In the Audience tab, found in the menu on the left, click the "Publish app" button and on the confirm prompt, click on "confirm".
+				- 9. In the Clients tab, found in the menu on the left, click on the "+ Create client". A new page opens, asking for the "Application type *", choose "Web application" (IMPORTANT). they can leave the Name as the default, then, in the "Authorized JavaScript origins", click on "+ Add URI" and paste the "https://onboarder.canapply.ca" in the input box that appears. Do not click on the "+ Add URI" again, and proceed to the section for the "Authorized redirect URIs", and there, click on "+ Add URI" and paste "https://onboarder.canapply.ca/oauth/google/callback", and finally, click on the blue "Create" button and wait for its completion. A card will appear, saying that "OAuth client created" and at the very bottom of that card, there is a button saying "Download JSON", click on that button, a file with a name starting with "client_secret_" will be downloaded.
+				- 10. When that file is downloaded, prompt the AI that the json client secret is ready. The AI will ask them to attach that file in the message box.
+				- 11. Our system will create a Authorization Link for the user, the user must click on it, and the Google Sign In page openes, on that page, choose the google account they created their secret json for, a page shows up as a warning to whether trust canapply or not, saying "Google hasn’t verified this app", tell the user that we're in a scaling mode and are awaiting our Google Certificate, but for now, they can trust CanApply (duh because they signed up for this), click on the grey "Advanced" button on the lower left of the message and click on "Go to canapply.ca (unsafe)", IT IS SAFE. then on the next page, it will say "canapply.ca wants access to your Google Account", check the all the requested permissions boxes, "read and sending emails on behalf of the user" or click on the "Select all" and click on "Continue", and Voila, their account is now integrated into CanApply Intelligence.
+
+	Each of these data must be recorded and stored in the database for each of the students.
+	Each of these data categories and any other we'll receive from the user must have a toggle for their status of completion or missing.
+
+	MEMORY:
+	THE DATA WE'LL COLLECT FROM USER INTERACTIONS ARE ALL IN MEMORY. 
+	ALONG THE CONVERSATIONA AND THE INTERACTIONS OF THE USER WITH OUR LAYER, THE AGENT WILL DECIDE WHETHER TO CALL THE RECORD MEMORY TOOL OR NOT WITH WHAT DATA TO RECORD.
+
+
+	THE PLATFORM DATA LOCATIONS AND HOW TO ACCESS THEM.
+	The data of the platform database is stored in multiple mariadb mysql tables, for each thread, the intelligence layer will only need the following data to load or interact with DEPENDING ON THE JOB. The rest will be captured or stored by the intelligence layer itself.
+	```sql
+	SELECT
+		s.id AS user_id,                                                  -- the student_id -> s.id <-> fr.student_id <-> m.metable_id
+		fr.id AS request_id,                                              -- the funding request id
+		fe.id AS email_id,                                                -- if not null, it means the email is drafted and is ready to be sent or is already sent (follow up/reminder ops)
+		fp.id AS request_professor_id,                                    -- the professor id associated with that funding request id
+		s.first_name AS user_first_name,                                  -- GENERAL DATA
+		s.last_name AS user_last_name,                                    -- GENERAL DATA
+		s.email AS user_email_address,                                    -- GENERAL DATA
+		s.mobile_number AS user_phone_number,                             -- GENERAL DATA
+		s.date_of_birth AS user_date_of_birth,                            -- GENERAL DATA
+		s.gender AS user_gender,                                          -- GENERAL DATA
+		s.country_of_citizenship as user_country_of_citizenship,          -- GENERAL DATA
+		fr.created_at AS request_creation_datetime,                       -- when the request was created
+		fr.match_status AS request_match_status,                          -- how detailed they want the outreach email to be (modifiable by intelligence layer) -> values: 1 -> standard, 2 -> detailed, 3 -> custom
+		fr.research_interest AS request_research_interest,                -- FUNDING REQUEST DATA
+		fr.paper_title AS request_paper_title,                            -- FUNDING REQUEST DATA
+		fr.journal AS request_journal,                                    -- FUNDING REQUEST DATA
+		fr.`year` AS request_year,                                        -- FUNDING REQUEST DATA
+		fr.research_connection AS request_research_connection,            -- FUNDING REQUEST DATA
+		fr.attachments AS request_attachments,                            -- usage in document read/write (fr.attachments <-> fe.attachments)
+		fr.student_template_ids AS request_student_template_ids,          -- EXAMPLE: {"main": 21, "reminder1": 22, "reminder2": 23, "reminder3": 24} (e.g. *.main <-> funding_student_templates.id)
+		fr.`status` AS request_status,                                    -- status of the request (e.g. "incomplete", "complete", "failed", "review", "preview", "sent")
+		fr.email_subject AS request_email_subject,                        -- the drafted/sent email subject (fe.main_email_subject <-> fr.email_subject)
+		fr.email_content AS request_email_body,                           -- the drafted/sent email body (fe.main_email_body <-> fr.email_content)
+		fe.main_sent AS main_email_sent_status,                           -- if true, it means the main email has been sent (reminder ops)
+		fe.main_sent_at AS main_email_sent_datetime,                      -- if not null, it means the main email has been sent (reminder ops)
+		fe.main_email_subject AS main_email_subject,                      -- the drafted/sent email subject (modifiable by agent)
+		fe.main_email_body AS main_email_body,                            -- the drafted/sent email body (modifiable by agent)
+		fe.reminder_one_sent AS reminder_one_sent_status,                 -- if true, it means the first reminder has been sent (reminder ops)
+		fe.reminder_one_sent_at AS reminder_one_sent_datetime,            -- if not null, it means the first reminder has been sent (reminder ops)
+		fe.reminder_one_body AS reminder_one_body,                        -- the drafted/sent first reminder body (modifiable by agent)
+		fe.reminder_two_sent AS reminder_two_sent_status,                 -- if true, it means the second reminder has been sent (reminder ops)
+		fe.reminder_two_sent_at AS reminder_two_sent_datetime,            -- if not null, it means the second reminder has been sent (reminder ops)
+		fe.reminder_two_body AS reminder_two_body,                        -- the drafted/sent second reminder body (modifiable by agent)
+		fe.reminder_three_sent AS reminder_three_sent_status,             -- if true, it means the third reminder has been sent (reminder ops)
+		fe.reminder_three_sent_at AS reminder_three_sent_datetime,        -- if not null, it means the third reminder has been sent (reminder ops)
+		fe.reminder_three_body AS reminder_three_body,                    -- the drafted/sent third reminder body (modifiable by agent)
+		fe.professor_replied AS professor_reply_status,                   -- if true, it means the professor has replied (follow up)
+		fe.professor_replied_at AS professor_reply_datetime,              -- if not null, it means the professor has replied (follow up)
+		frep.reply_body_cleaned AS professor_reply_body,                  -- the professor's reply body (follow up)
+		frep.engagement_label AS professor_reply_engagement_label,        -- the professor's reply engagement label (follow up)
+		frep.activity_status AS professor_reply_activity_status,          -- the professor's reply activity status (follow up)
+		frep.short_rationale AS professor_reply_short_rationale,          -- the professor's reply short rationale (follow up)
+		frep.key_phrases AS professor_reply_key_phrases,                  -- the professor's reply key phrases (follow up)
+		frep.auto_generated_type AS professor_reply_auto_generated_type,  -- if not null or NONE, it means the professor's reply auto generated type (follow up)
+		fp.first_name AS professor_first_name,                            -- PROFESSOR DATA -> First Name
+		fp.last_name AS professor_last_name,                              -- PROFESSOR DATA -> Last Name
+		fp.full_name AS professor_full_name,                              -- PROFESSOR DATA -> Full Name
+		fp.occupation AS professor_occupation,                            -- PROFESSOR DATA -> Occupation
+		fp.research_areas AS professor_research_areas,                    -- PROFESSOR DATA -> Research Areas
+		fp.credentials AS professor_credentials,                          -- PROFESSOR DATA -> Credentials
+		fp.area_of_expertise AS professor_area_of_expertise,              -- PROFESSOR DATA -> Area of Expertise
+		fp.categories AS professor_categories,                            -- PROFESSOR DATA -> Categories
+		fp.department AS professor_department,                            -- PROFESSOR DATA -> Department
+		fp.email_address AS professor_email_address,                      -- PROFESSOR DATA -> Email Address
+		fp.url AS professor_url,                                          -- PROFESSOR DATA -> Webpage URL
+		fp.others AS professor_others,                                    -- PROFESSOR DATA -> Others
+		fi.institution_name AS institute_name,                            -- INSTITUTE DATA -> Name
+		fi.department_name AS department_name,                            -- INSTITUTE DATA -> Department Name
+		fi.country AS institute_country,                                  -- INSTITUTE DATA -> Country
+		m.value AS user_onboarding_data                                   -- USER METADATA -> example -> "user_onboarding_data": "{\"YourName\":\"AmirMasoud Azadfar\",\"YourLastDegree\":\"Bachelor\",\"UniversityName\":\"Ferdowsi University\",\"YourGPA\":3.9,\"PreferredEducationalLevel\":\"Master\",\"ThesisName\":null,\"YourInterests\":\"Machine Learning\"}"
+	FROM funding_requests fr
+	JOIN students s ON s.id = fr.student_id
+	JOIN funding_professors fp ON fp.id = fr.professor_id
+	JOIN funding_institutes fi ON fi.id = fp.funding_institute_id
+	LEFT JOIN metas m ON m.metable_id = fr.student_id AND m.`key` = 'funding_template_initial_data'
+	LEFT JOIN funding_emails fe ON fr.id = fe.funding_request_id
+	LEFT JOIN funding_replies frep ON fr.id = frep.funding_request_id
+	WHERE fr.id = <GIVEN_FUNDING_REQUEST_ID>
+	LIMIT 1;
+	```
+
+
+	You may use the above sql to understand where each data is.
+	Context loading from the platform DB (the above SQL, turned into a service):
+	- PlatformContextLoader.load(thread_scope) returns a typed object:
+		- student base fields
+		- funding_request fields
+		- professor/institute fields
+		- email draft/sent status
+		- latest reply analysis
+		- platform metas payload
+	Important operational rule:
+	Intelligence layer does not directly mutate platform tables. -> it calls apply patch service based on user's approval, or it emits apply_platform_patch action and the backend executes it.
+
+	0.0) telling user that this onboarding might be boring, but it's necessary, so, bear with us and do this with patience and accuracy. The better this stage is completed, the higher their satisfactory.
+	0.1) get user data and ask user to complete their platform (basic (name, etc.), intermediate (background), and advanced (background detail) information population)
+	0.2) redirecting to CanApply Services (funding, journey, consultation, admission chance, etc.)
+	0.3) ask user to upload and complete their documents and data (DATA AND PREREQUISITES)
+1) Professor workflows ->
+	1.0) professor_profile_retrieve -> retreive the information on that professor using the professor id associated with that funding_request_id
+	1.1) ask about this professor -> tool call load digests if canspider else load url gen summary + ext custom instruction.
+	1.2) ask about how aligned I am with this professor -> professor_alignment_score -> get the match/alignment results to provide the model with.
+2) Funding request workflows ->
+	2.1) asking to complete the information of a funding request to that professor -> the user might ask to change the research interest, or the research connection, and the agent must get what the user want to change the field into and call the agent responsible to changing stuff (this agent will always prompt the client to accept the operation or decline) -> funding_request_update_fields
+	2.2) asking to extract the abstract, journal, year, paper title from a URL or a PDF, which will be then asked to replace those FUNDING REQUEST DATA fields. -> paper_metadata_extract
+3) OPTIMIZE/COMPOSE?GENERATE EMAIL ->
+	-> FOR EXAMPLE: optimize (humanize, shorten, paraphrase, etc.) my email, add that I'm currently working on a similar thing to their paper with title "<TITLE>" ->
+		-> GET REQUIRED DATA FOR THE REQUEST ->
+		-> IF the paper in the FUNDING REQUEST DATA is not what the user is talking about ->
+			-> intelligence layer prompts user to provide either PDF or the public access URL or the data manually (to complete/correct the FUNDING REQUEST DATA) 
+				-> Input:
+					-> if PDF -> open the first 2 pages
+					-> if URL -> open URL
+					-> if manual in the prompt
+						-> extract abstract
+						-> extract year, paper title, journal
+						-> paper_metadata_extract -> make changes to FUNDING REQUEST DATA -> funding_request_update_fields
+			-> call composer agent with proper instructions and proposed changes and custom instructions (create bullets, change the subject to X, etc.)
+				-> get optimized email and provide the conversation agent with it to show the user
+				-> agent provides the user with the email and subject and asks the client to show the apply changes botton to the user and callback their response to replace the email body and subject in the platform db tables with the newly generated one.
+4) REVIEW DOCUMENT
+	-> FOR EXAMPLE: is my resume good -> tool call resume review with thread ID to get user data, prof data, request data, resume data -> get review results and provide the model with it to explain to the user.
+
+5) OPTIMIZE DOCUMENT
+	-> FOR EXAMPLE: optimize my resume based on what you said. -> tool call with proposed changes and the thread ID, get the result, compile PDF, get public URL from S3 and give it to the user, prompt "Apply to Documents"
+
+6) COMPOSE DOCUMENT
+	-> FOR EXAMPLE: Now I wanna generate an SOP for this professor saying X, Y, and Z.
+		- model prompts user to provide some context <CONTEXTS TO BE SPECIFIED>, then tool call SOP generation, generate, compile PDF, get public URL from S3 and provide the user with the URL. prompt "Apply to Documents"
+
+** All “apply” steps become action_required(apply_platform_patch) or artifact_ready plus an apply step.
+
+MEMORY -> User Specific Memory Contexts:
+	- Do's and Don'ts for the user
+	- Email tone and style guidelines
+	- User's preferences
+	- User's academic goals
+	- User's research interests
+	- User's ambitions and aspirations
+	- User's story and background
+	- instructions
+	- guardrails
+
+
+FILES: 
+	- S3 Bucket -> working dir -> s3://canapply-platform-stage/platform/intelligence_layer/
+	-> Path scheme
+		-> Temps (ephemeral per query): .../intelligence_layer/{student_id}/temporary/{thread_id}/{query_id}/...
+		-> Sandbox (iterative drafts per thread): .../intelligence_layer/{student_id}/sandbox/{thread_id}/...
+		-> Finals (approved artifacts): .../intelligence_layer/{student_id}/documents/{content_hash}.{ext}
+	-> Every uploaded or generated file gets a blake3 hash
+	-> Hash drives cache and storage keys
+	-> Re-uploads short-circuit parsing/digestion
+
+
+LLM INTERACTIONS:
+	- LLM Client Module -> A Complete Suite of tools and modules that makes intraction with LLMs very smooth and easy.
+
+AI BACKEND TASKS:
+
+- Agents Input Managements (DB I/O Ops, S3 I/O Ops, Context Engineering)
+- Agents File Ops Integrations with S3
+- Agents AI Jobs Design Integrations
+- Credit consumption calculation based on the sum of all the tokens a prompt will use (input tokens of prompt, cost of all the agents works, output costs of the agents, overall, ai_jobs token consumption) and send the commulative credits consumed + the report of the usage to platform backend to deduct from user's available credits 
+- Gen canapply_api.institutes <--- index ---> canapply_api.funding_institutes.institution_name
+- Designing a webhook to let frontend and platform know of the jobs statuses, refresh requests, redirect requests, "Apply to docs"/"Apply to request" button prompts, and any other actions
+- Designing SSE progress streaming to front before the actual response is streamed.
+	- Job lifecycle and progress
+		a small progress protocol so UI feels alive:
+			example:
+				- 5%: something
+				- 15%: something else
+				- 30%: else
+				- 60%: etc.
+				- 80%: etc..
+				- 100%: etc. etc.
+		it either should be SSE or webhook, we should plan this.
+
+- Each user's prompt that is sent to the AI backend alongside all other things to handle, must return something to the frontend as the identifier the frontend should listen for SSE
+- API should handle communications to both frontend and the platform backend for statuses, reports, histories, relations, communications, actions (redirect, refresh (when to update the user's page)), and the events (for both frontend and platform backend) and most importantly the orchestration and user flow.
+- We'll have 3 event channels for every thread, one for streaming the chatbot responses, two for calling for actions and sending meta, and three for sending progress updates and background info.
+- On chat/request/anything -> call for auth from backend of platform (dummy request for now till the platform backend is ready) -> returns the user's available credits, green light for further processing, package type, and how much agentic work can be done for this user (quota).
+- Orchestration, Operators, and Services
+	- Deep Orchestrator Agent (Dana v3) -> The Main Agent:
+		- Threads Management
+			- Persona -> which type of agent -> context management
+				- dynamic persona management based on the user prompts and tasks -> Agent Switch: redirect to another persona if the task is related to another one
+			- Usage and Credits -> on each LLM completions/generation/response 
+			- Service Calling
+			- Moderation
+			- 
+		- Operators (Ops <-> AI Jobs) -> The Agents, Tools, and Functions at Service:
+            - Switchboard -> The most important agent, it's the one that handles the user's prompts and tasks and redirects them to the appropriate agent/tool/function/etc. The switchboard agent decides what agents are required to call, what tools to use, and generates a list of tools, agents, tasks to be done -> then based on that list, the orchestration does what it's told to do or supposed to do. -> ALL JOBS/TOOLS/AGENTS MUST BE NAMED AND DEFINED PROPERLY SO THAT THE SWITCHBOARD CAN CALL THEM.
+			- Memory Agent
+				- Push -> 
+					ai_memory(
+						student_id: int, 
+						memory_type: Literal[
+							'tone', 
+							'do_dont', 
+							'preference', 
+							'goal', 
+							'bio', 
+							'instruction', 
+							'guardrail', 
+							'other'
+						],
+						content: str,
+						source: Literal['user', 'system', 'inferred'] = 'inferred',
+						confidence: float = 0.7,
+						ttl: datetime = None
+					)
+				- Pull <- ai_memory("SELECT id, memory_type, content, source, confidence from ai_memory WHERE student_id = %s and is_active = 1 ORDER BY created_at")
+			- Student Agent
+				- Pull <- student_ai_data()
+			- Professor Agents
+				- Info Retrieval Agent <- professor name recommendations
+				- Alignment Agent
+			- Email Agents
+				- Request Builder Agent -> fills the request input data -> db.funding_requests
+				- Generate Agent
+					- Read from 
+				- Review Agent
+				- Optimize Agent
+				- Apply Changes -> db.funding_emails, db.funding_requests
+			- Resume Agents
+				- Upload/Converter Agent -> db.student_documents
+				- Generate Agent
+				- Review Agent
+				- Optimize Agent
+				- Apply Changes -> db.student_attachments
+				- Export Agent <- db.student_documents
+			- Letter Agents
+				- Upload/Converter Agent -> db.student_documents
+				- Generate Agent
+				- Review Agent
+				- Optimize Agent
+				- Apply Changes -> db.student_attachments
+				- Export Agent <- db.student_documents
+			- Programs Agent
+				- Info Retrieval Agent
+				- Programs Recommendation Agent
+			- Onboarder Agent ->
+				- General Agent
+				- Gmail Onboarder Agent
+				- Data Onboarder Agent
+					- Background Onboarder Agent
+					- Letter Info Gatherer Agent
+				- Template Agent
+			- Moderation Agent ->
+				- Check the content and request compliance with CanApply and Dana ToS
+            - FollowUp Context Agent
+                - An agent that produces 2 or 3 follow up prompts for the user to continue the conversation with the agent.
+            - Chat Title Agent
+                - An agent that produces a title for the chat based on the user's previous interactions with the agent with a hard fallback to the one initially passed to the threads constructor.
+            - Context Agent
+                - Summarization Agent ->
+                    - Chat Thread History Summarization Agent
+                    - Document Summarization Agent
+                    - Data Summarization Agent
+            - Search Agent
+                - OpenAI Web Search Tool
+                - Perplexity API for deeper search
+	- Services (SVCs) -> Helpers, Modules, Routines, and Methods:
+		- DB I/O Ops
+		- S3 I/O Ops
+		- URL-based IOps
+		- Server Side Events (SSE)
+			- Messaging and Progress Streaming
+		- Server Side Rendering (SSR)
+			- Pushing Data to Frontend -> response payloads, history, etc.
+		- RAG -> 
+			- Short Term Memory
+			- Long Term Memory
+		- Hashing -> consistent blake3 hashing throughout the entire system
+
+Notes:
+- All agents/prompts/services must be versioned
+- all usage must be capped and metered
+- dynamic context and follow up suggestion should be based on the user's previous interactions with the agent. (must be token efficient)
+- file names -> inside thread -> {User Name}_{Document Type}_{Professor Name}.{extension}
+
+
+- Files will be of three types ->
+	- temps -> anything that is temporary and has a lifecycle inside the AI backend's processing jobs. These will not be shared with any other services and are REAL temp files, for example for compiling a LaTeX script to PDF, or to store it when received as bytes or anything to be processed, or prerequisites or a compilation, digestion. These must have a TTL and their lifetime is from the begining of a request to its response. The TTL must be modifiable (for dev for example, we don't want them deleted so that we can examine, but for production we'll activate the TTL). 
+	- sandbox -> the files that are temporary but ongoing work is being done on them request after request. Like a document generated by our agent which is not approved by the user yet to be added to their attachments, and might be asked to be modified (modifications on these files will include creating duplicates or copies of these to the temps). These are semi-final files.
+	- finals -> the files that are final and are approved by the user, or our agent to be included to the user's attachments or profile. These arer long term/time files and their lifecycle is indefinite.
+- File addresses will be student_id dependent -> each user will have its own directory of files -> 
+	- finals will be -> s3://canapply-platform-prod/platform/dana/{STUDENT_ID}/documents/{FILE_CONTENT_HASH}.{extension} -> file names will be stored in the database and will be applied when being sent or downloaded.
+	- temps will be -> s3://canapply-platform-prod/platform/dana/{STUDENT_ID}/temporary/{THREAD_ID}/<STUFF>
+	- sandbox will be -> s3://canapply-platform-prod/platform/dana/{STUDENT_ID}/sandbox/{THREAD_ID}/<STUFF>
+
+- File uploads must be cached, so that if one file is uploaded by the user multiple times we don't have to parse/process/digest it again (increasing computation/token efficiency) 
+
+---
+
+5.1 Student requirements are tracked as flags
+
+Each category you listed becomes:
+
+* `is_complete: bool`
+* `missing_fields: [..]`
+* `last_updated_at`
+* `source: user | platform | inferred`
+
+Top-level gates:
+
+* `base_profile_complete`
+* `background_data_complete`
+* `templates_finalized`
+* `gmail_connected`
+* `composer_prereqs_complete` (SOP-specific)
+
+### 5.2 Onboarding controller behavior
+
+On `threads/init` and on each query:
+
+* load student state
+* if any gate required for current intent is missing:
+
+  * emit `action_required` for the next smallest step
+  * do not proceed to heavy orchestration until resolved
+
+This is exactly your “step by step prompts to collect data” flow, but now it is deterministic and resumable.
+
+---
+
+## 3) Event schema (single stream, typed)
+
+All events share:
+
+* `event_type`
+* `thread_id`
+* `query_id`
+* `ts`
+* `payload`
+
+### 3.1 progress
+
+Payload example:
+
+* `percent: 0..100`
+* `stage: "loading_context" | "retrieving_docs" | "drafting" | "finalizing"`
+* `message: str`
+
+### 3.2 token_delta
+
+Payload example:
+
+* `delta: str`
+* `role: "assistant"`
+
+### 3.3 action_required
+
+This is the key to your “server tells client what to do” design.
+
+Payload:
+
+* `action_id`
+* `action_type`
+* `title`
+* `description`
+* `requires_user_input: bool`
+* `ui_hints` (buttons, labels)
+* `proposed_changes` (if applicable)
+* `expires_at` (optional)
+
+Common action types you already described:
+
+* `apply_platform_patch`
+  “Apply these updates to funding_requests/funding_emails/etc”
+* `upload_required`
+  “Provide PDF or URL so I can extract abstract, year, journal”
+* `refresh_ui`
+  “Refresh request page to reflect updates”
+* `redirect`
+  “Navigate user to Gmail onboarding page”
+* `confirm`
+  “Are you sure you want to overwrite resume?”
+* `select_option`
+  “Choose which template to use”
+
+### 3.4 artifact_ready
+
+Payload:
+
+* `artifact_id`
+* `kind: pdf | docx | markdown | json`
+* `storage_url` (pre-signed S3)
+* `metadata` (filename, hash, provenance)
+
+### 3.5 final
+
+Payload:
+
+* `final_text` (if chat response)
+* `summary`
+* `next_suggested_prompts` (optional)
+* `usage_report` (tokens, cost, credits)
+* `actions_emitted` (for easy UI reconciliation)
+
+
+---
+
+
+
+API Definitions and Exposing Methods and Endpoints:
+- list threads ---> (request_id: int) -> List[thread_id: int]
+- new thread ---> (request_id: int) -> thread_id: int
+- files - list of generated files' IDs ---> (thread_id: int) -> documents: Dict[str, int], status: bool # false if no documents
+- download - FastAPI IO Stream ---> (document_id: int) -> download_url: str, document_id: int
+- upload ---> (file: bytes, name: str, extension: str) -> document_id: int
+- user usage ---> (student_id: int, from: datetime, to: datetime)
+	-> messages (input: int, output: int, total: int)
+	-> files (input: int, output: int, total: int)
+	-> tokens (input: int, output: int, total: int)
+	-> cost (input: float, output: float, total: float)
+	-> sessions (threads: int)
+	-> credits (used: int, left: int, active: bool)
+- apply documents/email ---> (thread_id: int, document_id: int, funding_request_id: int) -> funding_request_id: int, attachment_id: int
+- suggestions -- GET -> (thread_id: int, n: int) -> List[Dict[str, str]]
+	- DB Ops -> (write suggestions: List[Dict[str, str]] per thread_id: int and after_msg_idx: int)
+- history ---> (thread_id: int) -> List[Dict[str, any]] list of prompts, completions, docs uploaded, docs generated, actions took, etc.
+- prompt, input, request field AI enhancement for a funding request (filling the research interests, year, journal, research connection, etc.)---> (context: str, length: int, query: str = "", request_id: int = None, thread_id: int = None, student_id: int) -> SSE response: str (streamed)
+- conversation ---> (prompt: str, document_ids: List[int], thread_id: int, contexts: Dict[str, Dict[str, any]]) -> SSE response: str (streamed) + progress: Literal[str] + Resp(stuff + ai_job_id: int)
+- retry conversation ---> (ai_job_id: int) -> Resp(stuff)
+
+
+### 2.1 Thread init
+
+**POST** `/v1/threads/init`
+
+Input:
+
+* `student_id: int`
+* `funding_request_id: int`
+* optional: `client_context` (locale, UI route, feature flags)
+
+Behavior:
+
+* look up existing thread for `(student_id, funding_request_id)`
+* if exists: return it with status
+* if not: create and return
+
+Output:
+
+* `thread_id`
+* `thread_status: new | active | archived`
+* `onboarding_gate: ready | needs_onboarding`
+* `missing_requirements: [..]` (optional, fast path)
+* `latest_thread_summary` (optional, token-efficient)
+
+### 2.2 Submit query
+
+**POST** `/v1/threads/{thread_id}/queries`
+
+Input:
+
+* `message: str`
+* optional: `attachments: [{source, file_id/url, mime, name}]`
+* optional: `intent_hint` (rarely needed, mostly internal)
+
+Output immediately:
+
+* `query_id`
+* `sse_url: /v1/queries/{query_id}/events`
+
+### 2.3 Query events (SSE)
+
+**GET** `/v1/queries/{query_id}/events`
+
+Emits typed events:
+
+* `progress`
+* `token_delta`
+* `action_required`
+* `artifact_ready`
+* `final`
+* `error`
+
+### 2.4 Resolve an action
+
+**POST** `/v1/actions/{action_id}/resolve`
+
+Input:
+
+* `status: accepted | declined`
+* optional: `payload` (user input, selected option, uploaded file pointer)
+
+Output:
+
+* ack + next steps (often another query starts internally or the same query continues)
+
+### 2.5 Optional reads (nice-to-have v1)
+
+* `GET /v1/threads/{thread_id}` summary, state, last queries
+* `GET /v1/queries/{query_id}` final result snapshot
+
+---
+
+
+
+
+# DATABASE STRUCTURE (CanApply Platform DB)
+- PROPOSED CHANGES TO THE ALREADY EXISTS MUST BE CHECKED WITH ME.
+
+## FUNDING REQUESTS TABLE
+```sql
+CREATE TABLE IF NOT EXISTS funding_requests (
+    id                   BIGINT UNSIGNED AUTO_INCREMENT
+        PRIMARY KEY,
+    student_id           BIGINT UNSIGNED              NOT NULL,
+    professor_id         BIGINT UNSIGNED              NOT NULL,
+    match_status         TINYINT                      NOT NULL,
+    research_interest    TEXT                         NULL,
+    paper_title          TEXT                         NULL,
+    journal              TEXT                         NULL,
+    year                 INT UNSIGNED                 NULL,
+    research_connection  TEXT                         NULL,
+    attachments          LONGTEXT COLLATE utf8mb4_bin NULL
+        CHECK (JSON_VALID(`attachments`)),
+    student_template_ids LONGTEXT COLLATE utf8mb4_bin NULL
+        CHECK (JSON_VALID(`student_template_ids`)),
+    status               VARCHAR(100) DEFAULT '0'     NULL,
+    ai_status            VARCHAR(255)                 NULL,
+    ai_response          LONGTEXT COLLATE utf8mb4_bin NULL
+        CHECK (JSON_VALID(`ai_response`)),
+    ai_updated_at        TIMESTAMP                    NULL,
+    email_subject        TEXT                         NULL,
+    email_content        TEXT                         NULL,
+    created_at           TIMESTAMP                    NULL,
+    updated_at           TIMESTAMP                    NULL,
+    deleted_at           TIMESTAMP                    NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+```
+
+## FUNDING EMAILS TABLE
+```sql
+CREATE TABLE IF NOT EXISTS funding_emails (
+    id                     INT AUTO_INCREMENT
+        PRIMARY KEY,
+    funding_request_id     BIGINT UNSIGNED              NOT NULL,
+    student_id             BIGINT UNSIGNED              NOT NULL,
+    professor_email        VARCHAR(255)                 NULL,
+    professor_name         VARCHAR(255)                 NULL,
+    main_email_subject     VARCHAR(255)                 NULL,
+    main_email_body        LONGTEXT                     NULL,
+    attachments            LONGTEXT COLLATE utf8mb4_bin NULL
+        CHECK (JSON_VALID(`attachments`)),
+    gmail_msg_id           VARCHAR(64)                  NULL,
+    gmail_thread_id        VARCHAR(64)                  NULL,
+    main_sent              TINYINT(1) DEFAULT 0         NULL,
+    main_sent_at           DATETIME                     NULL,
+    professor_replied      TINYINT(1) DEFAULT 0         NULL,
+    professor_replied_at   DATETIME                     NULL,
+    professor_reply_body   LONGTEXT                     NULL,
+    reminder_one_sent      TINYINT(1) DEFAULT 0         NULL,
+    reminder_one_sent_at   DATETIME                     NULL,
+    reminder_one_subject   VARCHAR(255)                 NULL,
+    reminder_one_body      LONGTEXT                     NULL,
+    reminder_two_sent      TINYINT(1) DEFAULT 0         NULL,
+    reminder_two_sent_at   DATETIME                     NULL,
+    reminder_two_subject   VARCHAR(255)                 NULL,
+    reminder_two_body      LONGTEXT                     NULL,
+    reminder_three_sent    TINYINT(1) DEFAULT 0         NULL,
+    reminder_three_sent_at DATETIME                     NULL,
+    reminder_three_subject VARCHAR(255)                 NULL,
+    no_more_reminders      TINYINT(1) DEFAULT 0         NULL,
+    no_more_checks         TINYINT(1) DEFAULT 0         NULL,
+    reminder_three_body    LONGTEXT                     NULL,
+    last_reply_check_at    DATETIME                     NULL,
+    next_reply_check_at    DATETIME                     NULL,
+    created_at             DATETIME                     NULL,
+    updated_at             DATETIME                     NULL,
+
+    CONSTRAINT funding_request_id
+        UNIQUE (funding_request_id),
+
+    CONSTRAINT fk_funding_emails_request
+        FOREIGN KEY (funding_request_id) REFERENCES funding_requests (id)
+            ON UPDATE CASCADE ON DELETE CASCADE,
+
+    CONSTRAINT fk_funding_emails_student
+        FOREIGN KEY (student_id) REFERENCES students (id)
+            ON UPDATE CASCADE ON DELETE CASCADE,
+
+    INDEX idx_funding_emails_next_check
+        (next_reply_check_at),
+
+    INDEX idx_funding_emails_status
+        (main_sent, professor_replied, no_more_reminders, no_more_checks),
+
+    INDEX idx_funding_emails_student_created
+        (student_id, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+```
+
+
+## FUNDING PROFESSORS TABLE
+```sql
+CREATE TABLE IF NOT EXISTS funding_professors (
+    prof_hash            BINARY(32)                                    NOT NULL,
+    id                   INT UNSIGNED AUTO_INCREMENT
+        PRIMARY KEY,
+    full_name            VARCHAR(512)                                  NOT NULL,
+    first_name           VARCHAR(512)                                  NOT NULL,
+    middle_name          VARCHAR(512)                                  NULL,
+    last_name            VARCHAR(512)                                  NOT NULL,
+    occupation           VARCHAR(512)                                  NULL,
+    department           VARCHAR(255)                                  NOT NULL,
+    email_address        VARCHAR(320)                                  NOT NULL,
+    url                  VARCHAR(1024)                                 NULL,
+    funding_institute_id INT UNSIGNED                                  NOT NULL,
+    other_contact_info   LONGTEXT COLLATE utf8mb4_bin                  NULL
+        CHECK (JSON_VALID(`other_contact_info`)),
+    research_areas       LONGTEXT COLLATE utf8mb4_bin                  NOT NULL
+        CHECK (JSON_VALID(`research_areas`)),
+    credentials          TEXT                                          NULL,
+    area_of_expertise    LONGTEXT COLLATE utf8mb4_bin                  NULL
+        CHECK (JSON_VALID(`area_of_expertise`)),
+    categories           LONGTEXT COLLATE utf8mb4_bin                  NOT NULL
+        CHECK (JSON_VALID(`categories`)),
+    others               LONGTEXT COLLATE utf8mb4_bin                  NULL
+        CHECK (JSON_VALID(`others`)),
+    is_active            TINYINT(1)                   DEFAULT 1        NOT NULL,
+    canspider_digest_id  INT UNSIGNED                                  NULL,
+    source               ENUM ('manual', 'canspider') DEFAULT 'manual' NOT NULL,
+    CONSTRAINT uniq_prof_hash
+        UNIQUE (prof_hash)
+    INDEX fk_prof_inst (funding_institute_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+```
+
+
+## FUNDING INSTITUTES TABLE
+```sql
+CREATE TABLE IF NOT EXISTS funding_institutes (
+    id               INT UNSIGNED AUTO_INCREMENT
+        PRIMARY KEY,
+    institution_name VARCHAR(255)                                  NOT NULL,
+    department_name  VARCHAR(255)                                  NOT NULL,
+    institution_url  VARCHAR(1024)                                 NULL,
+    logo_address     VARCHAR(1024)                                 NULL,
+    city             VARCHAR(255)                                  NULL,
+    province         VARCHAR(255)                                  NULL,
+    country          VARCHAR(255)                                  NULL,
+    is_active        TINYINT(1)                   DEFAULT 1        NOT NULL,
+    source           ENUM ('manual', 'canspider') DEFAULT 'manual' NOT NULL,
+    CONSTRAINT uniq_inst_dept_source
+        UNIQUE (institution_name, department_name, source)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+```
+
+
+## FUNDING CREDENTIALS TABLE BE USED BY THE GMAIL ONBOARDING AGENT
+```sql
+CREATE TABLE IF NOT EXISTS funding_credentials (
+    id            INT(11) AUTO_INCREMENT PRIMARY KEY,
+    user_id       INT(10) UNSIGNED NOT NULL,
+    token_blob    JSON NOT NULL,
+    reminders_on  TINYINT(1) NOT NULL DEFAULT 1,
+    last_refresh  DATETIME DEFAULT NULL,
+    created_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at    DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_user_id (user_id),
+    CONSTRAINT fk_credentials_student
+        FOREIGN KEY (user_id) REFERENCES students(id)
+        ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+```
+
+
+## FUNDING STUDENT TEMPLATES TABLE
+```sql
+CREATE TABLE IF NOT EXISTS funding_student_templates (
+    id                      BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    student_id              BIGINT UNSIGNED NOT NULL,
+    funding_template_id     BIGINT UNSIGNED NOT NULL,
+    content                 LONGTEXT NOT NULL,
+    formatted_content       LONGTEXT DEFAULT NULL,
+    subject                 VARCHAR(255) NOT NULL,
+    formatted_subject       VARCHAR(255) DEFAULT NULL,
+    variables               JSON NOT NULL,
+    active                  TINYINT(1) NOT NULL DEFAULT 1,
+    created_at              TIMESTAMP NULL DEFAULT NULL,
+    updated_at              TIMESTAMP NULL DEFAULT NULL,
+    PRIMARY KEY (id),
+    UNIQUE KEY funding_student_templates_student_id_funding_template_id_unique (student_id, funding_template_id),
+    KEY funding_student_templates_funding_template_id_foreign (funding_template_id),
+    CONSTRAINT funding_student_templates_funding_template_id_foreign
+        FOREIGN KEY (funding_template_id) REFERENCES funding_templates(id)
+        ON DELETE CASCADE,
+    CONSTRAINT funding_student_templates_student_id_foreign
+        FOREIGN KEY (student_id) REFERENCES students(id)
+        ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+```
+
+
+## FUNDING REPLIES TABLE
+```sql
+CREATE TABLE IF NOT EXISTS funding_replies (
+    id                  BIGINT UNSIGNED AUTO_INCREMENT
+        PRIMARY KEY,
+    funding_request_id  BIGINT UNSIGNED                          NOT NULL,
+    reply_body_raw      LONGTEXT                                 NOT NULL,
+    reply_body_cleaned  LONGTEXT                                 NOT NULL,
+    engagement_label    VARCHAR(100)                             NULL,
+    engagement_bool     TINYINT(1)                               NULL,
+    activity_status     VARCHAR(100)                             NULL,
+    activity_bool       TINYINT(1)                               NULL,
+    short_rationale     TEXT                                     NULL,
+    key_phrases         LONGTEXT COLLATE utf8mb4_bin             NULL
+        CHECK (JSON_VALID(`key_phrases`)),
+    confidence          FLOAT                                    NULL,
+    needs_human_review  TINYINT(1)   DEFAULT 0                   NULL,
+    is_auto_generated   TINYINT(1)   DEFAULT 0                   NULL,
+    auto_generated_type VARCHAR(50)  DEFAULT 'NONE'              NULL,
+    next_step_type      VARCHAR(100) DEFAULT 'NO_NEXT_STEP'      NULL,
+    created_at          TIMESTAMP    DEFAULT CURRENT_TIMESTAMP() NULL,
+
+    CONSTRAINT uq_funding_request_id
+        UNIQUE (funding_request_id),
+
+    CONSTRAINT fk_funding_replies_request
+        FOREIGN KEY (funding_request_id) REFERENCES funding_requests (id)
+            ON UPDATE CASCADE ON DELETE CASCADE
+
+    INDEX idx_funding_replies_request
+        (funding_request_id)
+
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+```

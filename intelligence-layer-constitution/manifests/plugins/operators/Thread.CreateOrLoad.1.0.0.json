@@ -1,0 +1,23 @@
+{
+  "name": "Thread.CreateOrLoad",
+  "type": "operator",
+  "version": "1.0.0",
+  "owner": "canapply",
+  "description": "Create or load a thread for (student_id, funding_request_id) and compute onboarding gate status.",
+  "schemas": {
+    "input": "schemas/operators/thread_create_or_load.input.v1.json",
+    "output": "schemas/operators/thread_create_or_load.output.v1.json"
+  },
+  "requires": {
+    "tools": [],
+    "capabilities": [],
+    "context_fields": []
+  },
+  "policy_tags": ["thread"],
+  "effects": ["db_write"],
+  "observability": {
+    "log_level": "info",
+    "emit_samples": false
+  }
+}
+

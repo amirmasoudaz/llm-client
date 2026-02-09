@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/sse/event_base.v1.json",
+  "title": "SSE Event (base envelope) (v1)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "event_id", "event_type", "thread_id", "query_id", "ts", "payload"],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "event_id": { "$ref": "../common/defs.v1.json#/$defs/Uuid" },
+    "event_type": { "type": "string", "minLength": 1 },
+    "thread_id": { "$ref": "../common/defs.v1.json#/$defs/ThreadId" },
+    "query_id": { "$ref": "../common/defs.v1.json#/$defs/Uuid" },
+    "ts": { "$ref": "../common/defs.v1.json#/$defs/ISODateTime" },
+    "correlation_id": { "$ref": "../common/defs.v1.json#/$defs/Uuid" },
+    "workflow_id": { "$ref": "../common/defs.v1.json#/$defs/Uuid" },
+    "plan_id": { "$ref": "../common/defs.v1.json#/$defs/Uuid" },
+    "step_id": { "type": "string" },
+    "job_id": { "$ref": "../common/defs.v1.json#/$defs/Uuid" },
+    "payload": { "type": "object" }
+  }
+}
+

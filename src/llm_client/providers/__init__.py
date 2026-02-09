@@ -3,9 +3,11 @@ Provider abstraction layer.
 
 This module provides a unified interface for interacting with different LLM providers.
 """
+
+from .anthropic import ANTHROPIC_AVAILABLE, AnthropicProvider
 from .base import BaseProvider, Provider
+from .google import GOOGLE_AVAILABLE, GoogleProvider
 from .openai import OpenAIProvider
-from .anthropic import AnthropicProvider, ANTHROPIC_AVAILABLE
 from .types import (
     CompletionResult,
     EmbeddingResult,
@@ -28,6 +30,8 @@ __all__ = [
     "OpenAIProvider",
     "AnthropicProvider",
     "ANTHROPIC_AVAILABLE",
+    "GoogleProvider",
+    "GOOGLE_AVAILABLE",
     # Types
     "Role",
     "StreamEventType",
@@ -41,4 +45,3 @@ __all__ = [
     "MessageInput",
     "normalize_messages",
 ]
-

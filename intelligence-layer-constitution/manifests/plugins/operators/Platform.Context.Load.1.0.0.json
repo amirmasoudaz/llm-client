@@ -1,0 +1,23 @@
+{
+  "name": "Platform.Context.Load",
+  "type": "operator",
+  "version": "1.0.0",
+  "owner": "canapply",
+  "description": "Load platform DB context for the thread scope and merge intelligence-layer state (requirements, background, preferences).",
+  "schemas": {
+    "input": "schemas/operators/platform_context_load.input.v1.json",
+    "output": "schemas/operators/platform_context_load.output.v1.json"
+  },
+  "requires": {
+    "tools": [],
+    "capabilities": [],
+    "context_fields": []
+  },
+  "policy_tags": ["read_only", "platform_read"],
+  "effects": ["read_only"],
+  "observability": {
+    "log_level": "info",
+    "emit_samples": false
+  }
+}
+

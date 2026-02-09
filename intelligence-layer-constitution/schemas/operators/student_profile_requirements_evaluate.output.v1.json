@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/operators/student_profile_requirements_evaluate.output.v1.json",
+  "title": "Operator: StudentProfile.Requirements.Evaluate (output) (v1)",
+  "allOf": [
+    { "$ref": "operator_result_base.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "result": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["requirements"],
+          "properties": {
+            "requirements": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "intent_type",
+                "required_requirements",
+                "status_by_requirement",
+                "missing_requirements",
+                "missing_fields_by_requirement",
+                "missing_fields",
+                "targeted_questions",
+                "is_satisfied"
+              ],
+              "properties": {
+                "intent_type": { "type": "string" },
+                "required_requirements": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                },
+                "status_by_requirement": {
+                  "type": "object",
+                  "additionalProperties": { "type": "boolean" }
+                },
+                "missing_requirements": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                },
+                "missing_fields_by_requirement": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                  }
+                },
+                "missing_fields": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                },
+                "targeted_questions": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["field_path", "question"],
+                    "properties": {
+                      "field_path": { "type": "string", "minLength": 1 },
+                      "question": { "type": "string", "minLength": 1 },
+                      "requirement": { "type": "string" }
+                    }
+                  }
+                },
+                "is_satisfied": { "type": "boolean" }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

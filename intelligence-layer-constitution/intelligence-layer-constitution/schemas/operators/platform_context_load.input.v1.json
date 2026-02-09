@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/operators/platform_context_load.input.v1.json",
+  "title": "Operator: Platform.Context.Load (input) (v1)",
+  "allOf": [
+    { "$ref": "operator_call_base.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["thread_id"],
+          "properties": {
+            "thread_id": { "$ref": "../common/defs.v1.json#/$defs/ThreadId" }
+          }
+        }
+      }
+    }
+  ]
+}
+

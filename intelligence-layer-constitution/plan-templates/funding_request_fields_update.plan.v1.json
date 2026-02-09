@@ -1,0 +1,79 @@
+{
+  "schema_version": "1.0",
+  "plan_template_id": "Funding.Request.Fields.Update@1.0.0",
+  "intent_type": "Funding.Request.Fields.Update",
+  "plan_version": "planner-1.0",
+  "description": "Propose and apply allowlisted funding request updates with explicit approval.",
+  "steps": [
+    {
+      "step_id": "s1",
+      "kind": "operator",
+      "name": "Platform.Context.Load",
+      "operator_name": "Platform.Context.Load",
+      "operator_version": "1.0.0",
+      "effects": ["read_only"],
+      "policy_tags": ["read_only", "platform_read"],
+      "risk_level": "low",
+      "cache_policy": "ttl_only",
+      "idempotency_template": "platform_context:{tenant_id}:{thread_id}",
+      "payload": { "thread_id": { "from": "intent.thread_id" } },
+      "produces": ["context.platform"]
+    },
+    {
+      "step_id": "s2",
+      "kind": "operator",
+      "name": "FundingRequest.Fields.Update.Propose",
+      "operator_name": "FundingRequest.Fields.Update.Propose",
+      "operator_version": "1.0.0",
+      "effects": ["produce_outcome"],
+      "policy_tags": ["apply_proposal", "platform_write"],
+      "risk_level": "medium",
+      "cache_policy": "never",
+      "idempotency_template": "patch_proposal:{tenant_id}:{context.platform.funding_request.id}:{computed.fields_hash}",
+      "payload": {
+        "funding_request_id": { "from": "context.platform.funding_request.id" },
+        "fields": { "from": "intent.inputs.fields" },
+        "human_summary": { "from": "intent.inputs.human_summary" }
+      },
+      "produces": ["outcome.platform_patch_proposal"]
+    },
+    {
+      "step_id": "s3",
+      "kind": "human_gate",
+      "name": "Apply.PlatformPatch",
+      "effects": ["db_write_platform"],
+      "policy_tags": ["apply", "platform_write"],
+      "risk_level": "medium",
+      "cache_policy": "never",
+      "gate": {
+        "gate_type": "apply_platform_patch",
+        "reason_code": "REQUIRES_APPROVAL",
+        "title": "Apply funding request updates",
+        "description": "Apply the proposed updates to your funding request.",
+        "requires_user_input": false,
+        "ui_hints": { "primary_button": "Apply changes", "secondary_button": "Cancel" },
+        "target_outcome_ref": { "from": "outcome.platform_patch_proposal" }
+      }
+    },
+    {
+      "step_id": "s4",
+      "kind": "operator",
+      "name": "FundingRequest.Fields.Update.Apply",
+      "operator_name": "FundingRequest.Fields.Update.Apply",
+      "operator_version": "1.0.0",
+      "effects": ["db_write_platform"],
+      "policy_tags": ["apply", "platform_write"],
+      "risk_level": "medium",
+      "cache_policy": "never",
+      "depends_on": ["s3"],
+      "idempotency_template": "patch_apply:{tenant_id}:{outcome.platform_patch_proposal.payload.patch_id}",
+      "payload": {
+        "funding_request_id": { "from": "context.platform.funding_request.id" },
+        "proposal": { "from": "outcome.platform_patch_proposal" },
+        "expected_updated_at": { "from": "intent.inputs.expected_updated_at" },
+        "strict_optimistic_lock": { "const": true }
+      },
+      "produces": ["outcome.platform_patch_receipt"]
+    }
+  ]
+}

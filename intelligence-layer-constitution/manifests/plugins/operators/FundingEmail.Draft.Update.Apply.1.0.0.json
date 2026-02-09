@@ -1,0 +1,22 @@
+{
+  "name": "FundingEmail.Draft.Update.Apply",
+  "type": "operator",
+  "version": "1.0.0",
+  "owner": "canapply",
+  "description": "Apply approved email draft patch updates to funding_requests and funding_emails; blocks if main email is already sent.",
+  "schemas": {
+    "input": "schemas/operators/funding_email_draft_update_apply.input.v1.json",
+    "output": "schemas/operators/funding_email_draft_update_apply.output.v1.json"
+  },
+  "requires": {
+    "tools": [],
+    "capabilities": [],
+    "context_fields": []
+  },
+  "policy_tags": ["apply", "platform_write"],
+  "effects": ["db_write_platform", "produce_outcome"],
+  "observability": {
+    "log_level": "info",
+    "emit_samples": false
+  }
+}

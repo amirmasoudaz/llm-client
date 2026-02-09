@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/operators/professor_alignment_score.input.v1.json",
+  "title": "Operator: Professor.Alignment.Score (input) (v1)",
+  "allOf": [
+    { "$ref": "operator_call_base.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["student_id", "professor_id", "professor_summary", "student_background"],
+          "properties": {
+            "student_id": { "$ref": "../common/defs.v1.json#/$defs/StudentId" },
+            "professor_id": { "$ref": "../common/defs.v1.json#/$defs/ProfessorId" },
+            "professor_summary": { "$ref": "../outcomes/professor_summary.v1.json" },
+            "student_background": { "type": "object" },
+            "focus_areas": { "type": "array", "items": { "type": "string" }, "default": [] }
+          }
+        }
+      }
+    }
+  ]
+}
+

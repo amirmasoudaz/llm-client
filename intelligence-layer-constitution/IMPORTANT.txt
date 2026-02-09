@@ -1,0 +1,361 @@
+In this document, we'll review the flow, how other systems work, how this system should work, what the frontend expects from this layer, what the platform backend expects, what should we expect from them.
+
+This intelligence layer, which will be built on top of the runtime layer (layer 1: agent-runtime) which is built on top of the kernel layer (layer 0: llm-client), should ultimately work as a copilot to the students using the Funding Outreach product on CanApply Platform Website. The funding outreach product, which automates cold outreach to universities' and academic institutions' professors, does several things, and this intelligence layer will be served to the users as a chatbot on the sidebar of the platform on the funding outreach product page. Let's talk about this product a little deeper. There is a comprehensive database of professors, containing 70,000 professors data (first name, last name, institution name, department/faculty name, occupational flags, current position, affiliation, credentials, research area, research expertise, research interests, email address and contact information and their category of research), which we've crawled, cleaned, and stored through another comprehensive and precious product called CanSpider (which we won't go through it now, but will be interesting to explore how we can integrate that with the intelligence layer), in two tables of the platform DB (database name: canapply_api). The table canapply_api.funding_institutes which contains the institution names and department names which their ID is referenced in the canapply_api.funding_professors table, which contains those information I told you about all those professors, and is bound to the canapply_api.funding_institutes.id on canapply_api.funding_professors.funding_institute_id (canapply_api.funding_institutes.id <-> canapply_api.funding_professors.funding_institute_id). The DDLs and DB schemas of all the tables we're talking about here will be provided below at the end of this message for your reference, because we need them. 
+
+That comprehensive dataset is being provided to our users in different usage tiers. There are multiple subscription tiers, for example, the base subscription includes 100 emails + 500 AI credits for $100. Meaning that user can select up to 100 professors from that 70,000 professors to draft an email for and automatically send them plus three reminders for each of those emails which will be sent before getting any replies from the receivers. That AI credit is the budget we're allocating for that user for their usage of this intelligence layer that we're building; based on the heaviness of their requested operations, and the consumption of the LLM tokens, each request will cost them a few AI credits which will be deducted from their remaining quota after a request is being fulfilled and their quota would also be checked before performing any actions to include sufficient credits for their request based on an approximation we need to make (this, we'll need to discuss the how). 
+
+Going deeply in the core of the Funding Outreach product, this product has three main components: Recommendation Engine, Outreach Logic, Reminders Cron. The recommendation engine is the engine that facilitates how our users pick their suitable professors to reach. The outreach logic is responsible for handling email draft generation and sending them, and reminders cron handles the check cycles for replies and sends follow up emails if the timing is correct. The recommendation engine is simple. Those professors that we've crawled and compiled their data, when their data is being digested by CanSpider, multiple tags/labels will be assigned to them based on their profile, info, background, research interests, research expertise, research areas, department, etc. And those labels will then be indexed in the recommendation engine. Two endpoints are exposed from the recommendation engine. First, the query endpoint. When the user wants to find the similar tags/labels corresponding to their desire/background/interests, they search/type some words or characters. Those typed characters will be sent to the recommendation engine via a GET request to "/api/v1/funding/query?q=<QUERY>&k=<N_SUGGESTIONS>" with "q" being the user-typed query for tag suggestions and "k" being number of suggestions to return. The recommendation engine will then return k number of suggestions so that user picks from them. For example, "q" = "machi", the suggestions will most probably include "machine learning", "machine vision", etc. Then, the user-chosen tags/suggestions will be sent to the recommendation engine again via a POST request to "/api/v1/funding/recommend", accepting "tags" being a list of keywords which the recommendation engine will return the professor ids with the closest match with those received tags. Also, it can receive filter params too, like the institution_name (filtering on funding_institutes.institution_name), department_ids (filtering on funding_professors.funding_institute_ids), country (filtering on funding_institutes.country), and professor_name (filtering on funding_professors.full_name). Then, the platform will show the user a list of professors, tailored and filtered based on their tags and labels and the users can select them to initiate outreach logic for them.
+
+When a user selects a professor, they can choose the type of their outreach based on the level of match they see fit with the professor they chose. They can either send a standard outreach email, which simple and standard, or a detailed outreach email, which include richer context and more explanations. Each type of the email has its own input context that the user must provide and fill in based on the level of match they chose. If they choose the standard email, they must provide their research interest (text), their CV (mandatory), cover letter or SOP (optional), transcripts (optional). The research interest field is recommended to be the intersection of what they did or what they wanna do and what the professor did or wants to do. If they choose the detailed email, they must provide more context about a paper they're interested in written by that professor, additional to the research interest field. About that paper, they must provide the paper title (mandatory), the abstract (mandatory) and they can optionally provide the journal name which the paper was published in and the year of the publication. They can use the CV they already uploaded to our platform, or upload another CV document, the same applies to their cover letter documents and transcript documents. These documents will be attached to the email to be sent to the professor. These fields of their request will be recorded in the canapply_api.funding_requests table with the funding_requests.status field starting at being "incomplete" and turning to "completed" when all the required fields are populated and provided by the user. The row will also include a student_id which is the id of the student on our platform (canapply_api.funding_requests.student_id <-> canapply_api.students.id) and a professor_id which is the id of that professor in the canapply_api.funding_professors table (canapply_api.funding_requests.professor_id <-> canapply_api.funding_professors.id)
+
+Then, the user can generate the email draft for their review before sending it. That email will be generated using a template they set up when creating their CanApply account. They will set their standard email template, detailed email template, reminder 1, reminder 2, and reminder 3 emails templates. Those templates are stored and recorded in canapply_api.funding_student_templates, each in a row with funding_template_id of 1 being for standard email, 2 being for detailed email, 3 for reminder 1, 4 for reminder 2, and 5 for reminder 3. Those fields the user has filled in for each professor, will either be replaced by placeholders in their templates, or something will be generated for a specific part of the template based on their inputs by LLM. Both standard and detailed emails will be paraphrased before being finalized by an LLM to correct grammer and structure errors. The reminder 1, 2, and 3 templates are set and static and will be sent as they're created. Also, the platform backend fills the field canapply_api.funding_requests.match_status with either 1 for standard email type or 2 for detailed email type, and sets the field of canapply_api.funding_requests.student_template_ids with a JSON like this: {"main":8,"reminder1":10,"reminder2":11,"reminder3":12}, which means, the main email template (be it standard or detailed which its type is specified by the match_status) is in the record canapply_api.funding_student_templates.id = 8, and the reminders templates are in the row with IDs of 10, 11, and 12. Also, the backend will create a row for each documents the user desires to attach to their email in the table canapply_api.attachments with attachable_type of "funding_request", student_id = funding_requests.student_id, disk of "s3", and file_path where that file is stored, and finally the type of the document ("cv", "portfolio", "sop", "transcript") specifying what this document is. 
+
+When the user wants to generate the email draft preview, the canapply-funding backend (which is present in this repository for you review) will receive a GET request on the endpoint of "/api/v1/funding/{funding_id}/review" with funding_id being the id of that record in the canapply_api.funding_requests table. The canapply-funding backend then reads that record, and based on the records, loads the corresponding template from the canapply_api.funding_student_templates and generates the main email (either standard or detailed) and updates the fields email_content with the generated body draft and email_subject with the generated email subject and creates a new row in the canapply_api.funding_emails table with initial values of funding_request_id = canapply_api.funding_requests.id, stundet_id = canapply_api.funding_requests.student_id, professor_email = canapply_api.funding_professors.email_address, professor_name = canapply_api.funding_professors.full_name, main_email_body = canapply_api.funding_requests.email_content, and main_email_subject = canapply_api.funding_requests.email_subject. The table funding_emails contains many more columns, which I'll describe in a little bit. 
+
+After the user examined the generated email, they can edit or make adjustments to the email manually (HERE), and the platform will update the funding_requests table's valus for email_content and email_subject if any changes are made to them. When the user is ready to send the email, on click of the send button, canapply-funding backend will receive a GET request on the endpoint of "/api/v1/funding/{funding_id}/send" with funding_id being the id of that record in the canapply_api.funding_requests table. The canapply-funding backend then reads that record from funding_requests again to fetch the latest version the user wants to send, then load the attachments by reading the attachments table records where attachable_type = 'funding_request' and attachable_id = FUNDING_REQUEST_ID, and loads those files from AWS S3, converts them to bytes, creates the google gmail compose request using the inputs required (prof email address, subject, body, title, from addr, attachments) and sends that email using the gmail python driver. The gmail api credentials of that user is already created by our Onboarder product, which guides the user to create their access token via google cloud console and stores their credentials in canapply_api.funding_credentials table with values of funding_credentials.user_id = canapply_api.students.id and funding_credentials.token_blob = their token blob JSON. One small detail, before I forget, on the onboarder product, the user can opt-out of the automatic reminder sending service, which will turn the funding_credentials.reminders_on from 1 (default) to 0 (making it off). Moving on, then, that email is sent and that email request will enter the reminders/reply check cycle and the funding_emails.main_sent will set to 1, funding_emails.main_sent_at will be set to the current timestamp (UTC), funding_emails.the gmail_msg_id will set to the gmail message id received by the gmail driver, and funding_emails.gmail_thread_id field will set ot the thread id. 
+
+The reminder/reply check cycle is a cron job, running every 2 hours for all the pending rows that require a reply check, which will check the recently received emails and replies of that user to see if the corresponding professor of that request has replied or not. If a reply is received, that reply will be fed into an AI agent, to classify and analyze what that reply is about and if it is a possible interview opportunity or a rejection email or if it's even an auto generated email and the results of its analysis will be stored in the canapply_api.funding_replies table in a new record with funding_request_id = funding_requests.id, reply_body_raw, reply_body_cleaned, is_auto_generated (bool) and auto_generated_type, engagement_label, activity_status, etc (you may browse its response schema in the canapply-funding repo). If the reply is legit is not auto generated, the check cycle for that record will be turned off by setting the funding_emails.no_more_checks = 1 and funding_emails.no_more_reminders = 1. Also, funding_emails.professor_replied will be set to 1, funding_emails.professor_replied_at will be set to the current timestamp (UTC), and funding_emails.professor_reply_body will be set to the funding_replies.reply_body_cleaned. 
+
+If the reply was auto generated or no reply was received for that record, the cron job will check whether the last time of contact with that professor surpasses a certain threshold. For the first reminder to be sent, the last contact must be 5 days ago or before. If it's been 5 days or more past the last contact, the reminder 1 will be sent, following a similar procedure, first the template will be fetched from canapply_api.funding_student_templates for that reminder (key in the JSON blob in the funding_requests.student_template_ids is reminder1) and is sent without any paraphrasing and the field funding_emails.reminder_one_sent will be set to 1, reminder_one_sent_at will be set to timestamp (UTC), reminder_one_subject with the subject of the reminder and reminder_one_body will be set to the body of the reminder email. The reminder won't be a separate email sent to the professor, and it is a reply to the last email sent based on the gmail_thread_id we've recorded when we sent the first email to the professor. If it's been 10 days or more past from the last contact, meaning reminder 1 is sent, and we haven't received any legit replies from the professor, the reminder 2 will be sent to the professor and the corresponding fields in the funding_emails (reminder_two_sent, reminder_two_sent_at, reminder_two_subject, reminder_two_body) will be updated with the reminder 2 information. And finally, if it's been 15 days past the last contact, the reminder 3 will be sent and the corresponding fields in the funding_emails will be updated. And the funding_emails.no_more_reminders will be set to 1, leaving no_more_checks set to 0. That record will be checked for another 40 days for a reply from the professor, and if no replies are received after 40 days, funding_emails.no_more_checks will also be set to 1 and the lifecycle of that funding request will be over. 
+
+<HOW INTELLIGENCE LAYER SHOULD BE INTEGRATED WITH THIS SERVICE - V1>
+Now, for version 1 of the intelligence layer, the goal is to make the whole funding outreach system smarter, and nothing else (at least for now). The product of the intelligence layer should be an AI agent as a copilot integrated with the funding outreach system. I'm gonna talk about the features of it, the agents and tasks it's responsible for, and how each of those agents must be activated and be connected. 
+
+Technically speaking, when a user wants to start a chat, that chat and thread will only be used for optimizing an outreach to a professor they selected in the list of the professors. So, we won't be surprised and the user won't be asking about other professors during a conversation and the context will be limited to that funding request. So, the init thread will accept a funding request id, and if we have a funding request id, we'll have the student id and the professor id and these are enough to access all the data we need during a conversation. With the student id we can get the student base background data, email templates, attachments, and with a professor id we can access the professor's details and from that we can access the institution's data. So, there's that. But the information we currently record very little data from the user's background. So, the intelligence layer must create a record for any new student we receive a request for for the first time, and the agent must collect the required data from the student before allowing performing any kind of operations for them. 
+
+A clean, production-grade JSON Schema for the entire student intelligence profile data that we'd need to collect from each student and complete only once incrementally is created in "stuff/student_profile.json", which is designed to be DB-agnostic (works with MySQL/Postgres JSON), agent-friendly, incrementally completable, strict enough to avoid garbage, future-proof for SOP generation, outreach, CV, emails. This data must be collected from the student through asking questions and based on the answers to them, be completed incrementally. We should not ask them all from the student at once. The user can tell us to use their already uploaded CV (if we could find it), or upload a CV in the console and we can use that to complete as many sections of it as we can, and ask for the information to complete any missing fields. The sop intelligence section must either be completed through asking questions from the user or they can again provide us with an SOP and our agent would try to infer as much information from it as it can and the rest of the missing fields could be asked from the user. The risk assessment section of it must be done by our AI agent, not the student, when all the pieces of data is collected.
+
+Once this data is collected, we won't ask the user again for this information, and we're gonna use pieces of it accross different tasks the user might want our agent do from that point onwards. The user can later (in v2) ask the agent to modify/update these recorded information. These info must be kept in a database bound to student IDs. The tables to hold and store these data can be designed by you, or I can provide suitable DDLs for them if you can't.
+
+Now, we're gonna talk about the integrations, agents, tasks, actions, etc. One of the things the copilot must help the students with is funding outreach request completion. Remember those fields the user had to fill in manually for each funding request, be it research interest for standard email and paper title, journal name, year, abstract, and research interests for the detailed email request? Our user can ask our AI to complete those, whether based on the knowledge it already has on the user and the professor information or whatever the user tells the agent to fill them with. Also, for the detailed version, they can provide us with the PDF of the paper they're looking to use, or the URL of the paper, and our agent must be able to load that PDF or URL and extract the necessary data (paper title, journal name, year, abstract) and use them to populate the fields. By filling in the form and populating the fields, I don't mean actual browser integrations. If the user asks the agent to "add machine learning, natural language processing, and quantum computing as the research interest of this request", the agent should update the canapply_api.funding_requests.research_interests with what the user provided (ONLY AFTER HUMAN ACCEPTS IT). By only after human accepts it I mean, whenever a database write operation is requested by the copilot agent, our intelligence layer must inform the frontend (through either events or webhooks) to show the Apply To Request button to the user. And if the Apply to Request button is clicked and user consented it, our agent can call that operator to run the suitable query. The copilot agent CANNOT write or modify the database queries at all, and should and can only call the required operator which is tested and has specific scope and responsibility to perform an action on behalf of the agent or the user. For V1.0, we'll disregard the URL loading and paper PDF parsing, and we can ask the user to copy and paste the desired paper's name, abstract, journal name, and year, so that agent calls the operator to update the funding_requests table research_connection (abstract), paper_title (paper name), journal (journal name), year (publication year) fields based on the provided material. After changing this in the database, we need to ask the frontend to refresh the page, so that the new provided request data be displayed for the user and the UI renders the new info.
+
+Next up, is the professor review (match). A student might ask if that professor is a good match and should be reaching to them or not. The agent is already implemented in the dana-prototype repository which analyzes the professor data and student data and provides an evidence based score. When the user wants this to be reviewed, that agent must be called and the result of it must be returned to the main conversational copilot agent so that it can talk to the user about it and interpret its results.
+
+Email generation is already implemented in the funding outreach product, but the email the intelligence agent would generate must be better, which we'll develop this in V2. For now, we'll stick to the funding outreach api for generation and will focus on reviewing that generated email and optimizing it. The email review agent is also implemented in the dana-prototype and we should inspire from it or use that in here to review. And the optimization of that email must be done with an agent that gets this email review report, plus the user's feedback on how to change it. This email optimization can become a loop, because the user might want to modify the email multiple times. So, we need to keep that in mind that the optimization request won't be a single time. Also, the optimized email might be asked to be reviewed again. So, we need to implement these in a way that suppports this. In each step, we need to ask the frontend to show the Apply to Request button to the user, and if the user was satisfied, we should replace the old email contents in the funding_requests and funding_emails tables with the one optimized and accepted by the user. After changing this in the database, we need to ask the frontend to refresh the page, so that the new email displays for the user and the UI renders the new info.
+
+Email templates are currently being set and modified by the users manually, but in the V2 of intelligence layer, we'll add the capability of optimizing and modifying the email templates as well. But not in V1.
+
+The user might ask the agent to review their provided CV. In V1, we don't have the option of document upload in the chatbox, so, the user can only ask to review the resume which they uploaded in the funding outreach request section for documents. The first step is parsing the CV, via the converter agent implemented in the dana-prototype. Then when the fields of it are extracted and we have a JSON format of the resume, we should feed the contents of it into the resume review agent, which is also implemented in the dana-prototype agents. Then, the result of the review must be returned and provided back to the copilot main conversational agent so that it talks about it with the user and interprets it. In V1, we don't have document optimization, but we'll definitely add document optimization based on the user feedback and the review results and pdf export in V2.
+
+The same review procedure applies to the SOP or cover letter the user uploaded in the request document section. We should load it, review it, hand over the results to the main agent for interpretations and suggestions. In V2, we'll add letter composition/optimization and creation based on user feedback and review results as well.
+
+In any of these actions, the required data that we collected from the user in the begining can be injected and provided to that expert agent's context for better understanding and getting better and preciser answers.
+
+The user might ask the agent to asses and interpret the reply of the professor. The agent can either read the reply body (if any) and interprets it for the user or read the contents of the record of the canapply_api.funding_replies with the same funding_request_id as the one the thread is created with for interpretations.
+
+The user might ask the agent to suggest a follow up to a professor reply, draft an email, etc. This part has no DB write operation and the agent can ask the user how would they like the follow up be or just write a suitable suggestion for the user for their review. In the next version (V3), we'll add the option of sending that follow up email directly from our systems.
+
+On each prompt of the user, when the agent completes its work and the user is about to send the next prompt, an agent must be called to create suitable queries the user might wanna continue the conversation with the copilot with. Those suggestions should be based on the conversation history, in a tone similar to the user's addressing the agent. For example, if the user asked "how does this email generation work", and the agent answers with something like "automatically with ai" or something, the suggestion can be "can you elaborate more on how automatically?". This was just a simple sample. So, this suggestions are somehow like next action/next prompt suggestions (interaction-based).
+
+Also, our intelligence layer must have a memory, to record important instructions the user might want the agent to persist accross all the other requests. And those memories must be retrieved and be added to agent's context efficiently. Types of memory could be, Do's and Don'ts for the user, Email tone and style guidelines, User's preferences, User's academic goals, User's research interests, User's ambitions and aspirations, User's story and background, instructions, guardrails.
+
+<WHAT THE PLATFORM BACKEND EXPECTS FROM THE INTELLIGENCE LAYER>
+The platform backend expects the intelligence layer to inform it of any changes in the credits the user has consumed. After a copilot response, the total consumed AI credits must be computed based on the LLM token usage costs and be passed to the backend by calling an API of the backend or another way, sending the consumed. Also, when a user query is received, our intelligence layer must call the platform backend to get the remaining user AI credits quota to see if the user has sufficient quota to perform the requested operations.
+
+<WHAT THE PLATFORM FRONTEND EXPECTS FROM THE INTELLIGENCE LAYER>
+Most of the interations will be with the frontend. The frontend expects the intelligence layer to stream events and tokens via SSE to it (which we're already doing). If a Apply to Request or a Submit button must be shown to the user, we need to inform the frontend of it. The frontend expects the details of what the copilot is doing at any time. For example, if the user asks for a resume optimization, it most certainly has multiple steps. The intelligence layer must inform the frontend of where we are as the progress. For example, "query received", "checking quota", "validating request", "classifying intent", "parsing cv", "reviewing cv", "identifying gaps", "proposing changes", "optimizing resume", "exporting pdf", "preview ready", "download link generated", "request complete", and then the tokens of the main agent will be streamed and the agent will talk to the user and say I did this and that and this your optimized resume and if you wanna add it to the request, click on the Apply to Request, then informs the frontend to show that button and awaits either the user consent or any new prompt the user might give the agent for further optimizations. 
+
+The frontend, in V1, will send the cookie of the session the user is logged in with in the request header. I know this isn't optimal, but let's just go with it now. We need to verify that cookie with the cookie the platform backend has stored in the database for the user, for authentication. But for now, let's just add a toggle for it to disregard it if we don't receive it so that I can debug the system easily.
+
+<APPENDIX B: DDLS & DATABASE SCHEMA>
+
+The following tables are present in the canapply_api database (there are others, like students, metas, which we need few data from them)
+
+## FUNDING REQUESTS TABLE
+```sql
+CREATE TABLE IF NOT EXISTS funding_requests (
+    id                   BIGINT UNSIGNED AUTO_INCREMENT
+        PRIMARY KEY,
+    student_id           BIGINT UNSIGNED              NOT NULL,
+    professor_id         BIGINT UNSIGNED              NOT NULL,
+    match_status         TINYINT                      NOT NULL,
+    research_interest    TEXT                         NULL,
+    paper_title          TEXT                         NULL,
+    journal              TEXT                         NULL,
+    year                 INT UNSIGNED                 NULL,
+    research_connection  TEXT                         NULL,
+    attachments          LONGTEXT COLLATE utf8mb4_bin NULL
+        CHECK (JSON_VALID(`attachments`)),
+    student_template_ids LONGTEXT COLLATE utf8mb4_bin NULL
+        CHECK (JSON_VALID(`student_template_ids`)),
+    status               VARCHAR(100) DEFAULT '0'     NULL,
+    ai_status            VARCHAR(255)                 NULL,
+    ai_response          LONGTEXT COLLATE utf8mb4_bin NULL
+        CHECK (JSON_VALID(`ai_response`)),
+    ai_updated_at        TIMESTAMP                    NULL,
+    email_subject        TEXT                         NULL,
+    email_content        TEXT                         NULL,
+    created_at           TIMESTAMP                    NULL,
+    updated_at           TIMESTAMP                    NULL,
+    deleted_at           TIMESTAMP                    NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+```
+
+## FUNDING EMAILS TABLE
+```sql
+CREATE TABLE IF NOT EXISTS funding_emails (
+    id                     INT AUTO_INCREMENT
+        PRIMARY KEY,
+    funding_request_id     BIGINT UNSIGNED              NOT NULL,
+    student_id             BIGINT UNSIGNED              NOT NULL,
+    professor_email        VARCHAR(255)                 NULL,
+    professor_name         VARCHAR(255)                 NULL,
+    main_email_subject     VARCHAR(255)                 NULL,
+    main_email_body        LONGTEXT                     NULL,
+    attachments            LONGTEXT COLLATE utf8mb4_bin NULL
+        CHECK (JSON_VALID(`attachments`)),
+    gmail_msg_id           VARCHAR(64)                  NULL,
+    gmail_thread_id        VARCHAR(64)                  NULL,
+    main_sent              TINYINT(1) DEFAULT 0         NULL,
+    main_sent_at           DATETIME                     NULL,
+    professor_replied      TINYINT(1) DEFAULT 0         NULL,
+    professor_replied_at   DATETIME                     NULL,
+    professor_reply_body   LONGTEXT                     NULL,
+    reminder_one_sent      TINYINT(1) DEFAULT 0         NULL,
+    reminder_one_sent_at   DATETIME                     NULL,
+    reminder_one_subject   VARCHAR(255)                 NULL,
+    reminder_one_body      LONGTEXT                     NULL,
+    reminder_two_sent      TINYINT(1) DEFAULT 0         NULL,
+    reminder_two_sent_at   DATETIME                     NULL,
+    reminder_two_subject   VARCHAR(255)                 NULL,
+    reminder_two_body      LONGTEXT                     NULL,
+    reminder_three_sent    TINYINT(1) DEFAULT 0         NULL,
+    reminder_three_sent_at DATETIME                     NULL,
+    reminder_three_subject VARCHAR(255)                 NULL,
+    no_more_reminders      TINYINT(1) DEFAULT 0         NULL,
+    no_more_checks         TINYINT(1) DEFAULT 0         NULL,
+    reminder_three_body    LONGTEXT                     NULL,
+    last_reply_check_at    DATETIME                     NULL,
+    next_reply_check_at    DATETIME                     NULL,
+    created_at             DATETIME                     NULL,
+    updated_at             DATETIME                     NULL,
+
+    CONSTRAINT funding_request_id
+        UNIQUE (funding_request_id),
+
+    CONSTRAINT fk_funding_emails_request
+        FOREIGN KEY (funding_request_id) REFERENCES funding_requests (id)
+            ON UPDATE CASCADE ON DELETE CASCADE,
+
+    CONSTRAINT fk_funding_emails_student
+        FOREIGN KEY (student_id) REFERENCES students (id)
+            ON UPDATE CASCADE ON DELETE CASCADE,
+
+    INDEX idx_funding_emails_next_check
+        (next_reply_check_at),
+
+    INDEX idx_funding_emails_status
+        (main_sent, professor_replied, no_more_reminders, no_more_checks),
+
+    INDEX idx_funding_emails_student_created
+        (student_id, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+```
+
+
+## FUNDING PROFESSORS TABLE
+```sql
+CREATE TABLE IF NOT EXISTS funding_professors (
+    prof_hash            BINARY(32)                                    NOT NULL,
+    id                   INT UNSIGNED AUTO_INCREMENT
+        PRIMARY KEY,
+    full_name            VARCHAR(512)                                  NOT NULL,
+    first_name           VARCHAR(512)                                  NOT NULL,
+    middle_name          VARCHAR(512)                                  NULL,
+    last_name            VARCHAR(512)                                  NOT NULL,
+    occupation           VARCHAR(512)                                  NULL,
+    department           VARCHAR(255)                                  NOT NULL,
+    email_address        VARCHAR(320)                                  NOT NULL,
+    url                  VARCHAR(1024)                                 NULL,
+    funding_institute_id INT UNSIGNED                                  NOT NULL,
+    other_contact_info   LONGTEXT COLLATE utf8mb4_bin                  NULL
+        CHECK (JSON_VALID(`other_contact_info`)),
+    research_areas       LONGTEXT COLLATE utf8mb4_bin                  NOT NULL
+        CHECK (JSON_VALID(`research_areas`)),
+    credentials          TEXT                                          NULL,
+    area_of_expertise    LONGTEXT COLLATE utf8mb4_bin                  NULL
+        CHECK (JSON_VALID(`area_of_expertise`)),
+    categories           LONGTEXT COLLATE utf8mb4_bin                  NOT NULL
+        CHECK (JSON_VALID(`categories`)),
+    others               LONGTEXT COLLATE utf8mb4_bin                  NULL
+        CHECK (JSON_VALID(`others`)),
+    is_active            TINYINT(1)                   DEFAULT 1        NOT NULL,
+    canspider_digest_id  INT UNSIGNED                                  NULL,
+    source               ENUM ('manual', 'canspider') DEFAULT 'manual' NOT NULL,
+    CONSTRAINT uniq_prof_hash
+        UNIQUE (prof_hash)
+    INDEX fk_prof_inst (funding_institute_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+```
+
+
+## FUNDING INSTITUTES TABLE
+```sql
+CREATE TABLE IF NOT EXISTS funding_institutes (
+    id               INT UNSIGNED AUTO_INCREMENT
+        PRIMARY KEY,
+    institution_name VARCHAR(255)                                  NOT NULL,
+    department_name  VARCHAR(255)                                  NOT NULL,
+    institution_url  VARCHAR(1024)                                 NULL,
+    logo_address     VARCHAR(1024)                                 NULL,
+    city             VARCHAR(255)                                  NULL,
+    province         VARCHAR(255)                                  NULL,
+    country          VARCHAR(255)                                  NULL,
+    is_active        TINYINT(1)                   DEFAULT 1        NOT NULL,
+    source           ENUM ('manual', 'canspider') DEFAULT 'manual' NOT NULL,
+    CONSTRAINT uniq_inst_dept_source
+        UNIQUE (institution_name, department_name, source)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+```
+
+
+## FUNDING CREDENTIALS TABLE BE USED BY THE GMAIL ONBOARDING AGENT
+```sql
+CREATE TABLE IF NOT EXISTS funding_credentials (
+    id            INT(11) AUTO_INCREMENT PRIMARY KEY,
+    user_id       INT(10) UNSIGNED NOT NULL,
+    token_blob    JSON NOT NULL,
+    reminders_on  TINYINT(1) NOT NULL DEFAULT 1,
+    last_refresh  DATETIME DEFAULT NULL,
+    created_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at    DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_user_id (user_id),
+    CONSTRAINT fk_credentials_student
+        FOREIGN KEY (user_id) REFERENCES students(id)
+        ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+```
+
+
+## FUNDING STUDENT TEMPLATES TABLE
+```sql
+CREATE TABLE IF NOT EXISTS funding_student_templates (
+    id                      BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    student_id              BIGINT UNSIGNED NOT NULL,
+    funding_template_id     BIGINT UNSIGNED NOT NULL,
+    content                 LONGTEXT NOT NULL,
+    formatted_content       LONGTEXT DEFAULT NULL,
+    subject                 VARCHAR(255) NOT NULL,
+    formatted_subject       VARCHAR(255) DEFAULT NULL,
+    variables               JSON NOT NULL,
+    active                  TINYINT(1) NOT NULL DEFAULT 1,
+    created_at              TIMESTAMP NULL DEFAULT NULL,
+    updated_at              TIMESTAMP NULL DEFAULT NULL,
+    PRIMARY KEY (id),
+    UNIQUE KEY funding_student_templates_student_id_funding_template_id_unique (student_id, funding_template_id),
+    KEY funding_student_templates_funding_template_id_foreign (funding_template_id),
+    CONSTRAINT funding_student_templates_funding_template_id_foreign
+        FOREIGN KEY (funding_template_id) REFERENCES funding_templates(id)
+        ON DELETE CASCADE,
+    CONSTRAINT funding_student_templates_student_id_foreign
+        FOREIGN KEY (student_id) REFERENCES students(id)
+        ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+```
+
+
+## FUNDING REPLIES TABLE
+```sql
+CREATE TABLE IF NOT EXISTS funding_replies (
+    id                  BIGINT UNSIGNED AUTO_INCREMENT
+        PRIMARY KEY,
+    funding_request_id  BIGINT UNSIGNED                          NOT NULL,
+    reply_body_raw      LONGTEXT                                 NOT NULL,
+    reply_body_cleaned  LONGTEXT                                 NOT NULL,
+    engagement_label    VARCHAR(100)                             NULL,
+    engagement_bool     TINYINT(1)                               NULL,
+    activity_status     VARCHAR(100)                             NULL,
+    activity_bool       TINYINT(1)                               NULL,
+    short_rationale     TEXT                                     NULL,
+    key_phrases         LONGTEXT COLLATE utf8mb4_bin             NULL
+        CHECK (JSON_VALID(`key_phrases`)),
+    confidence          FLOAT                                    NULL,
+    needs_human_review  TINYINT(1)   DEFAULT 0                   NULL,
+    is_auto_generated   TINYINT(1)   DEFAULT 0                   NULL,
+    auto_generated_type VARCHAR(50)  DEFAULT 'NONE'              NULL,
+    next_step_type      VARCHAR(100) DEFAULT 'NO_NEXT_STEP'      NULL,
+    created_at          TIMESTAMP    DEFAULT CURRENT_TIMESTAMP() NULL,
+
+    CONSTRAINT uq_funding_request_id
+        UNIQUE (funding_request_id),
+
+    CONSTRAINT fk_funding_replies_request
+        FOREIGN KEY (funding_request_id) REFERENCES funding_requests (id)
+            ON UPDATE CASCADE ON DELETE CASCADE
+
+    INDEX idx_funding_replies_request
+        (funding_request_id)
+
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+```
+
+## ATTACHMENTS TABLE
+```sql
+CREATE TABLE IF NOT EXISTS attachments (
+    id                 BIGINT UNSIGNED AUTO_INCREMENT
+        PRIMARY KEY,
+    attachable_type    VARCHAR(255)                 NOT NULL,
+    attachable_id      BIGINT UNSIGNED              NOT NULL,
+    student_id         BIGINT UNSIGNED              NULL,
+    disk               VARCHAR(50)  DEFAULT 's3'    NOT NULL,
+    file_path          VARCHAR(255)                 NOT NULL,
+    file_original_name VARCHAR(255)                 NULL,
+    mime_type          VARCHAR(100)                 NULL,
+    size               INT UNSIGNED                 NULL,
+    collection         VARCHAR(50)                  NOT NULL,
+    content_hash       VARBINARY(32)                NULL,
+    status             TINYINT      DEFAULT 0       NOT NULL,
+    metadata           LONGTEXT COLLATE utf8mb4_bin NULL
+        CHECK (JSON_VALID(`metadata`)),
+    created_at         TIMESTAMP                    NULL,
+    updated_at         TIMESTAMP                    NULL,
+
+    INDEX idx_attachments_attachable
+        (attachable_type, attachable_id),
+
+    INDEX idx_attachments_collection
+        (collection),
+
+    INDEX idx_attachments_content_hash
+        (content_hash),
+
+    INDEX idx_attachments_student
+        (student_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+```
+
+## THE DATA WE MIGHT NEED FROM canapply_api.students
+```sql
+SELECT
+	s.first_name AS user_first_name,                                  -- GENERAL DATA
+	s.last_name AS user_last_name,                                    -- GENERAL DATA
+	s.email AS user_email_address,                                    -- GENERAL DATA
+	s.mobile_number AS user_phone_number,                             -- GENERAL DATA
+	s.date_of_birth AS user_date_of_birth,                            -- GENERAL DATA
+	s.gender AS user_gender,                                          -- GENERAL DATA
+	s.country_of_citizenship as user_country_of_citizenship,          -- GENERAL DATA
+FROM students s
+JOIN funding_requests fr ON s.id = fr.student_id
+WHERE fr.id = <GIVEN_FUNDING_REQUEST_ID>
+LIMIT 1;
+```
+
+## THE DATA WE MIGHT NEED FROM THE canapply_api.metas
+
+```sql
+SELECT
+	m.value AS user_onboarding_data                                   -- USER METADATA
+FROM metas m
+JOIN funding_requests fr ON m.metable_id = fr.student_id
+WHERE fr.id = <GIVEN_FUNDING_REQUEST_ID> AND AND m.`key` = 'funding_template_initial_data'
+LIMIT 1;
+```
+
+RESULT SAMPLE -> "user_onboarding_data": "{\"YourName\":\"AmirMasoud Azadfar\",\"YourLastDegree\":\"Bachelor\",\"UniversityName\":\"Ferdowsi University\",\"YourGPA\":3.9,\"PreferredEducationalLevel\":\"Master\",\"ThesisName\":null,\"YourInterests\":\"Machine Learning\"}"
+
+
+<APPENDIX C: TECH STACK REQUIREMENTS>
+Prompts in Jinja2 (.j2) files: Using .j2 files for prompt management transforms static text into dynamic code, offering several powerful advantages for LLM workflows. By leveraging the Jinja2 engine, we can perform variable injection to seamlessly insert user data or context, and utilize conditional logic to tailor instructions, such as providing technical depth only when specifically flagged. Furthermore, the ability to use loops allows for the efficient iteration of lists like chat histories or search results, while modularity enables us to break complex prompts into reusable components that can be shared across multiple templates.
+
+The rest of the stack is explained in the TECH-SPECS.md file in the intelligence-layer-constitutions directory.

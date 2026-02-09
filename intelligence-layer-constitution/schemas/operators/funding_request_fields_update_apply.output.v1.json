@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/operators/funding_request_fields_update_apply.output.v1.json",
+  "title": "Operator: FundingRequest.Fields.Update.Apply (output) (v1)",
+  "allOf": [
+    { "$ref": "operator_result_base.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "result": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["outcome", "rows_affected", "request_id", "applied_at"],
+          "properties": {
+            "outcome": { "$ref": "../outcomes/platform_patch_receipt.v1.json" },
+            "rows_affected": { "type": "integer", "minimum": 0 },
+            "request_id": { "$ref": "../common/defs.v1.json#/$defs/FundingRequestId" },
+            "applied_at": { "$ref": "../common/defs.v1.json#/$defs/ISODateTime" }
+          }
+        }
+      }
+    }
+  ]
+}

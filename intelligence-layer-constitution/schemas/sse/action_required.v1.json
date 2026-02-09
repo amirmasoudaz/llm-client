@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/sse/action_required.v1.json",
+  "title": "SSE Event: action_required (v1)",
+  "allOf": [
+    { "$ref": "event_base.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": { "const": "action_required" },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["action_id", "action_type", "title", "description"],
+          "properties": {
+            "action_id": { "$ref": "../common/defs.v1.json#/$defs/Uuid" },
+            "apply_action_id": { "$ref": "../common/defs.v1.json#/$defs/Uuid" },
+            "action_type": {
+              "type": "string",
+              "enum": [
+                "apply_platform_patch",
+                "upload_required",
+                "collect_fields",
+                "collect_profile_fields",
+                "select_option",
+                "confirm",
+                "redirect",
+                "refresh_ui"
+              ]
+            },
+            "reason_code": { "type": "string" },
+            "title": { "type": "string", "minLength": 1 },
+            "description": { "type": "string", "minLength": 1 },
+            "requires_user_input": { "type": "boolean", "default": true },
+            "ui_hints": { "type": "object", "default": {} },
+            "proposed_changes": { "$ref": "../common/platform_patch_proposal.v1.json" },
+            "expires_at": { "$ref": "../common/defs.v1.json#/$defs/ISODateTime" },
+            "data": { "type": "object", "default": {} }
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "name": "Professor.Alignment.Score",
+  "type": "operator",
+  "version": "1.0.0",
+  "owner": "canapply",
+  "description": "Compute an alignment score outcome between a student and a professor using background context and professor summary.",
+  "schemas": {
+    "input": "schemas/operators/professor_alignment_score.input.v1.json",
+    "output": "schemas/operators/professor_alignment_score.output.v1.json"
+  },
+  "requires": {
+    "tools": [],
+    "capabilities": [],
+    "context_fields": []
+  },
+  "policy_tags": ["draft_only", "pii_allowed"],
+  "effects": ["produce_outcome"],
+  "observability": {
+    "log_level": "info",
+    "emit_samples": false
+  }
+}
+

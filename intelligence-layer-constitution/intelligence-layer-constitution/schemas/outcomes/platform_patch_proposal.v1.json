@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/outcomes/platform_patch_proposal.v1.json",
+  "title": "Outcome: PlatformPatch.Proposal (v1)",
+  "allOf": [
+    { "$ref": "outcome_base.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "outcome_type": { "const": "PlatformPatch.Proposal" },
+        "payload": { "$ref": "../common/platform_patch_proposal.v1.json" }
+      }
+    }
+  ]
+}
+

@@ -1,0 +1,6 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/common/platform_patch_receipt.v1.json",
+  "$ref": "defs.v1.json#/$defs/PlatformPatchReceipt"
+}
+

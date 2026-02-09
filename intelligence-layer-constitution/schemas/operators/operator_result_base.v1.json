@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/operators/operator_result_base.v1.json",
+  "title": "Operator Result Envelope (v1)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "status", "metrics", "error"],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "status": { "type": "string", "enum": ["succeeded", "failed", "in_progress"] },
+    "result": { "type": ["object", "null"], "default": null },
+    "artifacts": {
+      "type": "array",
+      "items": { "$ref": "../common/defs.v1.json#/$defs/ArtifactRef" },
+      "default": []
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["latency_ms"],
+      "properties": {
+        "latency_ms": { "type": "integer", "minimum": 0 },
+        "tokens_in": { "type": "integer", "minimum": 0 },
+        "tokens_out": { "type": "integer", "minimum": 0 },
+        "tokens_total": { "type": "integer", "minimum": 0 },
+        "cost_total_usd": { "type": "number", "minimum": 0 },
+        "provider": { "type": "string" },
+        "model": { "type": "string" }
+      }
+    },
+    "error": {
+      "oneOf": [
+        { "$ref": "../common/error.v1.json" },
+        { "type": "null" }
+      ]
+    },
+    "nondeterminism": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "is_nondeterministic": { "type": "boolean" },
+        "reasons": { "type": "array", "items": { "type": "string" }, "default": [] },
+        "stability": { "type": "string", "enum": ["high", "medium", "low"] }
+      }
+    }
+  }
+}
+

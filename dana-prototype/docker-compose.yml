@@ -1,0 +1,156 @@
+# docker-compose.yml
+# Dana AI Copilot - Development Environment
+
+version: '3.8'
+
+services:
+  # ==========================================================================
+  # Dana API Service
+  # ==========================================================================
+  dana-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: dana-api
+    ports:
+      - "8000:8000"
+    environment:
+      # App
+      - APP_ENV=dev
+      - DEBUG=true
+      
+      # Database
+      - DATABASE_URL=mysql://dana:dana_secret@mysql:3306/dana
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_USER=dana
+      - DB_PASSWORD=dana_secret
+      - DB_NAME=dana
+      
+      # Redis
+      - REDIS_URL=redis://redis:6379/0
+      
+      # Storage
+      - STORAGE_BACKEND=s3
+      - S3_REGION=ca-central-1
+      - S3_BUCKET=canapply-platform-prod
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      
+      # LLM
+      - LLM_MODE=live
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      
+      # Platform Integration
+      - PLATFORM_BACKEND_URL=http://host.docker.internal:8080
+      - PLATFORM_WEBHOOK_URL=
+      - PLATFORM_API_KEY=
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./src:/app/src:ro
+      - ./prisma:/app/prisma:ro
+      - dana-data:/app/data
+    networks:
+      - dana-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ==========================================================================
+  # MySQL Database
+  # ==========================================================================
+  mysql:
+    image: mysql:8.0
+    container_name: dana-mysql
+    ports:
+      - "3307:3306"
+    environment:
+      - MYSQL_ROOT_PASSWORD=root_secret
+      - MYSQL_DATABASE=dana
+      - MYSQL_USER=dana
+      - MYSQL_PASSWORD=dana_secret
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - dana-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "dana", "-pdana_secret"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    command: >
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --default-authentication-plugin=mysql_native_password
+
+  # ==========================================================================
+  # Redis Cache
+  # ==========================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: dana-redis
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - dana-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+
+  # ==========================================================================
+  # Prisma Studio (Development)
+  # ==========================================================================
+  prisma-studio:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: dana-prisma-studio
+    ports:
+      - "5555:5555"
+    environment:
+      - DATABASE_URL=mysql://dana:dana_secret@mysql:3306/dana
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - dana-network
+    command: prisma studio --port 5555 --browser none
+    profiles:
+      - dev
+
+# ==========================================================================
+# Networks
+# ==========================================================================
+networks:
+  dana-network:
+    driver: bridge
+
+# ==========================================================================
+# Volumes
+# ==========================================================================
+volumes:
+  mysql-data:
+  redis-data:
+  dana-data:
+
+
+
+
+

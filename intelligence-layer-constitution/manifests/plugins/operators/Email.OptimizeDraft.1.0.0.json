@@ -1,0 +1,23 @@
+{
+  "name": "Email.OptimizeDraft",
+  "type": "operator",
+  "version": "1.0.0",
+  "owner": "canapply",
+  "description": "Optimize an existing email draft (platform or override) and produce a new Email.Draft outcome.",
+  "schemas": {
+    "input": "schemas/operators/email_optimize_draft.input.v1.json",
+    "output": "schemas/operators/email_optimize_draft.output.v1.json"
+  },
+  "requires": {
+    "tools": [],
+    "capabilities": [],
+    "context_fields": []
+  },
+  "policy_tags": ["draft_only", "pii_allowed"],
+  "effects": ["produce_outcome"],
+  "observability": {
+    "log_level": "info",
+    "emit_samples": false
+  }
+}
+

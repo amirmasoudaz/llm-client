@@ -1,0 +1,233 @@
+{
+  "schema_version": "1.0",
+  "plan_template_id": "Funding.Outreach.Alignment.Score@1.0.0",
+  "intent_type": "Funding.Outreach.Alignment.Score",
+  "plan_version": "planner-1.0",
+  "description": "Load context, ensure profile prerequisites, summarize professor, and compute an alignment score.",
+  "steps": [
+    {
+      "step_id": "s1",
+      "kind": "operator",
+      "name": "Platform.Context.Load",
+      "operator_name": "Platform.Context.Load",
+      "operator_version": "1.0.0",
+      "effects": ["read_only"],
+      "policy_tags": ["read_only", "platform_read"],
+      "risk_level": "low",
+      "cache_policy": "ttl_only",
+      "idempotency_template": "platform_context:{tenant_id}:{thread_id}",
+      "payload": { "thread_id": { "from": "intent.thread_id" } },
+      "produces": [
+        "context.platform",
+        "context.intelligence",
+        "context.platform_context_hash",
+        "context.student_background_hash",
+        "context.composer_prereqs_hash"
+      ]
+    },
+    {
+      "step_id": "s2",
+      "kind": "operator",
+      "name": "StudentProfile.LoadOrCreate",
+      "operator_name": "StudentProfile.LoadOrCreate",
+      "operator_version": "1.0.0",
+      "effects": ["db_write"],
+      "policy_tags": ["onboarding", "profile"],
+      "risk_level": "low",
+      "cache_policy": "never",
+      "idempotency_template": "student_profile_load:{tenant_id}:{thread_id}",
+      "payload": { "thread_id": { "from": "intent.thread_id" } },
+      "produces": ["context.profile", "context.memory"]
+    },
+    {
+      "step_id": "s3",
+      "kind": "operator",
+      "name": "StudentProfile.Requirements.Evaluate",
+      "operator_name": "StudentProfile.Requirements.Evaluate",
+      "operator_version": "1.0.0",
+      "effects": ["read_only"],
+      "policy_tags": ["onboarding", "profile"],
+      "risk_level": "low",
+      "cache_policy": "never",
+      "idempotency_template": "student_profile_requirements_pre:{tenant_id}:{thread_id}:alignment",
+      "payload": {
+        "thread_id": { "from": "intent.thread_id" },
+        "intent_type": { "const": "Funding.Outreach.Alignment.Score" },
+        "required_requirements": { "const": ["base_profile_complete", "background_data_complete"] },
+        "strict": { "const": false }
+      },
+      "produces": ["context.profile.requirements"]
+    },
+    {
+      "step_id": "s4",
+      "kind": "policy_check",
+      "name": "Onboarding.EnsureBackground",
+      "effects": ["read_only"],
+      "policy_tags": ["onboarding_gate"],
+      "risk_level": "low",
+      "cache_policy": "never",
+      "check": {
+        "check_name": "Onboarding.Ensure",
+        "params": {
+          "required_gates": ["base_profile_complete", "background_data_complete"],
+          "on_missing_action_type": "collect_profile_fields"
+        }
+      }
+    },
+    {
+      "step_id": "s5",
+      "kind": "operator",
+      "name": "StudentProfile.Update",
+      "operator_name": "StudentProfile.Update",
+      "operator_version": "1.0.0",
+      "effects": ["db_write"],
+      "policy_tags": ["onboarding", "profile"],
+      "risk_level": "low",
+      "cache_policy": "never",
+      "depends_on": ["s4"],
+      "idempotency_template": "student_profile_update:{tenant_id}:{thread_id}:{computed.profile_updates_hash}",
+      "payload": {
+        "thread_id": { "from": "intent.thread_id" },
+        "profile_updates": { "from": "intent.inputs.profile_updates" },
+        "source": { "const": "user" }
+      },
+      "produces": ["context.profile", "context.profile.validation"]
+    },
+    {
+      "step_id": "s6",
+      "kind": "operator",
+      "name": "Memory.Upsert",
+      "operator_name": "Memory.Upsert",
+      "operator_version": "1.0.0",
+      "effects": ["db_write"],
+      "policy_tags": ["memory", "profile"],
+      "risk_level": "low",
+      "cache_policy": "never",
+      "depends_on": ["s4"],
+      "idempotency_template": "memory_upsert:{tenant_id}:{thread_id}:{computed.memory_updates_hash}",
+      "payload": {
+        "thread_id": { "from": "intent.thread_id" },
+        "entries": { "from": "intent.inputs.memory_updates" }
+      },
+      "produces": ["context.memory"]
+    },
+    {
+      "step_id": "s7",
+      "kind": "operator",
+      "name": "StudentProfile.Requirements.Evaluate",
+      "operator_name": "StudentProfile.Requirements.Evaluate",
+      "operator_version": "1.0.0",
+      "effects": ["read_only"],
+      "policy_tags": ["onboarding", "profile"],
+      "risk_level": "low",
+      "cache_policy": "never",
+      "depends_on": ["s5"],
+      "idempotency_template": "student_profile_requirements_post:{tenant_id}:{thread_id}:alignment",
+      "payload": {
+        "thread_id": { "from": "intent.thread_id" },
+        "intent_type": { "const": "Funding.Outreach.Alignment.Score" },
+        "required_requirements": { "const": ["base_profile_complete", "background_data_complete"] },
+        "strict": { "const": false }
+      },
+      "produces": ["context.profile.requirements"]
+    },
+    {
+      "step_id": "s7b",
+      "kind": "policy_check",
+      "name": "Onboarding.RecheckBackground",
+      "effects": ["read_only"],
+      "policy_tags": ["onboarding_gate"],
+      "risk_level": "low",
+      "cache_policy": "never",
+      "check": {
+        "check_name": "Onboarding.Ensure",
+        "params": {
+          "required_gates": { "from": "context.profile.requirements.required_requirements" },
+          "on_missing_action_type": "collect_profile_fields"
+        }
+      }
+    },
+    {
+      "step_id": "s8",
+      "kind": "operator",
+      "name": "Professor.Profile.Retrieve",
+      "operator_name": "Professor.Profile.Retrieve",
+      "operator_version": "1.0.0",
+      "effects": ["read_only"],
+      "policy_tags": ["read_only", "public_web"],
+      "risk_level": "low",
+      "cache_policy": "ttl_only",
+      "depends_on": ["s7b"],
+      "idempotency_template": "prof_profile:{tenant_id}:{context.platform.professor.id}:{context.platform.professor.canspider_digest_id}:{intent.inputs.force_refresh}",
+      "payload": {
+        "professor_id": { "from": "context.platform.professor.id" },
+        "professor_url": { "from": "intent.inputs.professor_ref.url" },
+        "canspider_digest_id": { "from": "context.platform.professor.canspider_digest_id" },
+        "force_refresh": { "from": "intent.inputs.force_refresh" }
+      },
+      "produces": ["steps.s8.result.profile"]
+    },
+    {
+      "step_id": "s9",
+      "kind": "operator",
+      "name": "Professor.Summarize",
+      "operator_name": "Professor.Summarize",
+      "operator_version": "1.0.0",
+      "effects": ["produce_outcome"],
+      "policy_tags": ["draft_only", "public_web"],
+      "risk_level": "low",
+      "cache_policy": "use_if_safe",
+      "idempotency_template": "prof_summary:{tenant_id}:{context.platform.professor.id}:{steps.s8.result.profile.profile_hash.value}",
+      "payload": {
+        "professor_id": { "from": "context.platform.professor.id" },
+        "profile": { "from": "steps.s8.result.profile" },
+        "custom_instruction": { "from": "intent.inputs.custom_instruction" }
+      },
+      "produces": ["outcome.professor_summary"]
+    },
+    {
+      "step_id": "s10",
+      "kind": "operator",
+      "name": "Professor.Alignment.Score",
+      "operator_name": "Professor.Alignment.Score",
+      "operator_version": "1.0.0",
+      "effects": ["produce_outcome"],
+      "policy_tags": ["draft_only", "pii_allowed"],
+      "risk_level": "low",
+      "cache_policy": "use_if_safe",
+      "idempotency_template": "alignment:{tenant_id}:{context.platform.student.id}:{context.platform.professor.id}:{outcome.professor_summary.hash.value}:{context.student_background_hash.value}",
+      "payload": {
+        "student_id": { "from": "context.platform.student.id" },
+        "professor_id": { "from": "context.platform.professor.id" },
+        "professor_summary": { "from": "outcome.professor_summary" },
+        "student_background": {
+          "background": { "from": "context.intelligence.background" },
+          "profile": { "from": "context.profile" },
+          "memory": { "from": "context.memory.by_type" },
+          "student": { "from": "context.platform.student" },
+          "funding_request": { "from": "context.platform.funding_request" }
+        },
+        "focus_areas": { "from": "intent.inputs.focus_areas" }
+      },
+      "produces": ["outcome.alignment_score"]
+    },
+    {
+      "step_id": "s11",
+      "kind": "operator",
+      "name": "Conversation.Suggestions.Generate",
+      "operator_name": "Conversation.Suggestions.Generate",
+      "operator_version": "1.0.0",
+      "effects": ["produce_outcome"],
+      "policy_tags": ["read_only"],
+      "risk_level": "low",
+      "cache_policy": "use_if_safe",
+      "idempotency_template": "suggestions:{tenant_id}:{thread_id}:{outcome.alignment_score.hash.value}",
+      "payload": {
+        "intent_type": { "from": "intent.intent_type" },
+        "platform": { "from": "context.platform" },
+        "outcomes": { "from": "outcome" }
+      },
+      "produces": ["outcome.suggestions"]
+    }
+  ]
+}

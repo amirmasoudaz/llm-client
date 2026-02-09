@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/outcomes/email_review.v1.json",
+  "title": "Outcome: Email.Review (v1)",
+  "allOf": [
+    { "$ref": "outcome_base.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "outcome_type": { "const": "Email.Review" },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["verdict", "overall_score", "issues"],
+          "properties": {
+            "verdict": { "type": "string", "enum": ["pass", "needs_edits", "unsafe"] },
+            "overall_score": { "type": "number", "minimum": 0, "maximum": 1 },
+            "rubric_scores": { "type": "object", "default": {} },
+            "issues": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["code", "severity", "message"],
+                "properties": {
+                  "code": { "type": "string", "minLength": 1 },
+                  "severity": { "type": "string", "enum": ["info", "warning", "error"] },
+                  "message": { "type": "string", "minLength": 1 },
+                  "suggestion": { "type": "string" }
+                }
+              }
+            },
+            "suggested_subject": { "type": "string" },
+            "suggested_body": { "type": "string" },
+            "notes": { "type": "string" }
+          }
+        }
+      }
+    }
+  ]
+}
+

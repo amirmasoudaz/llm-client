@@ -8,6 +8,7 @@ Demonstrates:
 3. Running multi-turn conversations with automatic tool execution
 4. Streaming agent responses
 """
+
 import asyncio
 import sys
 from pathlib import Path
@@ -19,17 +20,17 @@ from llm_client import (
     Agent,
     OpenAIProvider,
     StreamEventType,
-    tool,
     sync_tool,
+    tool,
 )
 
-
 # === Define Tools ===
+
 
 @tool
 async def get_weather(city: str, units: str = "celsius") -> str:
     """Get the current weather for a city.
-    
+
     Args:
         city: Name of the city
         units: Temperature units (celsius or fahrenheit)
@@ -41,25 +42,25 @@ async def get_weather(city: str, units: str = "celsius") -> str:
         "tokyo": {"temp": 28, "condition": "humid"},
         "paris": {"temp": 18, "condition": "rainy"},
     }
-    
+
     city_lower = city.lower()
     if city_lower in weather_data:
         data = weather_data[city_lower]
         temp = data["temp"]
         if units == "fahrenheit":
-            temp = int(temp * 9/5 + 32)
+            temp = int(temp * 9 / 5 + 32)
             unit_symbol = "°F"
         else:
             unit_symbol = "°C"
         return f"Weather in {city}: {data['condition']}, {temp}{unit_symbol}"
-    
+
     return f"Weather data not available for {city}"
 
 
 @tool
 async def search_web(query: str, max_results: int = 3) -> str:
     """Search the web for information.
-    
+
     Args:
         query: Search query string
         max_results: Maximum number of results to return
@@ -76,7 +77,7 @@ async def search_web(query: str, max_results: int = 3) -> str:
 @tool
 async def calculate(expression: str) -> str:
     """Evaluate a mathematical expression.
-    
+
     Args:
         expression: Math expression to evaluate (e.g., "2 + 2 * 3")
     """
@@ -96,6 +97,7 @@ async def calculate(expression: str) -> str:
 def get_current_time() -> str:
     """Get the current date and time."""
     from datetime import datetime
+
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
@@ -103,10 +105,10 @@ async def main():
     print("=" * 60)
     print("AGENT WITH TOOLS EXAMPLE")
     print("=" * 60)
-    
+
     # Create provider
     provider = OpenAIProvider(model="gpt-5-nano")
-    
+
     # Create agent with tools
     agent = Agent(
         provider=provider,
@@ -117,46 +119,43 @@ async def main():
         ),
         max_turns=5,
     )
-    
+
     # === Example 1: Single tool call ===
     print("\n" + "=" * 40)
     print("Example 1: Weather Query")
     print("=" * 40)
-    
+
     result = await agent.run("What's the weather like in Tokyo?")
-    
+
     print(f"\nFinal answer: {result.content}")
     print(f"Turns taken: {result.num_turns}")
     print(f"Tool calls: {[tc.name for tc in result.all_tool_calls]}")
-    
+
     # Reset for next example
     agent.reset()
-    
+
     # === Example 2: Multiple tool calls ===
     print("\n" + "=" * 40)
     print("Example 2: Multi-tool Query")
     print("=" * 40)
-    
-    result = await agent.run(
-        "Compare the weather in New York and London, "
-        "and tell me what time it is."
-    )
-    
+
+    result = await agent.run("Compare the weather in New York and London, and tell me what time it is.")
+
     print(f"\nFinal answer: {result.content}")
     print(f"Turns taken: {result.num_turns}")
     print(f"Tool calls: {[tc.name for tc in result.all_tool_calls]}")
-    
+
     # Reset for next example
     agent.reset()
-    
+
     # === Example 3: Streaming with tools ===
     print("\n" + "=" * 40)
     print("Example 3: Streaming Response")
     print("=" * 40)
-    
+
     print("\nStreaming response:")
     print("-" * 40)
-    
+
     async for event in agent.stream("Calculate 15 * 23 + 7"):
         if event.type == StreamEventType.TOKEN:
             print(event.data, end="", flush=True)
@@ -167,27 +166,27 @@ async def main():
             print("\n" + "-" * 40)
             agent_result = event.data
             print(f"Status: {agent_result.status}")
-    
+
     # === Example 4: Multi-turn conversation ===
     print("\n" + "=" * 40)
     print("Example 4: Multi-turn Conversation")
     print("=" * 40)
-    
+
     agent.reset()
-    
+
     # First message
     result1 = await agent.run("Search for Python programming")
-    print(f"\nUser: Search for Python programming")
+    print("\nUser: Search for Python programming")
     print(f"Assistant: {result1.content}")
-    
+
     # Follow-up (conversation continues)
     result2 = await agent.run("Now search for JavaScript frameworks")
-    print(f"\nUser: Now search for JavaScript frameworks")
+    print("\nUser: Now search for JavaScript frameworks")
     print(f"Assistant: {result2.content}")
-    
+
     # Check conversation history
     print(f"\nTotal messages in conversation: {len(agent.conversation)}")
-    
+
     # === Cleanup ===
     await provider.close()
     print("\n✅ Done!")
@@ -195,4 +194,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-

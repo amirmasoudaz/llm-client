@@ -1,20 +1,20 @@
 import asyncio
 import time
-from typing import Type
 
 from .models import ModelProfile
 
 
 class TokenBucket:
     def __init__(self, size: int = 0) -> None:
-        self._maximum_size = size
-        self._current_size = size
-        self._consume_per_second = size / 60
+        self._maximum_size = max(0, int(size))
+        self._current_size = self._maximum_size
+        self._consume_per_second = (self._maximum_size / 60) if self._maximum_size > 0 else 0.0
         self._last_fill_time = time.time()
         self._lock = asyncio.Lock()
 
     async def consume(self, amount: int = 0) -> None:
-        if amount == 0:
+        # A bucket size of 0 means "unlimited/disabled" (no rate limiting).
+        if amount == 0 or self._maximum_size == 0:
             return
 
         async with self._lock:
@@ -30,6 +30,8 @@ class TokenBucket:
             self._current_size -= amount
 
     def _refill(self) -> None:
+        if self._maximum_size == 0:
+            return
         now = time.time()
         elapsed = now - self._last_fill_time
         refilled_tokens = int(elapsed * self._consume_per_second)
@@ -40,10 +42,16 @@ class TokenBucket:
 class Limiter:
     DEFAULT_RATE_LIMITS = {"tkn_per_min": 0, "req_per_min": 0}
 
-    def __init__(self, model_specs: Type["ModelProfile"] | None = None) -> None:
-        rate_limits = model_specs.rate_limits if model_specs else self.DEFAULT_RATE_LIMITS
-        self.tkn_limiter = TokenBucket(size=int(rate_limits["tkn_per_min"] * 0.75))
-        self.req_limiter = TokenBucket(size=int(rate_limits["req_per_min"] * 0.95))
+    def __init__(self, model_specs: type["ModelProfile"] | None = None) -> None:
+        rate_limits = getattr(model_specs, "rate_limits", None) if model_specs else None
+        if not isinstance(rate_limits, dict):
+            rate_limits = self.DEFAULT_RATE_LIMITS
+
+        tpm = float(rate_limits.get("tkn_per_min", 0) or 0)
+        rpm = float(rate_limits.get("req_per_min", 0) or 0)
+
+        self.tkn_limiter = TokenBucket(size=int(tpm * 0.75))
+        self.req_limiter = TokenBucket(size=int(rpm * 0.95))
 
     def limit(self, tokens: int = 0, requests: int = 0):
         return self._LimitContextManager(self, tokens, requests)

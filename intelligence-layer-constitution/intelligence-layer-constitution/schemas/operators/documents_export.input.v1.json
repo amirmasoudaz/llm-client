@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/operators/documents_export.input.v1.json",
+  "title": "Operator: Documents.Export (input) (v1)",
+  "allOf": [
+    { "$ref": "operator_call_base.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["optimized_document", "export_format"],
+          "properties": {
+            "document_id": { "$ref": "../common/defs.v1.json#/$defs/DocumentId" },
+            "optimized_document": {
+              "oneOf": [
+                { "$ref": "../outcomes/document_optimized.v1.json" },
+                { "$ref": "../outcomes/document_composed.v1.json" }
+              ]
+            },
+            "export_format": { "type": "string", "enum": ["pdf"] }
+          }
+        }
+      }
+    }
+  ]
+}
+

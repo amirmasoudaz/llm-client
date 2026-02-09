@@ -1,0 +1,23 @@
+{
+  "name": "Email.GenerateDraft",
+  "type": "operator",
+  "version": "1.0.0",
+  "owner": "canapply",
+  "description": "Generate a funding outreach email draft outcome from platform context, professor summary, alignment, and user preferences.",
+  "schemas": {
+    "input": "schemas/operators/email_generate_draft.input.v1.json",
+    "output": "schemas/operators/email_generate_draft.output.v1.json"
+  },
+  "requires": {
+    "tools": [],
+    "capabilities": [],
+    "context_fields": []
+  },
+  "policy_tags": ["draft_only", "pii_allowed"],
+  "effects": ["produce_outcome"],
+  "observability": {
+    "log_level": "info",
+    "emit_samples": false
+  }
+}
+

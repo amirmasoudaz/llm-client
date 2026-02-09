@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/operators/student_profile_requirements_evaluate.input.v1.json",
+  "title": "Operator: StudentProfile.Requirements.Evaluate (input) (v1)",
+  "allOf": [
+    { "$ref": "operator_call_base.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["thread_id"],
+          "properties": {
+            "thread_id": { "$ref": "../common/defs.v1.json#/$defs/ThreadId" },
+            "intent_type": { "type": "string" },
+            "required_requirements": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 },
+              "default": []
+            },
+            "strict": { "type": "boolean", "default": false }
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "name": "StudentProfile.Update",
+  "type": "operator",
+  "version": "1.0.0",
+  "owner": "canapply",
+  "description": "Apply incremental profile updates with schema validation.",
+  "schemas": {
+    "input": "schemas/operators/student_profile_update.input.v1.json",
+    "output": "schemas/operators/student_profile_update.output.v1.json"
+  },
+  "requires": {
+    "tools": [],
+    "capabilities": [],
+    "context_fields": []
+  },
+  "policy_tags": ["onboarding", "profile"],
+  "effects": ["db_write"],
+  "observability": {
+    "log_level": "info",
+    "emit_samples": false
+  }
+}

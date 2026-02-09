@@ -7,13 +7,15 @@ Demonstrates:
 2. Caching embeddings with dynamic collections
 3. Similarity computation between embeddings
 """
+
 import asyncio
-import tempfile
-from pathlib import Path
 import math
 
 # Add src to path for development
 import sys
+import tempfile
+from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from llm_client import OpenAIClient
@@ -21,7 +23,7 @@ from llm_client import OpenAIClient
 
 def cosine_similarity(vec1: list[float], vec2: list[float]) -> float:
     """Compute cosine similarity between two vectors."""
-    dot_product = sum(a * b for a, b in zip(vec1, vec2))
+    dot_product = sum(a * b for a, b in zip(vec1, vec2, strict=False))
     norm1 = math.sqrt(sum(a * a for a in vec1))
     norm2 = math.sqrt(sum(b * b for b in vec2))
     return dot_product / (norm1 * norm2) if norm1 and norm2 else 0.0
@@ -59,7 +61,7 @@ async def main():
         )
         embedding = response.get("output")
         embeddings.append(embedding)
-        print(f"Text {i+1}: '{text[:40]}...' -> {len(embedding)} dimensions")
+        print(f"Text {i + 1}: '{text[:40]}...' -> {len(embedding)} dimensions")
 
     # --- Test 2: Similarity computation ---
     print("\n" + "=" * 60)
@@ -82,6 +84,7 @@ async def main():
     print("=" * 60)
 
     import time
+
     start = time.perf_counter()
 
     response_cached = await client.get_response(
@@ -91,7 +94,7 @@ async def main():
     )
 
     elapsed = time.perf_counter() - start
-    print(f"Fetched from cache in {elapsed*1000:.2f}ms")
+    print(f"Fetched from cache in {elapsed * 1000:.2f}ms")
     print(f"Same embedding? {embeddings[0] == response_cached.get('output')}")
 
     # --- Show cache structure ---

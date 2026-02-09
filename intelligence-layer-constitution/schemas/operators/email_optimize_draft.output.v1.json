@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/operators/email_optimize_draft.output.v1.json",
+  "title": "Operator: Email.OptimizeDraft (output) (v1)",
+  "allOf": [
+    { "$ref": "operator_result_base.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "result": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["outcome"],
+          "properties": {
+            "outcome": { "$ref": "../outcomes/email_draft.v1.json" }
+          }
+        }
+      }
+    }
+  ]
+}
+

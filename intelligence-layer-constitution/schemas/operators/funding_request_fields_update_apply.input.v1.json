@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/operators/funding_request_fields_update_apply.input.v1.json",
+  "title": "Operator: FundingRequest.Fields.Update.Apply (input) (v1)",
+  "allOf": [
+    { "$ref": "operator_call_base.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["proposal"],
+          "properties": {
+            "funding_request_id": { "$ref": "../common/defs.v1.json#/$defs/FundingRequestId" },
+            "proposal": { "$ref": "../outcomes/platform_patch_proposal.v1.json" },
+            "expected_updated_at": { "$ref": "../common/defs.v1.json#/$defs/ISODateTime" },
+            "strict_optimistic_lock": { "type": "boolean", "default": true }
+          }
+        }
+      }
+    }
+  ]
+}

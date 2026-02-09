@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/outcomes/conversation_suggestions.v1.json",
+  "title": "Outcome: Conversation.Suggestions (v1)",
+  "allOf": [
+    { "$ref": "outcome_base.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "outcome_type": { "const": "Conversation.Suggestions" },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["suggestions"],
+          "properties": {
+            "suggestions": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["text"],
+                "properties": {
+                  "type": { "type": "string", "default": "followup" },
+                  "text": { "type": "string", "minLength": 1 }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

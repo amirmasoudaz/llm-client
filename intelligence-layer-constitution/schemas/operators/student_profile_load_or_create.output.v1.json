@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/operators/student_profile_load_or_create.output.v1.json",
+  "title": "Operator: StudentProfile.LoadOrCreate (output) (v1)",
+  "allOf": [
+    { "$ref": "operator_result_base.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "result": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["student_id", "funding_request_id", "created", "profile", "memory"],
+          "properties": {
+            "student_id": { "$ref": "../common/defs.v1.json#/$defs/StudentId" },
+            "funding_request_id": { "$ref": "../common/defs.v1.json#/$defs/FundingRequestId" },
+            "created": { "type": "boolean" },
+            "profile": { "type": "object" },
+            "memory": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["entries", "by_type"],
+              "properties": {
+                "entries": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["memory_id", "type", "content", "updated_at"],
+                    "properties": {
+                      "memory_id": { "$ref": "../common/defs.v1.json#/$defs/Uuid" },
+                      "type": {
+                        "type": "string",
+                        "enum": ["tone_style", "do_dont", "long_term_goal"]
+                      },
+                      "content": { "type": "string" },
+                      "source": { "type": "string" },
+                      "updated_at": { "$ref": "../common/defs.v1.json#/$defs/ISODateTime" }
+                    }
+                  }
+                },
+                "by_type": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

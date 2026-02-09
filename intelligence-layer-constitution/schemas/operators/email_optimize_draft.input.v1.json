@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/operators/email_optimize_draft.input.v1.json",
+  "title": "Operator: Email.OptimizeDraft (input) (v1)",
+  "allOf": [
+    { "$ref": "operator_call_base.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["requested_edits", "professor", "funding_request"],
+          "properties": {
+            "current_subject": { "type": "string" },
+            "current_body": { "type": "string" },
+            "fallback_subject": { "type": "string" },
+            "fallback_body": { "type": "string" },
+            "requested_edits": { "type": "array", "items": { "type": "string" }, "default": [] },
+            "subject_override": { "type": "string" },
+            "custom_instructions": { "type": "string" },
+            "source_draft_outcome_id": { "$ref": "../common/defs.v1.json#/$defs/Uuid" },
+            "source_draft_version": { "type": "integer", "minimum": 1 },
+            "email_id": { "$ref": "../common/defs.v1.json#/$defs/FundingEmailId" },
+            "review_report": { "$ref": "../outcomes/email_review.v1.json" },
+            "professor": {
+              "type": "object",
+              "additionalProperties": true,
+              "required": ["id"],
+              "properties": {
+                "id": { "$ref": "../common/defs.v1.json#/$defs/ProfessorId" }
+              }
+            },
+            "funding_request": {
+              "type": "object",
+              "additionalProperties": true,
+              "required": ["id"],
+              "properties": {
+                "id": { "$ref": "../common/defs.v1.json#/$defs/FundingRequestId" }
+              }
+            },
+            "student_profile": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/operators/professor_profile_retrieve.input.v1.json",
+  "title": "Operator: Professor.Profile.Retrieve (input) (v1)",
+  "allOf": [
+    { "$ref": "operator_call_base.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["professor_id"],
+          "properties": {
+            "professor_id": { "$ref": "../common/defs.v1.json#/$defs/ProfessorId" },
+            "professor_url": { "$ref": "../common/defs.v1.json#/$defs/Url" },
+            "canspider_digest_id": { "type": "string" },
+            "force_refresh": { "type": "boolean", "default": false }
+          }
+        }
+      }
+    }
+  ]
+}
+

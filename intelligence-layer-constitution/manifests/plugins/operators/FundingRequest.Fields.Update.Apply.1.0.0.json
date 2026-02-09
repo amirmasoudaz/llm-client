@@ -1,0 +1,22 @@
+{
+  "name": "FundingRequest.Fields.Update.Apply",
+  "type": "operator",
+  "version": "1.0.0",
+  "owner": "canapply",
+  "description": "Apply an approved PlatformPatch.Proposal to funding_requests with optimistic concurrency checks.",
+  "schemas": {
+    "input": "schemas/operators/funding_request_fields_update_apply.input.v1.json",
+    "output": "schemas/operators/funding_request_fields_update_apply.output.v1.json"
+  },
+  "requires": {
+    "tools": [],
+    "capabilities": [],
+    "context_fields": []
+  },
+  "policy_tags": ["apply", "platform_write"],
+  "effects": ["db_write_platform", "produce_outcome"],
+  "observability": {
+    "log_level": "info",
+    "emit_samples": false
+  }
+}

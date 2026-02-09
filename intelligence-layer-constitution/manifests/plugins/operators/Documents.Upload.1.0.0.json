@@ -1,0 +1,23 @@
+{
+  "name": "Documents.Upload",
+  "type": "operator",
+  "version": "1.0.0",
+  "owner": "canapply",
+  "description": "Persist an uploaded document artifact with dedupe by content hash and lifecycle management.",
+  "schemas": {
+    "input": "schemas/operators/documents_upload.input.v1.json",
+    "output": "schemas/operators/documents_upload.output.v1.json"
+  },
+  "requires": {
+    "tools": [],
+    "capabilities": [],
+    "context_fields": []
+  },
+  "policy_tags": ["documents"],
+  "effects": ["db_write", "s3_sandbox_write"],
+  "observability": {
+    "log_level": "info",
+    "emit_samples": false
+  }
+}
+

@@ -1,0 +1,201 @@
+% cv.tex — Arousha Ahmadi CV (English, revised 2025)
+\documentclass[11pt,letterpaper]{article}
+
+\usepackage[margin=0.6in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{parskip}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{array,tabularx,booktabs}
+\usepackage{fontawesome}
+
+\definecolor{accent}{HTML}{1F4E79}
+\hypersetup{colorlinks=true,urlcolor=accent,linkcolor=accent,citecolor=accent}
+
+\usepackage[maxbibnames=99,maxcitenames=1,style=ieee]{biblatex}
+\makeatletter
+\DeclareCiteCommand{\fullcitation}
+  {\defcounter{maxnames}{\blx@maxbibnames}\usebibmacro{prenote}}
+  {\usedriver{\DeclareNameAlias{sortname}{default}}{\thefield{entrytype}}}
+  {\multicitedelim}
+  {\usebibmacro{postnote}}
+\makeatother
+\renewcommand*{\mkbibnamegiven}[1]{\ifitemannotation{highlight}{\textbf{#1}}{#1}}
+\renewcommand*{\mkbibnamefamily}[1]{\ifitemannotation{highlight}{\textbf{#1}}{#1}}
+\addbibresource{pubs.bib}
+
+\setlist{noitemsep,topsep=2pt,leftmargin=*}
+
+\newcommand{\cvsection}[1]{\vspace{0.75\baselineskip}{\large\bfseries\textcolor{accent}{#1}}\par
+\vspace{0.25\baselineskip}\hrule\vspace{0.2\baselineskip}}
+\newcommand{\entry}[2]{\noindent\textbf{#1}\hfill #2\par}
+\newcommand{\subentry}[2]{\noindent\emph{#1}\hfill \emph{#2}\par}
+
+\newcommand{\cvname}{Arousha Ahmadi}
+\newcommand{\cvemail}{arousha.ahmadi@gmail.com}
+\newcommand{\cvphone}{+98 921 327 2744}
+\newcommand{\cvlinkedin}{https://www.linkedin.com/in/arousha-ahmadi/}
+\newcommand{\cvlocation}{Tehran, Iran}
+
+\begin{document}
+\noindent
+\begin{minipage}[t]{0.62\textwidth}
+  {\bfseries\fontsize{26}{26}\selectfont \textcolor{accent}{\cvname}}\par
+  Doctor of Veterinary Medicine (DVM)
+\end{minipage}%
+\hfill
+\begin{minipage}[t]{0.35\textwidth}
+  \raggedleft
+  \renewcommand{\arraystretch}{1.2}
+  \begin{tabular}{@{}r l@{}}
+    \faEnvelope\ & \href{mailto:\cvemail}{\cvemail}\\
+    \faPhone\    & \cvphone\\
+    \faLinkedin\ & \href{\cvlinkedin}{LinkedIn}\\
+    \faMapMarker & \cvlocation\\
+  \end{tabular}
+\end{minipage}
+
+\cvsection{Profile}
+Veterinary professional with research experience in microbial ecology, fermentation systems, and host–microbe interactions. Trained in controlled ecosystem experiments, microbial community monitoring, and biochemical response analysis. Interested in graduate research on gut microbiome ecology, microbial symbiosis, and diet- or environment-driven shifts in microbial community function.
+
+\cvsection{Education}
+
+\entry{DVM, Doctor of Veterinary Medicine}{2018--2025}
+\subentry{Shahid Bahonar University of Kerman}{GPA: 18.34/20; Ranked 1st in entering cohort (2018)}
+\begin{itemize}
+  \item Thesis: \textit{Innovative application of iron-enriched \emph{Saccharomyces boulardii} in yogurt fortification}.
+  \item Thesis defended with distinction; included extensive chemical and microbial tests on antioxidant activity and lipid oxidation.
+\end{itemize}
+
+\cvsection{Research Experience}
+\entry{Thesis Researcher — Probiotic Dairy Fortification}{2023--2025}
+\subentry{Department of Food Hygiene, Shahid Bahonar University of Kerman}{}
+\begin{itemize}
+  \item Designed and executed a 21-day controlled fermentation ecosystem to study microbial community stability under nutrient and iron-modulated environments.
+  \item Investigated ecological interactions among \textit{S.~boulardii}, \textit{L.~acidophilus}, \textit{Bifidobacterium}, and \textit{S.~thermophilus}, quantifying population dynamics, competitive resilience, and community shifts.
+  \item Assessed microbial metabolic responses to environmental stressors using DPPH, TBARS, ferrozine iron assay, and colorimetric profiles (CIELAB L*a*b*).
+  \item Maintained and monitored microbial viability across storage conditions (7.9--8.4 log CFU/mL), evaluating ecological stability and absence of contaminants (coliforms, molds).
+  \item Analyzed ecosystem behaviour in relation to acidity, pH, syneresis, and techno-functional properties to interpret microbe–environment interactions.
+  \item Methods included pour-plate enumeration, Gram staining, fermentation system management, and statistical modelling via ANOVA ($p<0.05$).
+\end{itemize}
+
+\cvsection{Research Interests}
+\begin{itemize}
+  \item Gut microbial ecology and host–microbe interactions
+  \item Evolution and adaptation of microbial communities
+  \item Diet- and environment-driven modulation of microbial ecosystems
+  \item Microbial metabolism, cross-feeding, and community resilience
+  \item Translational microbiome science
+\end{itemize}
+
+\cvsection{Professional Experience}
+
+\entry{Scientific Liaison (Veterinary Products)}{2025--Present}
+\subentry{Pilvarad Co., Tehran}{}
+\begin{itemize}
+  \item Provide scientific and technical support for veterinary biologicals and vaccines; advise clinicians and key clients.
+  \item Prepare brochures, slide decks, and technical content; deliver product briefings and training sessions.
+  \item Liaise with regulatory and R\&D teams; collect post-market data for continual improvement.
+\end{itemize}
+
+\entry{Veterinary Internship}{2023--2024}
+\subentry{Specialized Veterinary Hospital, Shahid Bahonar Univ.\ of Kerman}{}
+\begin{itemize}
+  \item Assisted in diagnostic and surgical procedures for both small and large animals.
+  \item Performed and interpreted clinical laboratory tests; contributed to case discussions and post-op care.
+\end{itemize}
+
+\entry{Clinical Assistant}{2023}
+\subentry{Dr.\ Malakan Clinic, Nowshahr}{}
+\begin{itemize}
+  \item Assisted in surgeries and laboratory diagnostics for companion and farm animals.
+  \item Prepared biological samples for microbiological and biochemical testing.
+\end{itemize}
+
+\entry{Clinical Trainee}{2022}
+\subentry{Dana Veterinary Clinic, Kerman}{}
+\begin{itemize}
+  \item Supported diagnostic testing and hygiene procedures under veterinary supervision.
+  \item Participated in animal health education and public awareness initiatives.
+\end{itemize}
+
+\cvsection{Selected Coursework (relevant \& high marks)}
+\begin{itemize}
+  \item Clinical Practice in Central Diagnostic Laboratory (20.00/20)
+  \item Food Industries of Animal, Poultry, and Aquatic Origin (20.00/20)
+  \item General Bacteriology (20.00/20)
+  \item Practical Biochemistry (20.00/20)
+  \item Hygiene, Nutrition, and Management of Small Animals (20.00/20)
+  \item Metabolic and Nutritional Deficiency Diseases (20.00/20)
+  \item Veterinary Medicine and Public Health (19.73/20)
+  \item Milk Hygiene and Dairy Industry (19.50/20)
+  \item Meat Hygiene and Inspection (19.34/20)
+  \item Chemical Quality Control and Hygiene of Food Products (19.10/20)
+\end{itemize}
+
+\cvsection{Publications \& Presentations}
+\begin{itemize}
+  \item \fullcitation{ahmadi2024camelmilk} \hfill[Published]
+  \item \fullcitation{ahmadi2023saccharomyces} \hfill[Conference]
+  \item \fullcitation{ahmadi2024calfsepsis} \hfill[Case report, Persian]
+  \item Ahmadi, A. (2024). \textit{Rabies case study in domestic cats.} Presented at the \textbf{National Feline Congress on Internal Medicine and Surgery}, Shiraz, Iran. \hfill[Conference]
+  \item Thesis: \textit{Innovative application of iron-enriched \emph{Saccharomyces boulardii} in yogurt fortification}. \hfill[Defended with distinction]
+\end{itemize}
+
+\cvsection{Workshops \& Certifications}
+\begin{itemize}
+  \item Emergency and Trauma Medicine (Shahid Bahonar University of Kerman)
+  \item Basics of Laser in Surgery: From Incision to Repair
+  \item Introduction to Wildlife Veterinary Medicine and Zoo Animal Care
+  \item Equine Farriery Workshop
+  \item \textbf{2nd National Congress on Infection and Immunity} (Shiraz University, Faculty of Veterinary Medicine)
+  \item \textbf{National Feline Congress on Internal Medicine and Surgery} — presented rabies case study
+  \item Red Crescent Volunteer Training (Iranian Red Crescent Society)
+\end{itemize}
+
+\cvsection{Skills}
+\begin{itemize}
+  \item Microbial ecology: population dynamics, community stability, environmental modulation of microbial behaviour.
+  \item Gut–microbe analog systems: modelling microbial responses to nutrient, oxidative, and pH stressors.
+  \item Laboratory microbiology: culture-based enumeration, anaerobic handling basics, PCR, staining, contamination monitoring.
+  \item Metabolic and biochemical assays: DPPH, TBARS, ferrozine iron assay, titratable acidity, pH, and colorimetry (CIELAB).
+  \item Experimental design for ecological studies: treatment structure, community monitoring, longitudinal sampling.
+  \item Data analysis: ANOVA, regression, ecological interpretation of time-series microbial data (Python, SPSS, Excel).
+  \item Scientific communication and interdisciplinary collaboration.
+\end{itemize}
+
+
+
+\cvsection{Professional Memberships}
+\begin{itemize}
+  \item Member, Iranian Veterinary Association
+  \item Member, Student Association for Exotic Animal Medicine
+\end{itemize}
+
+\cvsection{Language Competence and Test Scores}
+\textbf{Persian:} Native \quad \textbf{English:} Advanced
+
+\medskip
+\begin{tabular}{@{}l c c c c c@{}}
+\toprule
+\textbf{IELTS To Be Taken in Feb 2026} & Overall & Reading & Writing & Listening & Speaking\\
+\midrule
+Score (Mock Scores) & 7.0 & 7.5 & 6.5 & 7.5 & 7.0\\
+\bottomrule
+\end{tabular}
+
+\cvsection{References}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabularx}{\linewidth}{@{}l l X@{}}
+\toprule
+\textbf{Name} & \textbf{Email} & \textbf{Position \& Organization}\\
+\midrule
+Dr.\ Hadi Ebrahimnejad & \textit{\href{mailto:ebrahimnejad.email@gmail.com}{ebrahimnejad.email@gmail.com}} & Associate Professor of Food Hygiene, Faculty of Veterinary Medicine, Shahid Bahonar University of Kerman\\
+Dr.\ Mohammad Khalili & \textit{\href{mailto:mdkhalili1@yahoo.com}{mdkhalili1@yahoo.com}} & Professor of Pathobiology, Faculty of Veterinary Medicine, Shahid Bahonar University of Kerman\\
+\bottomrule
+\end{tabularx}
+
+\end{document}

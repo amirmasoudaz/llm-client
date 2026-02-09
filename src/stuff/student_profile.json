@@ -1,0 +1,1336 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://dana.ai/schemas/student_profile_v2.json",
+    "title": "StudentProfileV2",
+    "type": "object",
+    "required": [
+        "general",
+        "context"
+    ],
+    "properties": {
+        "meta": {
+            "$ref": "#/$defs/profile_meta"
+        },
+        "general": {
+            "$ref": "#/$defs/general"
+        },
+        "context": {
+            "$ref": "#/$defs/context"
+        },
+        "inference": {
+            "$ref": "#/$defs/inference"
+        },
+        "state": {
+            "$ref": "#/$defs/state"
+        }
+    },
+    "additionalProperties": false,
+    "$defs": {
+        "profile_meta": {
+            "type": "object",
+            "properties": {
+                "schema_version": {
+                    "type": "string",
+                    "const": "2.0.0"
+                },
+                "profile_id": {
+                    "type": "string",
+                    "minLength": 1
+                },
+                "created_at": {
+                    "type": "string",
+                    "format": "date-time"
+                },
+                "updated_at": {
+                    "type": "string",
+                    "format": "date-time"
+                },
+                "locale": {
+                    "type": "string",
+                    "minLength": 2
+                },
+                "timezone": {
+                    "type": "string",
+                    "minLength": 1
+                },
+                "data_policy": {
+                    "type": "object",
+                    "properties": {
+                        "store_documents": {
+                            "type": "boolean",
+                            "default": false
+                        },
+                        "store_embeddings": {
+                            "type": "boolean",
+                            "default": false
+                        },
+                        "retention_days": {
+                            "type": "integer",
+                            "minimum": 0
+                        }
+                    },
+                    "additionalProperties": false
+                }
+            },
+            "additionalProperties": false
+        },
+        "source_enum": {
+            "type": "string",
+            "enum": [
+                "user",
+                "resume",
+                "transcript",
+                "portfolio",
+                "recommendation",
+                "agent",
+                "system",
+                "mixed",
+                "unknown"
+            ]
+        },
+        "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+        },
+        "content_meta": {
+            "type": "object",
+            "properties": {
+                "source": {
+                    "$ref": "#/$defs/source_enum"
+                },
+                "confidence": {
+                    "$ref": "#/$defs/confidence"
+                },
+                "last_updated": {
+                    "type": "string",
+                    "format": "date-time"
+                },
+                "evidence": {
+                    "type": "array",
+                    "description": "Pointers to supporting evidence. Use IDs or short descriptors. Avoid storing raw documents if policy forbids.",
+                    "items": {
+                        "$ref": "#/$defs/evidence_ref"
+                    }
+                },
+                "notes_internal": {
+                    "type": "string",
+                    "description": "Internal-only notes. Do not show to student."
+                }
+            },
+            "additionalProperties": false
+        },
+        "field_with_meta_string": {
+            "type": "object",
+            "required": [
+                "content"
+            ],
+            "properties": {
+                "content": {
+                    "type": "string"
+                },
+                "meta": {
+                    "$ref": "#/$defs/content_meta"
+                }
+            },
+            "additionalProperties": false
+        },
+        "field_with_meta_number": {
+            "type": "object",
+            "required": [
+                "content"
+            ],
+            "properties": {
+                "content": {
+                    "type": "number"
+                },
+                "meta": {
+                    "$ref": "#/$defs/content_meta"
+                }
+            },
+            "additionalProperties": false
+        },
+        "field_with_meta_boolean": {
+            "type": "object",
+            "required": [
+                "content"
+            ],
+            "properties": {
+                "content": {
+                    "type": "boolean"
+                },
+                "meta": {
+                    "$ref": "#/$defs/content_meta"
+                }
+            },
+            "additionalProperties": false
+        },
+        "evidence_ref": {
+            "type": "object",
+            "required": [
+                "kind",
+                "ref"
+            ],
+            "properties": {
+                "kind": {
+                    "type": "string",
+                    "enum": [
+                        "resume",
+                        "transcript",
+                        "portfolio",
+                        "linkedin",
+                        "github",
+                        "paper",
+                        "certificate",
+                        "email",
+                        "note",
+                        "other"
+                    ]
+                },
+                "ref": {
+                    "type": "string",
+                    "minLength": 1
+                },
+                "snippet": {
+                    "type": "string"
+                }
+            },
+            "additionalProperties": false
+        },
+        "general": {
+            "type": "object",
+            "required": [
+                "first_name",
+                "last_name",
+                "email"
+            ],
+            "properties": {
+                "first_name": {
+                    "type": "string",
+                    "minLength": 1
+                },
+                "last_name": {
+                    "type": "string",
+                    "minLength": 1
+                },
+                "email": {
+                    "type": "string",
+                    "format": "email"
+                },
+                "mobile_number": {
+                    "type": "string"
+                },
+                "date_of_birth": {
+                    "type": "string",
+                    "format": "date"
+                },
+                "gender": {
+                    "type": "string"
+                },
+                "country_of_citizenship": {
+                    "type": "string"
+                },
+                "current_country_of_residence": {
+                    "type": "string"
+                }
+            },
+            "additionalProperties": false
+        },
+        "context": {
+            "type": "object",
+            "required": [
+                "personalization",
+                "background"
+            ],
+            "properties": {
+                "personalization": {
+                    "$ref": "#/$defs/personalization"
+                },
+                "background": {
+                    "$ref": "#/$defs/background"
+                },
+                "targets": {
+                    "$ref": "#/$defs/targets"
+                }
+            },
+            "additionalProperties": false
+        },
+        "personalization": {
+            "type": "object",
+            "properties": {
+                "preferred_name": {
+                    "type": "string"
+                },
+                "affiliation": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "pronouns": {
+                    "type": "string"
+                },
+                "contact_points": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/contact_point"
+                    }
+                },
+                "writing_preferences": {
+                    "type": "object",
+                    "properties": {
+                        "tone": {
+                            "type": "string",
+                            "enum": [
+                                "formal",
+                                "neutral",
+                                "warm",
+                                "bold",
+                                "academic",
+                                "concise"
+                            ]
+                        },
+                        "avoid_phrases": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        },
+                        "preferred_spelling": {
+                            "type": "string",
+                            "enum": [
+                                "us",
+                                "uk",
+                                "ca",
+                                "au",
+                                "mixed"
+                            ]
+                        }
+                    },
+                    "additionalProperties": false
+                }
+            },
+            "additionalProperties": false
+        },
+        "contact_point": {
+            "type": "object",
+            "required": [
+                "type",
+                "value"
+            ],
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "enum": [
+                        "email",
+                        "phone",
+                        "linkedin",
+                        "github",
+                        "gitlab",
+                        "website",
+                        "portfolio",
+                        "orcid",
+                        "other"
+                    ]
+                },
+                "label": {
+                    "type": "string"
+                },
+                "value": {
+                    "type": "string",
+                    "minLength": 1
+                },
+                "include_in_header": {
+                    "type": "boolean",
+                    "default": true
+                },
+                "include_in_signature": {
+                    "type": "boolean",
+                    "default": true
+                }
+            },
+            "additionalProperties": false
+        },
+        "background": {
+            "type": "object",
+            "properties": {
+                "resume_ingestion": {
+                    "$ref": "#/$defs/resume_ingestion"
+                },
+                "degrees": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/degree"
+                    }
+                },
+                "research_interests": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/research_interest"
+                    }
+                },
+                "work_experience": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/work_experience"
+                    }
+                },
+                "projects": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/project"
+                    }
+                },
+                "coursework": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "publications": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/publication"
+                    }
+                },
+                "skills": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "languages": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/language"
+                    }
+                },
+                "awards": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/award"
+                    }
+                },
+                "references": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/reference"
+                    }
+                }
+            },
+            "additionalProperties": false
+        },
+        "resume_ingestion": {
+            "type": "object",
+            "properties": {
+                "resume_provided": {
+                    "type": "boolean"
+                },
+                "parsed_successfully": {
+                    "type": "boolean"
+                },
+                "resume_last_updated": {
+                    "type": "string",
+                    "format": "date-time"
+                },
+                "resume_language": {
+                    "type": "string"
+                },
+                "resume_format": {
+                    "type": "string",
+                    "enum": [
+                        "pdf",
+                        "docx",
+                        "txt",
+                        "other"
+                    ]
+                },
+                "resume_hash": {
+                    "type": "string",
+                    "minLength": 6
+                },
+                "parse_confidence": {
+                    "$ref": "#/$defs/confidence"
+                },
+                "missing_fields": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            },
+            "additionalProperties": false
+        },
+        "degree": {
+            "type": "object",
+            "required": [
+                "degree_level",
+                "field",
+                "institution"
+            ],
+            "properties": {
+                "degree_level": {
+                    "type": "string"
+                },
+                "field": {
+                    "type": "string"
+                },
+                "institution": {
+                    "type": "string"
+                },
+                "country": {
+                    "type": "string"
+                },
+                "location": {
+                    "type": "string"
+                },
+                "start_date": {
+                    "type": "string",
+                    "format": "date"
+                },
+                "end_date": {
+                    "type": "string",
+                    "format": "date"
+                },
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "in_progress",
+                        "completed",
+                        "paused",
+                        "withdrawn"
+                    ]
+                },
+                "gpa": {
+                    "$ref": "#/$defs/gpa"
+                },
+                "highlights": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            },
+            "additionalProperties": false
+        },
+        "gpa": {
+            "type": "object",
+            "required": [
+                "value",
+                "scale"
+            ],
+            "properties": {
+                "value": {
+                    "type": "number",
+                    "minimum": 0
+                },
+                "scale": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                },
+                "system": {
+                    "type": "string",
+                    "description": "e.g., 4.0, 4.3, 10, 20, percentage"
+                },
+                "normalized": {
+                    "type": "object",
+                    "properties": {
+                        "to_scale": {
+                            "type": "number",
+                            "enum": [
+                                4,
+                                10,
+                                100
+                            ]
+                        },
+                        "value": {
+                            "type": "number",
+                            "minimum": 0
+                        }
+                    },
+                    "required": [
+                        "to_scale",
+                        "value"
+                    ],
+                    "additionalProperties": false
+                }
+            },
+            "allOf": [
+                {
+                    "if": {
+                        "properties": {
+                            "value": {
+                                "type": "number"
+                            },
+                            "scale": {
+                                "type": "number"
+                            }
+                        },
+                        "required": [
+                            "value",
+                            "scale"
+                        ]
+                    },
+                    "then": {
+                        "properties": {},
+                        "required": [
+                            "value",
+                            "scale"
+                        ]
+                    }
+                }
+            ],
+            "additionalProperties": false,
+            "description": "Constraint note: JSON Schema can't directly express value <= scale without $data. Enforce in app logic."
+        },
+        "research_interest": {
+            "type": "object",
+            "required": [
+                "topic"
+            ],
+            "properties": {
+                "topic": {
+                    "type": "string"
+                },
+                "why": {
+                    "type": "string"
+                },
+                "reasoning": {
+                    "type": "string"
+                }
+            },
+            "additionalProperties": false
+        },
+        "work_experience": {
+            "type": "object",
+            "required": [
+                "role",
+                "organization"
+            ],
+            "properties": {
+                "role": {
+                    "type": "string"
+                },
+                "organization": {
+                    "type": "string"
+                },
+                "location": {
+                    "type": "string"
+                },
+                "employment_type": {
+                    "type": "string",
+                    "enum": [
+                        "full_time",
+                        "part_time",
+                        "internship",
+                        "contract",
+                        "research",
+                        "volunteer",
+                        "other"
+                    ]
+                },
+                "start_date": {
+                    "type": "string",
+                    "format": "date"
+                },
+                "end_date": {
+                    "type": "string",
+                    "format": "date"
+                },
+                "timeline_text": {
+                    "type": "string",
+                    "description": "Optional human-friendly string if dates are unknown."
+                },
+                "details": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "tech_stack": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            },
+            "additionalProperties": false
+        },
+        "project": {
+            "type": "object",
+            "required": [
+                "name"
+            ],
+            "properties": {
+                "name": {
+                    "type": "string"
+                },
+                "summary": {
+                    "type": "string"
+                },
+                "role": {
+                    "type": "string"
+                },
+                "start_date": {
+                    "type": "string",
+                    "format": "date"
+                },
+                "end_date": {
+                    "type": "string",
+                    "format": "date"
+                },
+                "links": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/contact_point"
+                    }
+                },
+                "highlights": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "tech_stack": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            },
+            "additionalProperties": false
+        },
+        "publication": {
+            "type": "object",
+            "required": [
+                "title",
+                "type"
+            ],
+            "properties": {
+                "author": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "venue": {
+                    "type": "string"
+                },
+                "year": {
+                    "type": "integer",
+                    "minimum": 1900,
+                    "maximum": 2100
+                },
+                "type": {
+                    "type": "string",
+                    "enum": [
+                        "journal",
+                        "conference",
+                        "workshop",
+                        "preprint",
+                        "thesis",
+                        "poster",
+                        "patent",
+                        "other"
+                    ]
+                },
+                "doi": {
+                    "type": "string"
+                },
+                "url": {
+                    "type": "string"
+                }
+            },
+            "additionalProperties": false
+        },
+        "language": {
+            "type": "object",
+            "required": [
+                "language",
+                "fluency"
+            ],
+            "properties": {
+                "language": {
+                    "type": "string"
+                },
+                "fluency": {
+                    "type": "string",
+                    "enum": [
+                        "beginner",
+                        "intermediate",
+                        "advanced",
+                        "fluent",
+                        "bilingual",
+                        "native"
+                    ]
+                },
+                "test_scores": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/language_test_score"
+                    }
+                },
+                "planned_exam": {
+                    "type": "object",
+                    "properties": {
+                        "test": {
+                            "type": "string",
+                            "enum": [
+                                "IELTS",
+                                "TOEFL",
+                                "DET",
+                                "PTE",
+                                "TEF",
+                                "TCF",
+                                "Other"
+                            ]
+                        },
+                        "planned_exam_date": {
+                            "type": "string",
+                            "format": "date"
+                        }
+                    },
+                    "additionalProperties": false
+                }
+            },
+            "additionalProperties": false
+        },
+        "language_test_score": {
+            "type": "object",
+            "required": [
+                "test",
+                "date",
+                "overall"
+            ],
+            "properties": {
+                "test": {
+                    "type": "string",
+                    "enum": [
+                        "IELTS",
+                        "TOEFL",
+                        "DET",
+                        "PTE",
+                        "TEF",
+                        "TCF",
+                        "Other"
+                    ]
+                },
+                "date": {
+                    "type": "string",
+                    "format": "date"
+                },
+                "overall": {
+                    "type": "number",
+                    "minimum": 0
+                },
+                "components": {
+                    "type": "object",
+                    "properties": {
+                        "listening": {
+                            "type": "number",
+                            "minimum": 0
+                        },
+                        "reading": {
+                            "type": "number",
+                            "minimum": 0
+                        },
+                        "writing": {
+                            "type": "number",
+                            "minimum": 0
+                        },
+                        "speaking": {
+                            "type": "number",
+                            "minimum": 0
+                        }
+                    },
+                    "additionalProperties": false
+                },
+                "report_id": {
+                    "type": "string"
+                }
+            },
+            "additionalProperties": false
+        },
+        "award": {
+            "type": "object",
+            "required": [
+                "title"
+            ],
+            "properties": {
+                "title": {
+                    "type": "string"
+                },
+                "issuer": {
+                    "type": "string"
+                },
+                "date": {
+                    "type": "string",
+                    "format": "date"
+                },
+                "description": {
+                    "type": "string"
+                }
+            },
+            "additionalProperties": false
+        },
+        "reference": {
+            "type": "object",
+            "required": [
+                "name",
+                "position",
+                "organization"
+            ],
+            "properties": {
+                "name": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string",
+                    "format": "email"
+                },
+                "position": {
+                    "type": "string"
+                },
+                "organization": {
+                    "type": "string"
+                },
+                "relationship": {
+                    "type": "string"
+                },
+                "phone": {
+                    "type": "string"
+                }
+            },
+            "additionalProperties": false
+        },
+        "targets": {
+            "type": "object",
+            "properties": {
+                "intended_start_terms": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/intake_term"
+                    }
+                },
+                "target_countries": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "target_degree_levels": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "target_fields": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "constraints": {
+                    "$ref": "#/$defs/target_constraints"
+                }
+            },
+            "additionalProperties": false
+        },
+        "intake_term": {
+            "type": "object",
+            "required": [
+                "year",
+                "term"
+            ],
+            "properties": {
+                "year": {
+                    "type": "integer",
+                    "minimum": 1900,
+                    "maximum": 2100
+                },
+                "term": {
+                    "type": "string",
+                    "enum": [
+                        "winter",
+                        "spring",
+                        "summer",
+                        "fall",
+                        "other"
+                    ]
+                }
+            },
+            "additionalProperties": false
+        },
+        "target_constraints": {
+            "type": "object",
+            "properties": {
+                "budget_range_usd": {
+                    "type": "object",
+                    "properties": {
+                        "min": {
+                            "type": "number",
+                            "minimum": 0
+                        },
+                        "max": {
+                            "type": "number",
+                            "minimum": 0
+                        }
+                    },
+                    "additionalProperties": false
+                },
+                "needs_scholarship": {
+                    "type": "boolean"
+                },
+                "visa_constraints": {
+                    "type": "string"
+                },
+                "location_preferences": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "must_have": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "deal_breakers": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            },
+            "additionalProperties": false
+        },
+        "inference": {
+            "type": "object",
+            "properties": {
+                "sop_intelligence": {
+                    "$ref": "#/$defs/sop_intelligence"
+                },
+                "risk_assessment": {
+                    "$ref": "#/$defs/risk_assessment"
+                },
+                "agent_notes": {
+                    "$ref": "#/$defs/agent_notes"
+                }
+            },
+            "additionalProperties": false
+        },
+        "sop_intelligence": {
+            "type": "object",
+            "properties": {
+                "research_direction": {
+                    "$ref": "#/$defs/field_with_meta_string"
+                },
+                "motivation_causal_chain": {
+                    "type": "object",
+                    "required": [
+                        "chain"
+                    ],
+                    "properties": {
+                        "chain": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/$defs/cause_effect"
+                            },
+                            "minItems": 1
+                        },
+                        "meta": {
+                            "$ref": "#/$defs/content_meta"
+                        }
+                    },
+                    "additionalProperties": false
+                },
+                "academic_preparation": {
+                    "$ref": "#/$defs/structured_claims_block"
+                },
+                "research_experience": {
+                    "$ref": "#/$defs/structured_claims_block"
+                },
+                "why_institution": {
+                    "$ref": "#/$defs/structured_claims_block"
+                },
+                "career_trajectory": {
+                    "$ref": "#/$defs/career_block"
+                },
+                "resilience_temperament": {
+                    "$ref": "#/$defs/structured_claims_block"
+                },
+                "closing": {
+                    "$ref": "#/$defs/field_with_meta_string"
+                },
+                "avoidances": {
+                    "type": "object",
+                    "properties": {
+                        "items": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        },
+                        "meta": {
+                            "$ref": "#/$defs/content_meta"
+                        }
+                    },
+                    "additionalProperties": false
+                }
+            },
+            "additionalProperties": false
+        },
+        "cause_effect": {
+            "type": "object",
+            "required": [
+                "cause",
+                "effect"
+            ],
+            "properties": {
+                "cause": {
+                    "type": "string",
+                    "minLength": 1
+                },
+                "effect": {
+                    "type": "string",
+                    "minLength": 1
+                },
+                "evidence": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/evidence_ref"
+                    }
+                }
+            },
+            "additionalProperties": false
+        },
+        "structured_claims_block": {
+            "type": "object",
+            "required": [
+                "claims"
+            ],
+            "properties": {
+                "summary": {
+                    "type": "string",
+                    "description": "Optional prose summary that can be generated from claims."
+                },
+                "claims": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/claim"
+                    }
+                },
+                "meta": {
+                    "$ref": "#/$defs/content_meta"
+                }
+            },
+            "additionalProperties": false
+        },
+        "claim": {
+            "type": "object",
+            "required": [
+                "statement"
+            ],
+            "properties": {
+                "statement": {
+                    "type": "string",
+                    "minLength": 1
+                },
+                "strength": {
+                    "type": "string",
+                    "enum": [
+                        "weak",
+                        "moderate",
+                        "strong",
+                        "unknown"
+                    ]
+                },
+                "evidence": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/evidence_ref"
+                    }
+                }
+            },
+            "additionalProperties": false
+        },
+        "career_block": {
+            "type": "object",
+            "properties": {
+                "near_term_goal": {
+                    "$ref": "#/$defs/field_with_meta_string"
+                },
+                "mid_term_goal": {
+                    "$ref": "#/$defs/field_with_meta_string"
+                },
+                "long_term_goal": {
+                    "$ref": "#/$defs/field_with_meta_string"
+                },
+                "narrative": {
+                    "$ref": "#/$defs/field_with_meta_string"
+                }
+            },
+            "additionalProperties": false
+        },
+        "risk_assessment": {
+            "type": "object",
+            "properties": {
+                "overall_risk": {
+                    "type": "string",
+                    "enum": [
+                        "low",
+                        "medium",
+                        "high",
+                        "unknown"
+                    ]
+                },
+                "flags": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/risk_flag"
+                    }
+                },
+                "meta": {
+                    "$ref": "#/$defs/content_meta"
+                }
+            },
+            "additionalProperties": false
+        },
+        "risk_flag": {
+            "type": "object",
+            "required": [
+                "code",
+                "severity",
+                "description"
+            ],
+            "properties": {
+                "code": {
+                    "type": "string",
+                    "enum": [
+                        "gpa_low_relative_to_target",
+                        "language_score_missing_or_low",
+                        "research_fit_unclear",
+                        "weak_research_evidence",
+                        "timeline_risk_deadlines",
+                        "visa_risk",
+                        "funding_risk",
+                        "inconsistent_history",
+                        "missing_references",
+                        "other"
+                    ]
+                },
+                "severity": {
+                    "type": "string",
+                    "enum": [
+                        "info",
+                        "warning",
+                        "critical"
+                    ]
+                },
+                "description": {
+                    "type": "string"
+                },
+                "recommended_action": {
+                    "type": "string"
+                },
+                "evidence": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/evidence_ref"
+                    }
+                }
+            },
+            "additionalProperties": false
+        },
+        "agent_notes": {
+            "type": "object",
+            "properties": {
+                "internal_summary": {
+                    "type": "string"
+                },
+                "open_questions": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "assumptions": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "do_not_say_to_student": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            },
+            "additionalProperties": false,
+            "description": "Internal-only. Not for student-facing UI."
+        },
+        "state": {
+            "type": "object",
+            "properties": {
+                "completion": {
+                    "$ref": "#/$defs/completion_state"
+                },
+                "validation": {
+                    "$ref": "#/$defs/validation_state"
+                },
+                "last_checked_at": {
+                    "type": "string",
+                    "format": "date-time"
+                }
+            },
+            "additionalProperties": false
+        },
+        "completion_state": {
+            "type": "object",
+            "properties": {
+                "general_complete": {
+                    "type": "boolean"
+                },
+                "personalization_complete": {
+                    "type": "boolean"
+                },
+                "background_complete": {
+                    "type": "boolean"
+                },
+                "targets_complete": {
+                    "type": "boolean"
+                },
+                "sop_intelligence_complete": {
+                    "type": "boolean"
+                },
+                "risk_assessment_complete": {
+                    "type": "boolean"
+                }
+            },
+            "additionalProperties": false
+        },
+        "validation_state": {
+            "type": "object",
+            "properties": {
+                "is_valid": {
+                    "type": "boolean"
+                },
+                "errors": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "warnings": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            },
+            "additionalProperties": false
+        }
+    }
+}
