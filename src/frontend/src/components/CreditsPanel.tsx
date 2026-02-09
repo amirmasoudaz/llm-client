@@ -1,6 +1,6 @@
 // Credits Panel - Display credit reservation and usage
 
-import { useThreadState } from '../stores/thread';
+import { useThreadState } from '../stores/thread.tsx';
 
 export function CreditsPanel() {
     const state = useThreadState();

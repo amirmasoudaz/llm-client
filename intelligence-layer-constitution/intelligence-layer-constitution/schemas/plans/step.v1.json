@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/plans/step.v1.json",
+  "title": "Plan Step (v1)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["step_id", "kind", "name", "effects", "policy_tags", "risk_level", "cache_policy"],
+  "properties": {
+    "step_id": { "type": "string", "minLength": 1 },
+    "kind": { "type": "string", "enum": ["operator", "agent", "policy_check", "human_gate"] },
+    "name": { "type": "string", "minLength": 1 },
+
+    "operator_name": { "type": "string" },
+    "operator_version": { "type": "string" },
+    "agent_name": { "type": "string" },
+    "agent_version": { "type": "string" },
+
+    "effects": {
+      "type": "array",
+      "items": { "$ref": "../common/defs.v1.json#/$defs/Effect" },
+      "default": []
+    },
+    "policy_tags": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "default": []
+    },
+    "risk_level": { "$ref": "../common/defs.v1.json#/$defs/RiskLevel" },
+    "cache_policy": { "$ref": "../common/defs.v1.json#/$defs/CachePolicy" },
+
+    "idempotency_template": { "type": "string" },
+    "payload": { "$ref": "../common/defs.v1.json#/$defs/TemplateObject" },
+
+    "depends_on": { "type": "array", "items": { "type": "string" }, "default": [] },
+    "produces": { "type": "array", "items": { "type": "string" }, "default": [] },
+
+    "timeout_ms": { "type": "integer", "minimum": 0 },
+    "retry_policy": { "type": "object" },
+    "queue_lane": { "type": "string" },
+
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["check_name"],
+      "properties": {
+        "check_name": { "type": "string", "minLength": 1 },
+        "params": { "type": "object", "default": {} }
+      }
+    },
+
+    "gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["gate_type", "title", "description"],
+      "properties": {
+        "gate_type": {
+          "type": "string",
+          "enum": [
+            "apply_platform_patch",
+            "collect_fields",
+            "upload_required",
+            "select_option",
+            "confirm",
+            "redirect",
+            "refresh_ui"
+          ]
+        },
+        "reason_code": { "type": "string" },
+        "title": { "type": "string", "minLength": 1 },
+        "description": { "type": "string", "minLength": 1 },
+        "requires_user_input": { "type": "boolean", "default": true },
+        "ui_hints": { "type": "object", "default": {} },
+        "target_outcome_ref": { "$ref": "../common/defs.v1.json#/$defs/Binding" },
+        "expires_in_seconds": { "type": "integer", "minimum": 0 }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "kind": { "const": "operator" } }, "required": ["kind"] },
+      "then": { "required": ["operator_name", "idempotency_template", "payload"] }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "policy_check" } }, "required": ["kind"] },
+      "then": { "required": ["check"] }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "human_gate" } }, "required": ["kind"] },
+      "then": { "required": ["gate"] }
+    }
+  ]
+}
+

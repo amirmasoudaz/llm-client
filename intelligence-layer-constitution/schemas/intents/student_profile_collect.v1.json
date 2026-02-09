@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/intents/student_profile_collect.v1.json",
+  "title": "Intent: Student.Profile.Collect (v1)",
+  "allOf": [
+    { "$ref": "../common/intent_base.v1.json" },
+    {
+      "type": "object",
+      "required": ["thread_id"],
+      "properties": {
+        "schema_version": { "const": "1.0" },
+        "intent_type": { "const": "Student.Profile.Collect" },
+        "inputs": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "for_intent_type": { "type": "string", "default": "Funding.Outreach.Email.Generate" },
+            "required_requirements": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 },
+              "default": []
+            },
+            "profile_updates": { "type": "object", "default": {} },
+            "memory_updates": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["type", "content"],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": ["tone_style", "do_dont", "long_term_goal"]
+                  },
+                  "content": { "type": "string", "minLength": 1 },
+                  "source": { "type": "string" }
+                }
+              },
+              "default": []
+            }
+          },
+          "default": {}
+        }
+      }
+    }
+  ]
+}

@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { resolveAction } from '../api/client';
-import { useThreadState, useThreadDispatch } from '../stores/thread';
+import { useThreadState, useThreadDispatch } from '../stores/thread.tsx';
 
 export function ActionGate() {
     const state = useThreadState();

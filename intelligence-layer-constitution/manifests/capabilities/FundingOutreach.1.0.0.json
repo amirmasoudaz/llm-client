@@ -29,9 +29,12 @@
         "Email.ReviewDraft@1.0.0",
         "Email.OptimizeDraft@1.0.0",
         "Email.ApplyToPlatform.Propose@1.0.0",
+        "FundingEmail.Draft.Update.Propose@1.0.0",
+        "FundingEmail.Draft.Update.Apply@1.0.0",
         "Conversation.Suggestions.Generate@1.0.0",
         "Paper.Metadata.Extract@1.0.0",
-        "FundingRequest.Fields.Update.Propose@1.0.0"
+        "FundingRequest.Fields.Update.Propose@1.0.0",
+        "FundingRequest.Fields.Update.Apply@1.0.0"
       ],
       "tools": []
     },

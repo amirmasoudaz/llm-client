@@ -75,6 +75,28 @@ class ILDB:
             )
             await conn.execute(
                 """
+                CREATE TABLE IF NOT EXISTS profile.student_memories (
+                  tenant_id BIGINT NOT NULL,
+                  memory_id UUID NOT NULL,
+                  student_id BIGINT NOT NULL,
+                  memory_type TEXT NOT NULL,
+                  memory_content TEXT NOT NULL,
+                  source TEXT NOT NULL DEFAULT 'user',
+                  is_active BOOLEAN NOT NULL DEFAULT true,
+                  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                  PRIMARY KEY (tenant_id, memory_id)
+                );
+                """
+            )
+            await conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS student_memories_student_type_active
+                  ON profile.student_memories (tenant_id, student_id, memory_type, is_active, updated_at DESC);
+                """
+            )
+            await conn.execute(
+                """
                 CREATE TABLE IF NOT EXISTS billing.credit_balances (
                   tenant_id BIGINT NOT NULL,
                   principal_id BIGINT NOT NULL DEFAULT 0,
@@ -343,6 +365,43 @@ class ILDB:
             if not row:
                 return None
             return dict(row)
+
+    async def get_latest_waiting_profile_gate(self, *, thread_id: int) -> dict[str, Any] | None:
+        async with self.pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                SELECT g.gate_id::text AS gate_id,
+                       g.workflow_id::text AS workflow_id,
+                       g.preview,
+                       g.reason_code,
+                       g.status
+                FROM ledger.gates g
+                JOIN runtime.workflow_runs wr
+                  ON wr.tenant_id=g.tenant_id
+                 AND wr.workflow_id=g.workflow_id
+                WHERE g.tenant_id=$1
+                  AND wr.thread_id=$2
+                  AND wr.status='waiting'
+                  AND g.gate_type='collect_profile_fields'
+                  AND g.status='waiting'
+                ORDER BY g.created_at DESC
+                LIMIT 1;
+                """,
+                self.tenant_id,
+                thread_id,
+            )
+            if not row:
+                return None
+            out = dict(row)
+            preview = out.get("preview")
+            if isinstance(preview, str):
+                try:
+                    import json
+
+                    out["preview"] = json.loads(preview)
+                except Exception:
+                    pass
+            return out
 
     async def list_runtime_events(
         self,

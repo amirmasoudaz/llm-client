@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { initThread } from '../api/client';
-import { useThreadState, useThreadDispatch } from '../stores/thread';
+import { useThreadState, useThreadDispatch } from '../stores/thread.tsx';
 
 export function ThreadPanel() {
     const state = useThreadState();

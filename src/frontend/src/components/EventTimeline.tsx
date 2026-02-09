@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { formatEventTime } from '../api/sse';
-import { useThreadState } from '../stores/thread';
+import { useThreadState } from '../stores/thread.tsx';
 import type { WorkflowEvent } from '../api/types';
 
 function getEventTypeClass(type: string): string {

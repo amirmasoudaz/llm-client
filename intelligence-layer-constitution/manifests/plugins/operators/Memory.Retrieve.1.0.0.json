@@ -1,0 +1,22 @@
+{
+  "name": "Memory.Retrieve",
+  "type": "operator",
+  "version": "1.0.0",
+  "owner": "canapply",
+  "description": "Retrieve typed long-term memories for a student profile.",
+  "schemas": {
+    "input": "schemas/operators/memory_retrieve.input.v1.json",
+    "output": "schemas/operators/memory_retrieve.output.v1.json"
+  },
+  "requires": {
+    "tools": [],
+    "capabilities": [],
+    "context_fields": []
+  },
+  "policy_tags": ["memory", "profile"],
+  "effects": ["read_only"],
+  "observability": {
+    "log_level": "info",
+    "emit_samples": false
+  }
+}

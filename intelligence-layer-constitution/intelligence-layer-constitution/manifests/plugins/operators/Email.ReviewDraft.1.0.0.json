@@ -1,0 +1,23 @@
+{
+  "name": "Email.ReviewDraft",
+  "type": "operator",
+  "version": "1.0.0",
+  "owner": "canapply",
+  "description": "Review an email draft and produce an Email.Review outcome with rubric issues and suggestions.",
+  "schemas": {
+    "input": "schemas/operators/email_review_draft.input.v1.json",
+    "output": "schemas/operators/email_review_draft.output.v1.json"
+  },
+  "requires": {
+    "tools": [],
+    "capabilities": [],
+    "context_fields": []
+  },
+  "policy_tags": ["draft_only"],
+  "effects": ["produce_outcome"],
+  "observability": {
+    "log_level": "info",
+    "emit_samples": false
+  }
+}
+

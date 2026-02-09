@@ -2,7 +2,7 @@
 
 import { PIPELINE_STAGES, type PipelineStage } from '../api/types';
 import { getStageName } from '../api/sse';
-import { useThreadState } from '../stores/thread';
+import { useThreadState } from '../stores/thread.tsx';
 
 interface ProgressStep {
     id: string;

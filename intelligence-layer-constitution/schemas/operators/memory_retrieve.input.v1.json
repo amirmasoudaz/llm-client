@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/operators/memory_retrieve.input.v1.json",
+  "title": "Operator: Memory.Retrieve (input) (v1)",
+  "allOf": [
+    { "$ref": "operator_call_base.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["thread_id"],
+          "properties": {
+            "thread_id": { "$ref": "../common/defs.v1.json#/$defs/ThreadId" },
+            "types": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": ["tone_style", "do_dont", "long_term_goal"]
+              },
+              "default": []
+            },
+            "limit": { "type": "integer", "minimum": 1, "maximum": 100, "default": 20 }
+          }
+        }
+      }
+    }
+  ]
+}

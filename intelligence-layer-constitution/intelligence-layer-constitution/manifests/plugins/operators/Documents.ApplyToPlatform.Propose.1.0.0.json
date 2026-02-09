@@ -1,0 +1,23 @@
+{
+  "name": "Documents.ApplyToPlatform.Propose",
+  "type": "operator",
+  "version": "1.0.0",
+  "owner": "canapply",
+  "description": "Create a PlatformPatch.Proposal outcome to attach a generated document artifact to platform documents/attachments.",
+  "schemas": {
+    "input": "schemas/operators/documents_apply_to_platform_propose.input.v1.json",
+    "output": "schemas/operators/documents_apply_to_platform_propose.output.v1.json"
+  },
+  "requires": {
+    "tools": [],
+    "capabilities": [],
+    "context_fields": []
+  },
+  "policy_tags": ["apply_proposal", "platform_write"],
+  "effects": ["produce_outcome"],
+  "observability": {
+    "log_level": "info",
+    "emit_samples": false
+  }
+}
+

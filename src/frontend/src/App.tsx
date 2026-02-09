@@ -1,6 +1,6 @@
 // Main Application - Intelligence Layer Dashboard
 
-import { ThreadProvider } from './stores/thread';
+import { ThreadProvider } from './stores/thread.tsx';
 import { ThreadPanel } from './components/ThreadPanel';
 import { CreditsPanel } from './components/CreditsPanel';
 import { MetricsPanel } from './components/MetricsPanel';

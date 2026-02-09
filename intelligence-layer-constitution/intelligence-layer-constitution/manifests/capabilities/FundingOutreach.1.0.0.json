@@ -1,0 +1,98 @@
+{
+  "capability": {
+    "name": "FundingOutreach",
+    "version": "1.0.0",
+    "stage": "v1",
+    "description": "Professor understanding, alignment, and email drafting with platform patch proposals (no direct platform writes).",
+    "supported_intents": [
+      "Funding.Outreach.Professor.Summarize",
+      "Funding.Outreach.Alignment.Score",
+      "Funding.Outreach.Email.Generate",
+      "Funding.Outreach.Email.Review",
+      "Funding.Outreach.Email.Optimize",
+      "Funding.Paper.Metadata.Extract",
+      "Funding.Request.Fields.Update"
+    ],
+    "required_entities": {
+      "student": { "required_fields": ["id", "first_name", "last_name", "email"] },
+      "professor": { "required_fields": ["id", "full_name", "email_address", "department"] },
+      "institute": { "required_fields": ["institution_name", "country"] }
+    },
+    "dependencies": {
+      "agents": ["Switchboard@1.x", "FollowUp@1.x"],
+      "operators": [
+        "Platform.Context.Load@1.0.0",
+        "Professor.Profile.Retrieve@1.0.0",
+        "Professor.Summarize@1.0.0",
+        "Professor.Alignment.Score@1.0.0",
+        "Email.GenerateDraft@1.0.0",
+        "Email.ReviewDraft@1.0.0",
+        "Email.OptimizeDraft@1.0.0",
+        "Email.ApplyToPlatform.Propose@1.0.0",
+        "Conversation.Suggestions.Generate@1.0.0",
+        "Paper.Metadata.Extract@1.0.0",
+        "FundingRequest.Fields.Update.Propose@1.0.0"
+      ],
+      "tools": []
+    },
+    "plan_templates": [
+      {
+        "intent_type": "Funding.Outreach.Professor.Summarize",
+        "plan_template_ref": "plan-templates/funding_outreach_professor_summarize.plan.v1.json"
+      },
+      {
+        "intent_type": "Funding.Outreach.Alignment.Score",
+        "plan_template_ref": "plan-templates/funding_outreach_alignment_score.plan.v1.json"
+      },
+      {
+        "intent_type": "Funding.Outreach.Email.Generate",
+        "plan_template_ref": "plan-templates/funding_outreach_email_generate.plan.v1.json"
+      },
+      {
+        "intent_type": "Funding.Outreach.Email.Review",
+        "plan_template_ref": "plan-templates/funding_outreach_email_review.plan.v1.json"
+      },
+      {
+        "intent_type": "Funding.Outreach.Email.Optimize",
+        "plan_template_ref": "plan-templates/funding_outreach_email_optimize.plan.v1.json"
+      },
+      {
+        "intent_type": "Funding.Paper.Metadata.Extract",
+        "plan_template_ref": "plan-templates/funding_paper_metadata_extract.plan.v1.json"
+      },
+      {
+        "intent_type": "Funding.Request.Fields.Update",
+        "plan_template_ref": "plan-templates/funding_request_fields_update.plan.v1.json"
+      }
+    ],
+    "verification_checks": {
+      "preconditions": [
+        { "check": "Auth.Scope", "params": { "scope": "funding:outreach" } },
+        { "check": "Entity.Exists", "params": { "entity": "professor" } }
+      ],
+      "pre_apply": [
+        { "check": "UserApproval", "params": { "required": true } }
+      ]
+    },
+    "outcomes": [
+      { "type": "Professor.Summary", "schema": "schemas/outcomes/professor_summary.v1.json" },
+      { "type": "Alignment.Score", "schema": "schemas/outcomes/alignment_score.v1.json" },
+      { "type": "Email.Draft", "schema": "schemas/outcomes/email_draft.v1.json" },
+      { "type": "Email.Review", "schema": "schemas/outcomes/email_review.v1.json" },
+      { "type": "Conversation.Suggestions", "schema": "schemas/outcomes/conversation_suggestions.v1.json" },
+      { "type": "Paper.Metadata", "schema": "schemas/outcomes/paper_metadata.v1.json" },
+      { "type": "PlatformPatch.Proposal", "schema": "schemas/outcomes/platform_patch_proposal.v1.json" },
+      { "type": "PlatformPatch.Receipt", "schema": "schemas/outcomes/platform_patch_receipt.v1.json" }
+    ],
+    "metrics": {
+      "quality": [
+        { "name": "EmailRubricScore", "target": ">=0.80" },
+        { "name": "HallucinationRisk", "target": "<=0.10" }
+      ],
+      "ops": [
+        { "name": "P95LatencySeconds", "target": "<=12" },
+        { "name": "CostPerWorkflowUSD", "target": "<=0.20" }
+      ]
+    }
+  }
+}

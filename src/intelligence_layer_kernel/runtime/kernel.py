@@ -160,8 +160,16 @@ class WorkflowKernel:
         if run is None or run.thread_id is None:
             raise ValueError("workflow run not found for gate")
 
+        normalized_payload = dict(payload or {})
+        if gate.get("gate_type") == "collect_profile_fields":
+            has_wrapped_updates = any(
+                key in normalized_payload for key in ("profile_updates", "memory_updates")
+            )
+            if not has_wrapped_updates and normalized_payload:
+                normalized_payload = {"profile_updates": normalized_payload}
+
         intent_type = "Workflow.Gate.Resolve"
-        inputs = {"action_id": action_id, "status": status, "payload": payload}
+        inputs = {"action_id": action_id, "status": status, "payload": normalized_payload}
         resolution = await self.start_intent(
             intent_type=intent_type,
             inputs=inputs,
@@ -471,6 +479,11 @@ class WorkflowKernel:
 
         payload = resolve_template_value(step.get("payload") or {}, ctx)
         payload = prune_nulls(payload)
+        await self._hydrate_operator_payload(
+            operator_name=step.get("operator_name"),
+            thread_id=intent.thread_id,
+            payload=payload,
+        )
         self._apply_operator_defaults(step.get("operator_name"), payload)
         idempotency_key = render_template(step.get("idempotency_template", ""), ctx)
         await self._workflow_store.update_step_payload(
@@ -545,6 +558,30 @@ class WorkflowKernel:
         )
 
         self._apply_produces(ctx.data, step.get("produces") or [], result.result)
+        if op_name in {"FundingRequest.Fields.Update.Apply", "FundingEmail.Draft.Update.Apply"}:
+            refresh_payload: dict[str, Any] = {"target": "funding_request"}
+            if op_name == "FundingRequest.Fields.Update.Apply":
+                refresh_payload["reason"] = "funding_request_updated"
+            else:
+                refresh_payload["reason"] = "funding_email_draft_updated"
+            if isinstance(result.result, dict):
+                request_id = result.result.get("request_id")
+                if request_id is not None:
+                    refresh_payload["request_id"] = request_id
+                email_id = result.result.get("email_id")
+                if email_id is not None:
+                    refresh_payload["email_id"] = email_id
+            await self._emit_event(
+                workflow_id=workflow_id,
+                intent_id=intent.intent_id,
+                plan_id=plan.plan_id,
+                thread_id=intent.thread_id,
+                correlation_id=intent.correlation_id,
+                actor=actor,
+                event_type="ui.refresh_required",
+                payload=refresh_payload,
+                step_id=step_id,
+            )
         await self._emit_progress(
             workflow_id=workflow_id,
             intent_id=intent.intent_id,
@@ -567,6 +604,115 @@ class WorkflowKernel:
                     payload["human_summary"] = f"Update funding request fields: {keys}"
                 else:
                     payload["human_summary"] = "Update funding request fields"
+        if operator_name == "Email.OptimizeDraft" and "requested_edits" not in payload:
+            payload["requested_edits"] = []
+        if operator_name == "StudentProfile.Update" and "profile_updates" not in payload:
+            payload["profile_updates"] = {}
+        if operator_name == "Memory.Upsert" and "entries" not in payload:
+            payload["entries"] = []
+
+    async def _hydrate_operator_payload(
+        self,
+        *,
+        operator_name: str | None,
+        thread_id: int,
+        payload: dict[str, Any],
+    ) -> None:
+        if operator_name == "Email.OptimizeDraft":
+            await self._hydrate_email_optimize_source(thread_id=thread_id, payload=payload)
+
+    async def _hydrate_email_optimize_source(self, *, thread_id: int, payload: dict[str, Any]) -> None:
+        source_outcome_id = _safe_uuid(payload.get("source_draft_outcome_id"))
+        source_version_raw = payload.get("source_draft_version")
+        source_version = source_version_raw if isinstance(source_version_raw, int) and source_version_raw > 0 else None
+        if source_outcome_id is None and source_version is None:
+            return
+
+        source = await self._resolve_email_draft_source(
+            thread_id=thread_id,
+            source_outcome_id=source_outcome_id,
+            source_version=source_version,
+        )
+        if source is None:
+            return
+
+        subject = source.get("subject")
+        body = source.get("body")
+        if isinstance(subject, str) and subject.strip():
+            payload["current_subject"] = subject
+        if isinstance(body, str) and body.strip():
+            payload["current_body"] = body
+
+        resolved_outcome_id = source.get("outcome_id")
+        if resolved_outcome_id is not None:
+            payload["source_draft_outcome_id"] = str(resolved_outcome_id)
+        resolved_version = source.get("version_number")
+        if isinstance(resolved_version, int) and resolved_version > 0:
+            payload["source_draft_version"] = resolved_version
+
+    async def _resolve_email_draft_source(
+        self,
+        *,
+        thread_id: int,
+        source_outcome_id: uuid.UUID | None,
+        source_version: int | None,
+    ) -> dict[str, Any] | None:
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT outcome_id, content, created_at
+                FROM ledger.outcomes
+                WHERE tenant_id=$1
+                  AND thread_id=$2
+                  AND status='succeeded'
+                  AND content->'outcome'->>'outcome_type'='Email.Draft'
+                ORDER BY created_at DESC
+                LIMIT 100;
+                """,
+                self.tenant_id,
+                thread_id,
+            )
+
+        drafts: list[dict[str, Any]] = []
+        for row in rows:
+            content = row["content"]
+            if not isinstance(content, dict):
+                continue
+            outcome = content.get("outcome")
+            if not isinstance(outcome, dict):
+                continue
+            payload = outcome.get("payload")
+            if not isinstance(payload, dict):
+                continue
+            subject = payload.get("subject")
+            body = payload.get("body")
+            if not isinstance(subject, str) or not isinstance(body, str):
+                continue
+            version = payload.get("version_number")
+            version_number = version if isinstance(version, int) and version > 0 else None
+            outcome_id = _safe_uuid(outcome.get("outcome_id")) or row["outcome_id"]
+            if outcome_id is None:
+                continue
+            drafts.append(
+                {
+                    "outcome_id": outcome_id,
+                    "version_number": version_number,
+                    "subject": subject,
+                    "body": body,
+                }
+            )
+
+        if source_outcome_id is not None:
+            for draft in drafts:
+                if draft["outcome_id"] == source_outcome_id:
+                    return draft
+
+        if source_version is not None:
+            for draft in drafts:
+                if draft.get("version_number") == source_version:
+                    return draft
+
+        return None
 
     async def _run_policy_check_step(
         self,
@@ -581,24 +727,99 @@ class WorkflowKernel:
         step_id = step["step_id"]
         check = step.get("check") or {}
         check_name = str(check.get("check_name") or "")
-        params = dict(check.get("params") or {})
+        resolved_params = resolve_template_value(dict(check.get("params") or {}), ctx)
+        params = resolved_params if isinstance(resolved_params, dict) else {}
 
+        missing_requirements: list[str] = []
         missing_fields: list[str] = []
+        targeted_questions: list[dict[str, Any]] = []
         if check_name == "EnsureEmailPresent":
             sources = params.get("sources") or []
             if not any(_has_value(ctx.get(src)) for src in sources if isinstance(src, str)):
-                missing_fields = ["email_text"]
+                missing_fields = [str(params.get("missing_field_key") or "email_draft")]
         elif check_name == "Onboarding.Ensure":
-            required = params.get("required_gates") or []
-            required = [str(item) for item in required]
+            requirements_state = ctx.get("context.profile.requirements")
+            if not isinstance(requirements_state, dict):
+                requirements_state = ctx.get("context.intelligence.requirements")
+            if not isinstance(requirements_state, dict):
+                requirements_state = {}
+
+            required_raw = params.get("required_gates")
+            required: list[str] = []
+            if isinstance(required_raw, list):
+                required = [str(item) for item in required_raw if str(item).strip()]
+            if not required:
+                fallback_required = requirements_state.get("required_requirements")
+                if isinstance(fallback_required, list):
+                    required = [str(item) for item in fallback_required if str(item).strip()]
+
+            status_by_requirement = requirements_state.get("status_by_requirement")
+            if not isinstance(status_by_requirement, dict):
+                status_by_requirement = {}
+
             if required:
-                missing_fields = required
+                for requirement in required:
+                    if not bool(status_by_requirement.get(requirement)):
+                        missing_requirements.append(requirement)
+
+            missing_by_requirement = requirements_state.get("missing_fields_by_requirement")
+            if isinstance(missing_by_requirement, dict):
+                for requirement in missing_requirements:
+                    candidates = missing_by_requirement.get(requirement)
+                    if not isinstance(candidates, list):
+                        continue
+                    for field_path in candidates:
+                        text = str(field_path).strip()
+                        if text and text not in missing_fields:
+                            missing_fields.append(text)
+
+            raw_questions = requirements_state.get("targeted_questions")
+            if isinstance(raw_questions, list):
+                for item in raw_questions:
+                    if isinstance(item, dict):
+                        targeted_questions.append(item)
+
+            if not missing_fields and missing_requirements:
+                missing_fields = list(missing_requirements)
         else:
             # Unknown check: treat as passed for now.
             missing_fields = []
 
-        if missing_fields:
-            gate_type = str(params.get("on_missing_action_type") or "collect_fields")
+        if missing_fields or missing_requirements:
+            default_gate_type = "collect_profile_fields" if check_name == "Onboarding.Ensure" else "collect_fields"
+            gate_type = str(params.get("on_missing_action_type") or default_gate_type)
+            reason_code = "MISSING_REQUIRED_PROFILE_FIELDS" if check_name == "Onboarding.Ensure" else "MISSING_REQUIRED_FIELDS"
+            default_title = "Provide required information"
+            default_description = (
+                "Please provide the missing profile fields to continue."
+                if check_name == "Onboarding.Ensure"
+                else "Please provide the missing fields to continue."
+            )
+            if check_name == "EnsureEmailPresent":
+                default_title = "Generate email draft first"
+                default_description = (
+                    "No draft email was found. Generate a draft in the Funding Outreach UI, "
+                    "then retry optimization."
+                )
+
+            title = str(params.get("on_missing_title") or default_title)
+            description = str(params.get("on_missing_description") or default_description)
+            requires_user_input = bool(params.get("on_missing_requires_user_input", True))
+            gate_data: dict[str, Any] = {
+                "missing_requirements": missing_requirements,
+                "missing_fields": missing_fields,
+                "targeted_questions": targeted_questions[:3],
+            }
+            if check_name == "EnsureEmailPresent":
+                funding_request_id = ctx.get("context.platform.funding_request.id")
+                endpoint = "/api/v1/funding/{funding_id}/review"
+                if isinstance(funding_request_id, int) and funding_request_id > 0:
+                    endpoint = f"/api/v1/funding/{funding_request_id}/review"
+                gate_data["action_hint"] = {
+                    "action": "generate_draft_preview",
+                    "method": "GET",
+                    "endpoint": endpoint,
+                }
             gate_id = await self._open_gate(
                 workflow_id=workflow_id,
                 intent=intent,
@@ -607,10 +828,11 @@ class WorkflowKernel:
                 ctx=ctx,
                 actor=actor,
                 gate_type=gate_type,
-                title="Provide required information",
-                description="Please provide the missing fields to continue.",
-                reason_code="MISSING_REQUIRED_FIELDS",
-                data={"missing_fields": missing_fields},
+                title=title,
+                description=description,
+                reason_code=reason_code,
+                requires_user_input=requires_user_input,
+                data=gate_data,
             )
             return gate_id
 
@@ -722,6 +944,8 @@ class WorkflowKernel:
             "requires_user_input": requires_user_input,
             "ui_hints": ui_hints or {},
         }
+        if gate_type == "apply_platform_patch":
+            payload["apply_action_id"] = str(gate_id)
         if proposed_changes is not None:
             payload["proposed_changes"] = proposed_changes
         if data:

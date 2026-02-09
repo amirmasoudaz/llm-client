@@ -1,0 +1,27 @@
+{
+  "schema_version": "1.0",
+  "plan_template_id": "Thread.Init@1.0.0",
+  "intent_type": "Thread.Init",
+  "plan_version": "planner-1.0",
+  "description": "Create or load a thread for (student_id, funding_request_id) and return onboarding gate status.",
+  "steps": [
+    {
+      "step_id": "s1",
+      "kind": "operator",
+      "name": "Thread.CreateOrLoad",
+      "operator_name": "Thread.CreateOrLoad",
+      "operator_version": "1.0.0",
+      "effects": ["db_write"],
+      "policy_tags": ["thread"],
+      "risk_level": "low",
+      "cache_policy": "never",
+      "idempotency_template": "thread_init:{tenant_id}:{intent.inputs.student_id}:{intent.inputs.funding_request_id}",
+      "payload": {
+        "student_id": { "from": "intent.inputs.student_id" },
+        "funding_request_id": { "from": "intent.inputs.funding_request_id" },
+        "client_context": { "from": "intent.inputs.client_context" }
+      },
+      "produces": ["thread_id", "thread_status", "onboarding_gate", "missing_requirements"]
+    }
+  ]
+}

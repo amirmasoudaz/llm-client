@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/outcomes/alignment_score.v1.json",
+  "title": "Outcome: Alignment.Score (v1)",
+  "allOf": [
+    { "$ref": "outcome_base.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "outcome_type": { "const": "Alignment.Score" },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["student_id", "professor_id", "score", "label", "rationale_short"],
+          "properties": {
+            "student_id": { "$ref": "../common/defs.v1.json#/$defs/StudentId" },
+            "professor_id": { "$ref": "../common/defs.v1.json#/$defs/ProfessorId" },
+            "score": { "type": "number", "minimum": 0, "maximum": 1 },
+            "label": { "type": "string", "enum": ["low", "medium", "high"] },
+            "focus_areas": { "type": "array", "items": { "type": "string" }, "default": [] },
+            "matched_topics": { "type": "array", "items": { "type": "string" }, "default": [] },
+            "gaps": { "type": "array", "items": { "type": "string" }, "default": [] },
+            "rationale_short": { "type": "string", "minLength": 1 },
+            "rationale_long": { "type": "string" },
+            "recommendations": { "type": "array", "items": { "type": "string" }, "default": [] }
+          }
+        }
+      }
+    }
+  ]
+}
+

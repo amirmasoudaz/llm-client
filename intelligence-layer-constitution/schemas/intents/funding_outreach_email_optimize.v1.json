@@ -33,7 +33,9 @@
               "default": []
             },
             "subject_override": { "type": "string" },
-            "custom_instructions": { "type": "string" }
+            "custom_instructions": { "type": "string" },
+            "source_draft_outcome_id": { "$ref": "../common/defs.v1.json#/$defs/Uuid" },
+            "source_draft_version": { "type": "integer", "minimum": 1 }
           },
           "default": {}
         }

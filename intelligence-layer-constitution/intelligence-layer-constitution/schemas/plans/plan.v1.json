@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/plans/plan.v1.json",
+  "title": "Plan (v1)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "plan_id", "plan_version", "intent_id", "steps"],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "plan_id": { "$ref": "../common/defs.v1.json#/$defs/Uuid" },
+    "plan_version": { "type": "string", "minLength": 1 },
+    "intent_id": { "$ref": "../common/defs.v1.json#/$defs/Uuid" },
+    "intent_type": { "type": "string" },
+    "thread_id": { "$ref": "../common/defs.v1.json#/$defs/ThreadId" },
+    "explanation": { "type": "string" },
+    "stop_conditions": { "type": "object", "default": {} },
+    "steps": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "step.v1.json" }
+    },
+    "created_at": { "$ref": "../common/defs.v1.json#/$defs/ISODateTime" }
+  }
+}
+

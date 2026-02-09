@@ -53,15 +53,72 @@ class ConversationSuggestionsGenerateOperator(Operator):
 def _build_suggestions(intent_type: str, outcomes: dict[str, Any], platform: dict[str, Any]) -> list[dict[str, Any]]:
     suggestions: list[dict[str, Any]] = []
     email_review = outcomes.get("email_review") if isinstance(outcomes.get("email_review"), dict) else None
+    alignment_outcome = outcomes.get("alignment_score") if isinstance(outcomes.get("alignment_score"), dict) else None
     verdict = None
     if email_review and isinstance(email_review.get("payload"), dict):
         verdict = email_review["payload"].get("verdict")
+    alignment_payload = alignment_outcome.get("payload") if isinstance(alignment_outcome, dict) else None
+    if not isinstance(alignment_payload, dict):
+        alignment_payload = None
 
     if verdict == "needs_edits":
         suggestions.append({"type": "followup", "text": "Revise the email based on the review feedback."})
         suggestions.append({"type": "followup", "text": "Show me a concise summary of the review issues."})
     elif verdict == "pass":
         suggestions.append({"type": "followup", "text": "Generate a shorter, sharper version of this email."})
+
+    if intent_type == "Funding.Outreach.Alignment.Score" and alignment_payload:
+        label = str(alignment_payload.get("label") or "").strip().lower()
+        focus_areas = alignment_payload.get("focus_areas")
+        if not isinstance(focus_areas, list):
+            focus_areas = []
+        matched_topics = alignment_payload.get("matched_topics")
+        if not isinstance(matched_topics, list):
+            matched_topics = []
+        if label == "high":
+            suggestions.append(
+                {"type": "followup", "text": "Generate an outreach draft that highlights this strong alignment."}
+            )
+            suggestions.append(
+                {
+                    "type": "followup",
+                    "text": "Summarize the top alignment evidence I should mention in my first paragraph.",
+                }
+            )
+        elif label == "medium":
+            suggestions.append(
+                {
+                    "type": "followup",
+                    "text": "Optimize my draft to emphasize the best-matched topics for this professor.",
+                }
+            )
+            suggestions.append(
+                {"type": "followup", "text": "Show concrete profile updates that can improve my match score."}
+            )
+        else:
+            suggestions.append(
+                {
+                    "type": "followup",
+                    "text": "Update my research interest and profile data to improve alignment before outreach.",
+                }
+            )
+            suggestions.append(
+                {"type": "followup", "text": "Find another professor with a closer topic match."}
+            )
+        if focus_areas:
+            suggestions.append(
+                {
+                    "type": "followup",
+                    "text": f"Re-score alignment with focus on: {', '.join(str(x) for x in focus_areas[:3])}.",
+                }
+            )
+        elif matched_topics:
+            suggestions.append(
+                {
+                    "type": "followup",
+                    "text": f"Draft a targeted email around: {', '.join(str(x) for x in matched_topics[:3])}.",
+                }
+            )
 
     funding_request = platform.get("funding_request") if isinstance(platform.get("funding_request"), dict) else {}
     if not funding_request.get("research_interest"):

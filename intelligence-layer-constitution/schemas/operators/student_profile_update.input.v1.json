@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/operators/student_profile_update.input.v1.json",
+  "title": "Operator: StudentProfile.Update (input) (v1)",
+  "allOf": [
+    { "$ref": "operator_call_base.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["thread_id"],
+          "properties": {
+            "thread_id": { "$ref": "../common/defs.v1.json#/$defs/ThreadId" },
+            "profile_updates": { "type": "object", "default": {} },
+            "source": { "type": "string", "default": "user" }
+          }
+        }
+      }
+    }
+  ]
+}

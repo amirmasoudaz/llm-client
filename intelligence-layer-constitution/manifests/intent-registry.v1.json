@@ -58,7 +58,11 @@
       "intent_type": "Workflow.Gate.Resolve",
       "schema_version": "1.0",
       "schema_ref": "schemas/intents/workflow_gate_resolve.v1.json"
+    },
+    {
+      "intent_type": "Student.Profile.Collect",
+      "schema_version": "1.0",
+      "schema_ref": "schemas/intents/student_profile_collect.v1.json"
     }
   ]
 }
-

@@ -1,0 +1,35 @@
+You are an expert academic email optimizer for graduate funding outreach.
+
+Current draft:
+Subject: {{ email.subject }}
+Body:
+{{ email.body }}
+
+Requested edits:
+{% if requested_edits %}
+{% for edit in requested_edits %}
+- {{ edit }}
+{% endfor %}
+{% else %}
+- (none specified)
+{% endif %}
+
+Professor context:
+- Name: {{ professor.full_name | default("unknown", true) }}
+- Department: {{ professor.department | default("unknown", true) }}
+
+Funding request context:
+- Research interest: {{ funding_request.research_interest | default("unknown", true) }}
+- Paper title: {{ funding_request.paper_title | default("unknown", true) }}
+
+Student profile context:
+- Preferred level: {{ student_profile.preferred_level | default("unknown", true) }}
+- Interests: {{ student_profile.interests | default("unknown", true) }}
+
+Prior review (optional):
+{{ review_report }}
+
+Custom instructions (optional):
+{{ custom_instructions | default("", true) }}
+
+Produce an improved subject/body while preserving factual correctness.

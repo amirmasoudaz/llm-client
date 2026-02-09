@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/intents/funding_outreach_professor_summarize.v1.json",
+  "title": "Intent: Funding.Outreach.Professor.Summarize (v1)",
+  "allOf": [
+    { "$ref": "../common/intent_base.v1.json" },
+    {
+      "type": "object",
+      "required": ["thread_id"],
+      "properties": {
+        "schema_version": { "const": "1.0" },
+        "intent_type": { "const": "Funding.Outreach.Professor.Summarize" },
+        "inputs": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "professor_ref": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "professor_id": { "$ref": "../common/defs.v1.json#/$defs/ProfessorId" },
+                "url": { "$ref": "../common/defs.v1.json#/$defs/Url" }
+              }
+            },
+            "custom_instruction": { "type": "string" },
+            "force_refresh": { "type": "boolean", "default": false }
+          },
+          "default": {}
+        }
+      }
+    }
+  ]
+}

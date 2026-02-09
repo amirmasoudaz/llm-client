@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/operators/student_profile_update.output.v1.json",
+  "title": "Operator: StudentProfile.Update (output) (v1)",
+  "allOf": [
+    { "$ref": "operator_result_base.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "result": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["student_id", "profile", "updated_fields", "validation"],
+          "properties": {
+            "student_id": { "$ref": "../common/defs.v1.json#/$defs/StudentId" },
+            "profile": { "type": "object" },
+            "updated_fields": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 },
+              "default": []
+            },
+            "validation": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["is_valid", "errors"],
+              "properties": {
+                "is_valid": { "type": "boolean" },
+                "errors": {
+                  "type": "array",
+                  "items": { "type": "string" },
+                  "default": []
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

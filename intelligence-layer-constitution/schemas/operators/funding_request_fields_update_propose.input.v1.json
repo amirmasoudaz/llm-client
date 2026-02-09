@@ -13,7 +13,18 @@
           "required": ["funding_request_id", "fields", "human_summary"],
           "properties": {
             "funding_request_id": { "$ref": "../common/defs.v1.json#/$defs/FundingRequestId" },
-            "fields": { "type": "object", "minProperties": 1 },
+            "fields": {
+              "type": "object",
+              "minProperties": 1,
+              "additionalProperties": false,
+              "properties": {
+                "research_interest": { "type": "string", "minLength": 1, "maxLength": 1000 },
+                "paper_title": { "type": "string", "minLength": 1, "maxLength": 500 },
+                "journal": { "type": "string", "minLength": 1, "maxLength": 255 },
+                "year": { "type": "integer", "minimum": 1900, "maximum": 2100 },
+                "research_connection": { "type": "string", "minLength": 1, "maxLength": 12000 }
+              }
+            },
             "human_summary": { "type": "string", "minLength": 1 }
           }
         }
@@ -21,4 +32,3 @@
     }
   ]
 }
-

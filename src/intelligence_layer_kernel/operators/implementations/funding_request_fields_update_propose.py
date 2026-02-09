@@ -10,24 +10,32 @@ from blake3 import blake3
 
 from ..base import Operator
 from ..types import OperatorCall, OperatorResult, OperatorMetrics, OperatorError
+from .funding_request_fields_common import (
+    get_platform_db,
+    to_iso_timestamp,
+    validate_and_normalize_fields,
+)
 
 
 class FundingRequestFieldsUpdateProposeOperator(Operator):
     name = "FundingRequest.Fields.Update.Propose"
     version = "1.0.0"
 
+    def __init__(self) -> None:
+        self._db = get_platform_db()
+
     async def run(self, call: OperatorCall) -> OperatorResult:
         start = time.monotonic()
         payload = call.payload
 
         funding_request_id = payload.get("funding_request_id")
-        fields = payload.get("fields") or {}
+        fields = payload.get("fields")
         human_summary = payload.get("human_summary")
 
-        if not funding_request_id or not isinstance(fields, dict) or not fields:
+        if not isinstance(funding_request_id, int) or funding_request_id <= 0:
             error = OperatorError(
                 code="invalid_payload",
-                message="funding_request_id and fields are required",
+                message="funding_request_id must be a positive integer",
                 category="validation",
                 retryable=False,
             )
@@ -39,6 +47,55 @@ class FundingRequestFieldsUpdateProposeOperator(Operator):
                 error=error,
             )
 
+        try:
+            normalized_fields = validate_and_normalize_fields(fields)
+        except ValueError as exc:
+            return OperatorResult(
+                status="failed",
+                result=None,
+                artifacts=[],
+                metrics=OperatorMetrics(latency_ms=int((time.monotonic() - start) * 1000)),
+                error=OperatorError(
+                    code="invalid_fields",
+                    message=str(exc),
+                    category="validation",
+                    retryable=False,
+                ),
+            )
+
+        current_row = await self._db.fetch_one(
+            """
+            SELECT id, research_interest, paper_title, journal, `year`, research_connection, updated_at
+            FROM funding_requests
+            WHERE id=%s
+            LIMIT 1;
+            """,
+            (funding_request_id,),
+        )
+        if current_row is None:
+            return OperatorResult(
+                status="failed",
+                result=None,
+                artifacts=[],
+                metrics=OperatorMetrics(latency_ms=int((time.monotonic() - start) * 1000)),
+                error=OperatorError(
+                    code="funding_request_not_found",
+                    message="funding request not found",
+                    category="validation",
+                    retryable=False,
+                ),
+            )
+
+        before: dict[str, Any] = {}
+        after: dict[str, Any] = {}
+        for key, new_value in normalized_fields.items():
+            previous = current_row.get(key)
+            before[key] = previous
+            after[key] = new_value
+
+        updated_at = current_row.get("updated_at")
+        expected_updated_at = to_iso_timestamp(updated_at) if updated_at is not None else None
+
         patch_id = uuid.uuid4()
         proposal = {
             "schema_version": "1.0",
@@ -47,7 +104,11 @@ class FundingRequestFieldsUpdateProposeOperator(Operator):
                 {
                     "table": "funding_requests",
                     "where": {"id": int(funding_request_id)},
-                    "set": fields,
+                    "set": normalized_fields,
+                    "expected": {
+                        "updated_at": expected_updated_at,
+                        "values": before,
+                    },
                 }
             ],
             "human_summary": str(human_summary or "Update funding request fields"),
@@ -70,7 +131,15 @@ class FundingRequestFieldsUpdateProposeOperator(Operator):
 
         return OperatorResult(
             status="succeeded",
-            result={"outcome": outcome},
+            result={
+                "outcome": outcome,
+                "preview": {
+                    "request_id": int(funding_request_id),
+                    "before": before,
+                    "after": after,
+                    "expected_updated_at": expected_updated_at,
+                },
+            },
             artifacts=[],
             metrics=OperatorMetrics(latency_ms=int((time.monotonic() - start) * 1000)),
             error=None,

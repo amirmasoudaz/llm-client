@@ -1,0 +1,22 @@
+{
+  "name": "StudentProfile.Requirements.Evaluate",
+  "type": "operator",
+  "version": "1.0.0",
+  "owner": "canapply",
+  "description": "Evaluate required onboarding/profile fields for an intent and return targeted follow-up questions.",
+  "schemas": {
+    "input": "schemas/operators/student_profile_requirements_evaluate.input.v1.json",
+    "output": "schemas/operators/student_profile_requirements_evaluate.output.v1.json"
+  },
+  "requires": {
+    "tools": [],
+    "capabilities": [],
+    "context_fields": []
+  },
+  "policy_tags": ["onboarding", "profile"],
+  "effects": ["read_only"],
+  "observability": {
+    "log_level": "info",
+    "emit_samples": false
+  }
+}

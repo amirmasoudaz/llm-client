@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/outcomes/document_composed.v1.json",
+  "title": "Outcome: Document.Composed (v1)",
+  "allOf": [
+    { "$ref": "outcome_base.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "outcome_type": { "const": "Document.Composed" },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["document_type", "format", "artifact"],
+          "properties": {
+            "document_type": { "type": "string", "enum": ["sop", "resume", "letter", "other"] },
+            "format": { "type": "string", "enum": ["markdown", "latex", "docx", "text"] },
+            "artifact": { "$ref": "../common/defs.v1.json#/$defs/ArtifactRef" },
+            "title": { "type": "string" },
+            "notes": { "type": "string" }
+          }
+        }
+      }
+    }
+  ]
+}
+

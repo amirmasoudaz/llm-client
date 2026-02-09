@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { submitQuery } from '../api/client';
 import { connectToWorkflowStream, type SSEConnection } from '../api/sse';
-import { useThreadState, useThreadDispatch } from '../stores/thread';
+import { useThreadState, useThreadDispatch } from '../stores/thread.tsx';
 import type { WorkflowEvent, ActionRequiredEvent } from '../api/types';
 
 export function ChatInterface() {

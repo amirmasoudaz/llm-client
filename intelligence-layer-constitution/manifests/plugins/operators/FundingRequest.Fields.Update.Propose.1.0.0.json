@@ -3,7 +3,7 @@
   "type": "operator",
   "version": "1.0.0",
   "owner": "canapply",
-  "description": "Create a PlatformPatch.Proposal outcome to update funding request fields in the platform DB (applied by platform backend).",
+  "description": "Create an allowlisted PlatformPatch.Proposal for funding_requests with validated types, bounds, and before/after preview.",
   "schemas": {
     "input": "schemas/operators/funding_request_fields_update_propose.input.v1.json",
     "output": "schemas/operators/funding_request_fields_update_propose.output.v1.json"
@@ -20,4 +20,3 @@
     "emit_samples": false
   }
 }
-

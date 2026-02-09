@@ -1,0 +1,147 @@
+{
+  "schema_version": "1.0",
+  "plan_template_id": "Student.Profile.Collect@1.0.0",
+  "intent_type": "Student.Profile.Collect",
+  "plan_version": "planner-1.0",
+  "description": "Collect missing profile fields incrementally, update memory, and re-evaluate completion.",
+  "steps": [
+    {
+      "step_id": "s1",
+      "kind": "operator",
+      "name": "Platform.Context.Load",
+      "operator_name": "Platform.Context.Load",
+      "operator_version": "1.0.0",
+      "effects": ["read_only"],
+      "policy_tags": ["read_only", "platform_read"],
+      "risk_level": "low",
+      "cache_policy": "ttl_only",
+      "idempotency_template": "platform_context:{tenant_id}:{thread_id}",
+      "payload": { "thread_id": { "from": "intent.thread_id" } },
+      "produces": ["context.platform", "context.intelligence"]
+    },
+    {
+      "step_id": "s2",
+      "kind": "operator",
+      "name": "StudentProfile.LoadOrCreate",
+      "operator_name": "StudentProfile.LoadOrCreate",
+      "operator_version": "1.0.0",
+      "effects": ["db_write"],
+      "policy_tags": ["onboarding", "profile"],
+      "risk_level": "low",
+      "cache_policy": "never",
+      "idempotency_template": "student_profile_load:{tenant_id}:{thread_id}",
+      "payload": {
+        "thread_id": { "from": "intent.thread_id" }
+      },
+      "produces": ["context.profile", "context.memory"]
+    },
+    {
+      "step_id": "s3",
+      "kind": "operator",
+      "name": "StudentProfile.Requirements.Evaluate",
+      "operator_name": "StudentProfile.Requirements.Evaluate",
+      "operator_version": "1.0.0",
+      "effects": ["read_only"],
+      "policy_tags": ["onboarding", "profile"],
+      "risk_level": "low",
+      "cache_policy": "never",
+      "idempotency_template": "student_profile_requirements_pre:{tenant_id}:{thread_id}:{intent.inputs.for_intent_type}",
+      "payload": {
+        "thread_id": { "from": "intent.thread_id" },
+        "intent_type": { "from": "intent.inputs.for_intent_type" },
+        "required_requirements": { "from": "intent.inputs.required_requirements" },
+        "strict": { "const": false }
+      },
+      "produces": ["context.profile.requirements"]
+    },
+    {
+      "step_id": "s4",
+      "kind": "policy_check",
+      "name": "Onboarding.EnsureProfile",
+      "effects": ["read_only"],
+      "policy_tags": ["onboarding_gate"],
+      "risk_level": "low",
+      "cache_policy": "never",
+      "check": {
+        "check_name": "Onboarding.Ensure",
+        "params": {
+          "required_gates": { "from": "intent.inputs.required_requirements" },
+          "on_missing_action_type": "collect_profile_fields"
+        }
+      }
+    },
+    {
+      "step_id": "s5",
+      "kind": "operator",
+      "name": "StudentProfile.Update",
+      "operator_name": "StudentProfile.Update",
+      "operator_version": "1.0.0",
+      "effects": ["db_write"],
+      "policy_tags": ["onboarding", "profile"],
+      "risk_level": "low",
+      "cache_policy": "never",
+      "depends_on": ["s4"],
+      "idempotency_template": "student_profile_update:{tenant_id}:{thread_id}:{computed.profile_updates_hash}",
+      "payload": {
+        "thread_id": { "from": "intent.thread_id" },
+        "profile_updates": { "from": "intent.inputs.profile_updates" },
+        "source": { "const": "user" }
+      },
+      "produces": ["context.profile", "context.profile.validation"]
+    },
+    {
+      "step_id": "s6",
+      "kind": "operator",
+      "name": "Memory.Upsert",
+      "operator_name": "Memory.Upsert",
+      "operator_version": "1.0.0",
+      "effects": ["db_write"],
+      "policy_tags": ["memory", "profile"],
+      "risk_level": "low",
+      "cache_policy": "never",
+      "depends_on": ["s4"],
+      "idempotency_template": "memory_upsert:{tenant_id}:{thread_id}:{computed.memory_updates_hash}",
+      "payload": {
+        "thread_id": { "from": "intent.thread_id" },
+        "entries": { "from": "intent.inputs.memory_updates" }
+      },
+      "produces": ["context.memory"]
+    },
+    {
+      "step_id": "s7",
+      "kind": "operator",
+      "name": "StudentProfile.Requirements.Evaluate",
+      "operator_name": "StudentProfile.Requirements.Evaluate",
+      "operator_version": "1.0.0",
+      "effects": ["read_only"],
+      "policy_tags": ["onboarding", "profile"],
+      "risk_level": "low",
+      "cache_policy": "never",
+      "depends_on": ["s5"],
+      "idempotency_template": "student_profile_requirements_post:{tenant_id}:{thread_id}:{intent.inputs.for_intent_type}",
+      "payload": {
+        "thread_id": { "from": "intent.thread_id" },
+        "intent_type": { "from": "intent.inputs.for_intent_type" },
+        "required_requirements": { "from": "intent.inputs.required_requirements" },
+        "strict": { "const": false }
+      },
+      "produces": ["context.profile.requirements"]
+    },
+    {
+      "step_id": "s8",
+      "kind": "policy_check",
+      "name": "Onboarding.RecheckProfile",
+      "effects": ["read_only"],
+      "policy_tags": ["onboarding_gate"],
+      "risk_level": "low",
+      "cache_policy": "never",
+      "check": {
+        "check_name": "Onboarding.Ensure",
+        "params": {
+          "required_gates": { "from": "context.profile.requirements.required_requirements" },
+          "on_missing_action_type": "collect_profile_fields"
+        }
+      }
+    }
+  ]
+}

@@ -3,7 +3,7 @@
   "plan_template_id": "Funding.Outreach.Email.Optimize@1.0.0",
   "intent_type": "Funding.Outreach.Email.Optimize",
   "plan_version": "planner-1.0",
-  "description": "Optimize the current email (platform or override), review it, propose platform patch updates, and request approval to apply.",
+  "description": "Review current draft, optimize it using user feedback, then propose and apply platform updates after approval.",
   "steps": [
     {
       "step_id": "s1",
@@ -41,36 +41,15 @@
             "context.platform.funding_request.email_content",
             "context.platform.email.main_email_body"
           ],
-          "on_missing_action_type": "collect_fields"
+          "on_missing_action_type": "collect_fields",
+          "on_missing_title": "Generate email draft first",
+          "on_missing_description": "No draft email was found. Generate a draft in Funding Outreach first, then retry optimization.",
+          "on_missing_requires_user_input": false
         }
       }
     },
     {
       "step_id": "s3",
-      "kind": "operator",
-      "name": "Email.OptimizeDraft",
-      "operator_name": "Email.OptimizeDraft",
-      "operator_version": "1.0.0",
-      "effects": ["produce_outcome"],
-      "policy_tags": ["draft_only", "pii_allowed"],
-      "risk_level": "low",
-      "cache_policy": "use_if_safe",
-      "idempotency_template": "email_optimize:{tenant_id}:{thread_id}:{computed.email_body_hash}:{computed.requested_edits_hash}:{intent.inputs.custom_instructions}",
-      "payload": {
-        "current_subject": { "from": "intent.inputs.email_subject_override" },
-        "current_body": { "from": "intent.inputs.email_text_override" },
-        "fallback_subject": { "from": "context.platform.funding_request.email_subject" },
-        "fallback_body": { "from": "context.platform.funding_request.email_content" },
-        "requested_edits": { "from": "intent.inputs.requested_edits" },
-        "subject_override": { "from": "intent.inputs.subject_override" },
-        "custom_instructions": { "from": "intent.inputs.custom_instructions" },
-        "professor": { "from": "context.platform.professor" },
-        "funding_request": { "from": "context.platform.funding_request" }
-      },
-      "produces": ["outcome.email_draft"]
-    },
-    {
-      "step_id": "s4",
       "kind": "operator",
       "name": "Email.ReviewDraft",
       "operator_name": "Email.ReviewDraft",
@@ -79,19 +58,51 @@
       "policy_tags": ["draft_only"],
       "risk_level": "low",
       "cache_policy": "use_if_safe",
-      "idempotency_template": "email_review:{tenant_id}:{outcome.email_draft.outcome_id}",
+      "idempotency_template": "email_review:{tenant_id}:{thread_id}:{computed.email_body_hash}",
       "payload": {
-        "draft": { "from": "outcome.email_draft" },
+        "subject": { "from": "intent.inputs.email_subject_override" },
+        "body": { "from": "intent.inputs.email_text_override" },
+        "fallback_subject": { "from": "context.platform.funding_request.email_subject" },
+        "fallback_body": { "from": "context.platform.funding_request.email_content" },
         "professor": { "from": "context.platform.professor" },
         "funding_request": { "from": "context.platform.funding_request" }
       },
       "produces": ["outcome.email_review"]
     },
     {
+      "step_id": "s4",
+      "kind": "operator",
+      "name": "Email.OptimizeDraft",
+      "operator_name": "Email.OptimizeDraft",
+      "operator_version": "1.0.0",
+      "effects": ["produce_outcome"],
+      "policy_tags": ["draft_only", "pii_allowed"],
+      "risk_level": "low",
+      "cache_policy": "use_if_safe",
+      "idempotency_template": "email_optimize:{tenant_id}:{thread_id}:{computed.email_body_hash}:{computed.requested_edits_hash}:{intent.inputs.custom_instructions}:{intent.inputs.source_draft_version}",
+      "payload": {
+        "current_subject": { "from": "intent.inputs.email_subject_override" },
+        "current_body": { "from": "intent.inputs.email_text_override" },
+        "fallback_subject": { "from": "context.platform.funding_request.email_subject" },
+        "fallback_body": { "from": "context.platform.funding_request.email_content" },
+        "requested_edits": { "from": "intent.inputs.requested_edits" },
+        "subject_override": { "from": "intent.inputs.subject_override" },
+        "custom_instructions": { "from": "intent.inputs.custom_instructions" },
+        "source_draft_version": { "from": "intent.inputs.source_draft_version" },
+        "source_draft_outcome_id": { "from": "intent.inputs.source_draft_outcome_id" },
+        "email_id": { "from": "context.platform.email.id" },
+        "review_report": { "from": "outcome.email_review" },
+        "professor": { "from": "context.platform.professor" },
+        "funding_request": { "from": "context.platform.funding_request" },
+        "student_profile": { "from": "context.intelligence.profile" }
+      },
+      "produces": ["outcome.email_draft"]
+    },
+    {
       "step_id": "s5",
       "kind": "operator",
-      "name": "Email.ApplyToPlatform.Propose",
-      "operator_name": "Email.ApplyToPlatform.Propose",
+      "name": "FundingEmail.Draft.Update.Propose",
+      "operator_name": "FundingEmail.Draft.Update.Propose",
       "operator_version": "1.0.0",
       "effects": ["produce_outcome"],
       "policy_tags": ["apply_proposal", "platform_write"],
@@ -117,11 +128,31 @@
         "gate_type": "apply_platform_patch",
         "reason_code": "REQUIRES_APPROVAL",
         "title": "Apply email changes",
-        "description": "Apply the optimized email subject/body to your funding request (platform DB).",
+        "description": "Apply the optimized email subject/body to your funding request and funding email draft.",
         "requires_user_input": false,
         "ui_hints": { "primary_button": "Apply changes", "secondary_button": "Cancel" },
         "target_outcome_ref": { "from": "outcome.platform_patch_proposal" }
       }
+    },
+    {
+      "step_id": "s7",
+      "kind": "operator",
+      "name": "FundingEmail.Draft.Update.Apply",
+      "operator_name": "FundingEmail.Draft.Update.Apply",
+      "operator_version": "1.0.0",
+      "effects": ["db_write_platform"],
+      "policy_tags": ["apply", "platform_write"],
+      "risk_level": "medium",
+      "cache_policy": "never",
+      "depends_on": ["s6"],
+      "idempotency_template": "patch_apply:{tenant_id}:{outcome.platform_patch_proposal.payload.patch_id}",
+      "payload": {
+        "funding_request_id": { "from": "context.platform.funding_request.id" },
+        "email_id": { "from": "context.platform.email.id" },
+        "proposal": { "from": "outcome.platform_patch_proposal" },
+        "strict_optimistic_lock": { "const": true }
+      },
+      "produces": ["outcome.platform_patch_receipt"]
     }
   ]
 }

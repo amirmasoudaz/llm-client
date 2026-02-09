@@ -27,6 +27,57 @@
     },
     {
       "step_id": "s2",
+      "kind": "operator",
+      "name": "StudentProfile.LoadOrCreate",
+      "operator_name": "StudentProfile.LoadOrCreate",
+      "operator_version": "1.0.0",
+      "effects": ["db_write"],
+      "policy_tags": ["onboarding", "profile"],
+      "risk_level": "low",
+      "cache_policy": "never",
+      "idempotency_template": "student_profile_load:{tenant_id}:{thread_id}",
+      "payload": { "thread_id": { "from": "intent.thread_id" } },
+      "produces": ["context.profile", "context.memory"]
+    },
+    {
+      "step_id": "s3",
+      "kind": "operator",
+      "name": "Memory.Retrieve",
+      "operator_name": "Memory.Retrieve",
+      "operator_version": "1.0.0",
+      "effects": ["read_only"],
+      "policy_tags": ["memory", "profile"],
+      "risk_level": "low",
+      "cache_policy": "ttl_only",
+      "idempotency_template": "memory_retrieve:{tenant_id}:{thread_id}:default",
+      "payload": {
+        "thread_id": { "from": "intent.thread_id" },
+        "types": { "const": ["tone_style", "do_dont", "long_term_goal"] },
+        "limit": { "const": 20 }
+      },
+      "produces": ["context.memory"]
+    },
+    {
+      "step_id": "s4",
+      "kind": "operator",
+      "name": "StudentProfile.Requirements.Evaluate",
+      "operator_name": "StudentProfile.Requirements.Evaluate",
+      "operator_version": "1.0.0",
+      "effects": ["read_only"],
+      "policy_tags": ["onboarding", "profile"],
+      "risk_level": "low",
+      "cache_policy": "never",
+      "idempotency_template": "student_profile_requirements_pre:{tenant_id}:{thread_id}:email_generate",
+      "payload": {
+        "thread_id": { "from": "intent.thread_id" },
+        "intent_type": { "const": "Funding.Outreach.Email.Generate" },
+        "required_requirements": { "const": ["base_profile_complete", "background_data_complete"] },
+        "strict": { "const": false }
+      },
+      "produces": ["context.profile.requirements"]
+    },
+    {
+      "step_id": "s5",
       "kind": "policy_check",
       "name": "Onboarding.EnsureEmailPrereqs",
       "effects": ["read_only"],
@@ -37,12 +88,85 @@
         "check_name": "Onboarding.Ensure",
         "params": {
           "required_gates": ["base_profile_complete", "background_data_complete"],
-          "on_missing_action_type": "collect_fields"
+          "on_missing_action_type": "collect_profile_fields"
         }
       }
     },
     {
-      "step_id": "s3",
+      "step_id": "s6",
+      "kind": "operator",
+      "name": "StudentProfile.Update",
+      "operator_name": "StudentProfile.Update",
+      "operator_version": "1.0.0",
+      "effects": ["db_write"],
+      "policy_tags": ["onboarding", "profile"],
+      "risk_level": "low",
+      "cache_policy": "never",
+      "depends_on": ["s5"],
+      "idempotency_template": "student_profile_update:{tenant_id}:{thread_id}:{computed.profile_updates_hash}",
+      "payload": {
+        "thread_id": { "from": "intent.thread_id" },
+        "profile_updates": { "from": "intent.inputs.profile_updates" },
+        "source": { "const": "user" }
+      },
+      "produces": ["context.profile", "context.profile.validation"]
+    },
+    {
+      "step_id": "s7",
+      "kind": "operator",
+      "name": "Memory.Upsert",
+      "operator_name": "Memory.Upsert",
+      "operator_version": "1.0.0",
+      "effects": ["db_write"],
+      "policy_tags": ["memory", "profile"],
+      "risk_level": "low",
+      "cache_policy": "never",
+      "depends_on": ["s5"],
+      "idempotency_template": "memory_upsert:{tenant_id}:{thread_id}:{computed.memory_updates_hash}",
+      "payload": {
+        "thread_id": { "from": "intent.thread_id" },
+        "entries": { "from": "intent.inputs.memory_updates" }
+      },
+      "produces": ["context.memory"]
+    },
+    {
+      "step_id": "s8",
+      "kind": "operator",
+      "name": "StudentProfile.Requirements.Evaluate",
+      "operator_name": "StudentProfile.Requirements.Evaluate",
+      "operator_version": "1.0.0",
+      "effects": ["read_only"],
+      "policy_tags": ["onboarding", "profile"],
+      "risk_level": "low",
+      "cache_policy": "never",
+      "depends_on": ["s6"],
+      "idempotency_template": "student_profile_requirements_post:{tenant_id}:{thread_id}:email_generate",
+      "payload": {
+        "thread_id": { "from": "intent.thread_id" },
+        "intent_type": { "const": "Funding.Outreach.Email.Generate" },
+        "required_requirements": { "const": ["base_profile_complete", "background_data_complete"] },
+        "strict": { "const": false }
+      },
+      "produces": ["context.profile.requirements"]
+    },
+    {
+      "step_id": "s8b",
+      "kind": "policy_check",
+      "name": "Onboarding.RecheckEmailPrereqs",
+      "effects": ["read_only"],
+      "policy_tags": ["onboarding_gate"],
+      "risk_level": "low",
+      "cache_policy": "never",
+      "check": {
+        "check_name": "Onboarding.Ensure",
+        "params": {
+          "required_gates": { "from": "context.profile.requirements.required_requirements" },
+          "on_missing_action_type": "collect_profile_fields"
+        }
+      }
+    },
+    {
+      "step_id": "s9",
       "kind": "operator",
       "name": "Professor.Profile.Retrieve",
       "operator_name": "Professor.Profile.Retrieve",
@@ -51,6 +175,7 @@
       "policy_tags": ["read_only", "public_web"],
       "risk_level": "low",
       "cache_policy": "ttl_only",
+      "depends_on": ["s8b"],
       "idempotency_template": "prof_profile:{tenant_id}:{context.platform.professor.id}:{context.platform.professor.canspider_digest_id}",
       "payload": {
         "professor_id": { "from": "context.platform.professor.id" },
@@ -58,10 +183,10 @@
         "canspider_digest_id": { "from": "context.platform.professor.canspider_digest_id" },
         "force_refresh": { "from": "intent.inputs.force_refresh" }
       },
-      "produces": ["steps.s3.result.profile"]
+      "produces": ["steps.s9.result.profile"]
     },
     {
-      "step_id": "s4",
+      "step_id": "s10",
       "kind": "operator",
       "name": "Professor.Summarize",
       "operator_name": "Professor.Summarize",
@@ -70,16 +195,16 @@
       "policy_tags": ["draft_only", "public_web"],
       "risk_level": "low",
       "cache_policy": "use_if_safe",
-      "idempotency_template": "prof_summary:{tenant_id}:{context.platform.professor.id}:{steps.s3.result.profile.profile_hash.value}",
+      "idempotency_template": "prof_summary:{tenant_id}:{context.platform.professor.id}:{steps.s9.result.profile.profile_hash.value}",
       "payload": {
         "professor_id": { "from": "context.platform.professor.id" },
-        "profile": { "from": "steps.s3.result.profile" },
+        "profile": { "from": "steps.s9.result.profile" },
         "custom_instruction": { "from": "intent.inputs.professor_custom_instruction" }
       },
       "produces": ["outcome.professor_summary"]
     },
     {
-      "step_id": "s5",
+      "step_id": "s11",
       "kind": "operator",
       "name": "Professor.Alignment.Score",
       "operator_name": "Professor.Alignment.Score",
@@ -98,7 +223,7 @@
       "produces": ["outcome.alignment_score"]
     },
     {
-      "step_id": "s6",
+      "step_id": "s12",
       "kind": "operator",
       "name": "Email.GenerateDraft",
       "operator_name": "Email.GenerateDraft",
@@ -114,7 +239,7 @@
         "professor": { "from": "context.platform.professor" },
         "professor_summary": { "from": "outcome.professor_summary" },
         "alignment": { "from": "outcome.alignment_score" },
-        "preferences": { "from": "context.intelligence.preferences" },
+        "preferences": { "from": "context.memory.by_type" },
         "goal": { "from": "intent.inputs.goal" },
         "hook": { "from": "intent.inputs.hook" },
         "template_id": { "from": "intent.inputs.template_id" },
@@ -123,7 +248,7 @@
       "produces": ["outcome.email_draft"]
     },
     {
-      "step_id": "s7",
+      "step_id": "s13",
       "kind": "operator",
       "name": "Email.ReviewDraft",
       "operator_name": "Email.ReviewDraft",
@@ -141,7 +266,7 @@
       "produces": ["outcome.email_review"]
     },
     {
-      "step_id": "s8",
+      "step_id": "s14",
       "kind": "operator",
       "name": "Email.ApplyToPlatform.Propose",
       "operator_name": "Email.ApplyToPlatform.Propose",
@@ -159,7 +284,7 @@
       "produces": ["outcome.platform_patch_proposal"]
     },
     {
-      "step_id": "s9",
+      "step_id": "s15",
       "kind": "human_gate",
       "name": "Apply.PlatformPatch",
       "effects": ["db_write_platform"],

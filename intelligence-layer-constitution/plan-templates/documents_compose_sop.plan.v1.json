@@ -3,7 +3,7 @@
   "plan_template_id": "Documents.Compose.SOP@1.0.0",
   "intent_type": "Documents.Compose.SOP",
   "plan_version": "planner-1.0",
-  "description": "Ensure SOP prerequisites, compose an SOP draft, export as PDF, propose platform patch updates, and request approval to apply.",
+  "description": "Ensure profile + SOP prerequisites, compose an SOP draft, export as PDF, propose platform patch updates, and request approval to apply.",
   "steps": [
     {
       "step_id": "s1",
@@ -27,6 +27,59 @@
     },
     {
       "step_id": "s2",
+      "kind": "operator",
+      "name": "StudentProfile.LoadOrCreate",
+      "operator_name": "StudentProfile.LoadOrCreate",
+      "operator_version": "1.0.0",
+      "effects": ["db_write"],
+      "policy_tags": ["onboarding", "profile"],
+      "risk_level": "low",
+      "cache_policy": "never",
+      "idempotency_template": "student_profile_load:{tenant_id}:{thread_id}",
+      "payload": { "thread_id": { "from": "intent.thread_id" } },
+      "produces": ["context.profile", "context.memory"]
+    },
+    {
+      "step_id": "s3",
+      "kind": "operator",
+      "name": "Memory.Retrieve",
+      "operator_name": "Memory.Retrieve",
+      "operator_version": "1.0.0",
+      "effects": ["read_only"],
+      "policy_tags": ["memory", "profile"],
+      "risk_level": "low",
+      "cache_policy": "ttl_only",
+      "idempotency_template": "memory_retrieve:{tenant_id}:{thread_id}:default",
+      "payload": {
+        "thread_id": { "from": "intent.thread_id" },
+        "types": { "const": ["tone_style", "do_dont", "long_term_goal"] },
+        "limit": { "const": 20 }
+      },
+      "produces": ["context.memory"]
+    },
+    {
+      "step_id": "s4",
+      "kind": "operator",
+      "name": "StudentProfile.Requirements.Evaluate",
+      "operator_name": "StudentProfile.Requirements.Evaluate",
+      "operator_version": "1.0.0",
+      "effects": ["read_only"],
+      "policy_tags": ["onboarding", "profile"],
+      "risk_level": "low",
+      "cache_policy": "never",
+      "idempotency_template": "student_profile_requirements_pre:{tenant_id}:{thread_id}:documents_compose_sop",
+      "payload": {
+        "thread_id": { "from": "intent.thread_id" },
+        "intent_type": { "const": "Documents.Compose.SOP" },
+        "required_requirements": {
+          "const": ["base_profile_complete", "background_data_complete", "composer_prereqs_complete"]
+        },
+        "strict": { "const": false }
+      },
+      "produces": ["context.profile.requirements"]
+    },
+    {
+      "step_id": "s5",
       "kind": "policy_check",
       "name": "Onboarding.EnsureComposerPrereqs",
       "effects": ["read_only"],
@@ -37,12 +90,87 @@
         "check_name": "Onboarding.Ensure",
         "params": {
           "required_gates": ["base_profile_complete", "background_data_complete", "composer_prereqs_complete"],
-          "on_missing_action_type": "collect_fields"
+          "on_missing_action_type": "collect_profile_fields"
         }
       }
     },
     {
-      "step_id": "s3",
+      "step_id": "s6",
+      "kind": "operator",
+      "name": "StudentProfile.Update",
+      "operator_name": "StudentProfile.Update",
+      "operator_version": "1.0.0",
+      "effects": ["db_write"],
+      "policy_tags": ["onboarding", "profile"],
+      "risk_level": "low",
+      "cache_policy": "never",
+      "depends_on": ["s5"],
+      "idempotency_template": "student_profile_update:{tenant_id}:{thread_id}:{computed.profile_updates_hash}",
+      "payload": {
+        "thread_id": { "from": "intent.thread_id" },
+        "profile_updates": { "from": "intent.inputs.profile_updates" },
+        "source": { "const": "user" }
+      },
+      "produces": ["context.profile", "context.profile.validation"]
+    },
+    {
+      "step_id": "s7",
+      "kind": "operator",
+      "name": "Memory.Upsert",
+      "operator_name": "Memory.Upsert",
+      "operator_version": "1.0.0",
+      "effects": ["db_write"],
+      "policy_tags": ["memory", "profile"],
+      "risk_level": "low",
+      "cache_policy": "never",
+      "depends_on": ["s5"],
+      "idempotency_template": "memory_upsert:{tenant_id}:{thread_id}:{computed.memory_updates_hash}",
+      "payload": {
+        "thread_id": { "from": "intent.thread_id" },
+        "entries": { "from": "intent.inputs.memory_updates" }
+      },
+      "produces": ["context.memory"]
+    },
+    {
+      "step_id": "s8",
+      "kind": "operator",
+      "name": "StudentProfile.Requirements.Evaluate",
+      "operator_name": "StudentProfile.Requirements.Evaluate",
+      "operator_version": "1.0.0",
+      "effects": ["read_only"],
+      "policy_tags": ["onboarding", "profile"],
+      "risk_level": "low",
+      "cache_policy": "never",
+      "depends_on": ["s6"],
+      "idempotency_template": "student_profile_requirements_post:{tenant_id}:{thread_id}:documents_compose_sop",
+      "payload": {
+        "thread_id": { "from": "intent.thread_id" },
+        "intent_type": { "const": "Documents.Compose.SOP" },
+        "required_requirements": {
+          "const": ["base_profile_complete", "background_data_complete", "composer_prereqs_complete"]
+        },
+        "strict": { "const": false }
+      },
+      "produces": ["context.profile.requirements"]
+    },
+    {
+      "step_id": "s8b",
+      "kind": "policy_check",
+      "name": "Onboarding.RecheckComposerPrereqs",
+      "effects": ["read_only"],
+      "policy_tags": ["onboarding_gate"],
+      "risk_level": "low",
+      "cache_policy": "never",
+      "check": {
+        "check_name": "Onboarding.Ensure",
+        "params": {
+          "required_gates": { "from": "context.profile.requirements.required_requirements" },
+          "on_missing_action_type": "collect_profile_fields"
+        }
+      }
+    },
+    {
+      "step_id": "s9",
       "kind": "operator",
       "name": "Professor.Profile.Retrieve",
       "operator_name": "Professor.Profile.Retrieve",
@@ -51,6 +179,7 @@
       "policy_tags": ["read_only", "public_web"],
       "risk_level": "low",
       "cache_policy": "ttl_only",
+      "depends_on": ["s8b"],
       "idempotency_template": "prof_profile:{tenant_id}:{context.platform.professor.id}:{context.platform.professor.canspider_digest_id}",
       "payload": {
         "professor_id": { "from": "context.platform.professor.id" },
@@ -58,10 +187,10 @@
         "canspider_digest_id": { "from": "context.platform.professor.canspider_digest_id" },
         "force_refresh": { "const": false }
       },
-      "produces": ["steps.s3.result.profile"]
+      "produces": ["steps.s9.result.profile"]
     },
     {
-      "step_id": "s4",
+      "step_id": "s10",
       "kind": "operator",
       "name": "Professor.Summarize",
       "operator_name": "Professor.Summarize",
@@ -70,15 +199,15 @@
       "policy_tags": ["draft_only", "public_web"],
       "risk_level": "low",
       "cache_policy": "use_if_safe",
-      "idempotency_template": "prof_summary:{tenant_id}:{context.platform.professor.id}:{steps.s3.result.profile.profile_hash.value}",
+      "idempotency_template": "prof_summary:{tenant_id}:{context.platform.professor.id}:{steps.s9.result.profile.profile_hash.value}",
       "payload": {
         "professor_id": { "from": "context.platform.professor.id" },
-        "profile": { "from": "steps.s3.result.profile" }
+        "profile": { "from": "steps.s9.result.profile" }
       },
       "produces": ["outcome.professor_summary"]
     },
     {
-      "step_id": "s5",
+      "step_id": "s11",
       "kind": "operator",
       "name": "Documents.Compose.SOP",
       "operator_name": "Documents.Compose.SOP",
@@ -101,7 +230,7 @@
       "produces": ["outcome.document_composed"]
     },
     {
-      "step_id": "s6",
+      "step_id": "s12",
       "kind": "operator",
       "name": "Documents.Export",
       "operator_name": "Documents.Export",
@@ -118,7 +247,7 @@
       "produces": ["outcome.artifact_pdf"]
     },
     {
-      "step_id": "s7",
+      "step_id": "s13",
       "kind": "operator",
       "name": "Documents.ApplyToPlatform.Propose",
       "operator_name": "Documents.ApplyToPlatform.Propose",
@@ -137,7 +266,7 @@
       "produces": ["outcome.platform_patch_proposal"]
     },
     {
-      "step_id": "s8",
+      "step_id": "s14",
       "kind": "human_gate",
       "name": "Apply.PlatformPatch",
       "effects": ["db_write_platform"],

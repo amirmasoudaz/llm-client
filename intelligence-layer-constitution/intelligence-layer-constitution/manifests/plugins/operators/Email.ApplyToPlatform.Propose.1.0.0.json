@@ -1,0 +1,23 @@
+{
+  "name": "Email.ApplyToPlatform.Propose",
+  "type": "operator",
+  "version": "1.0.0",
+  "owner": "canapply",
+  "description": "Create a PlatformPatch.Proposal outcome to update platform funding request/email fields with the generated draft.",
+  "schemas": {
+    "input": "schemas/operators/email_apply_to_platform_propose.input.v1.json",
+    "output": "schemas/operators/email_apply_to_platform_propose.output.v1.json"
+  },
+  "requires": {
+    "tools": [],
+    "capabilities": [],
+    "context_fields": []
+  },
+  "policy_tags": ["apply_proposal", "platform_write"],
+  "effects": ["produce_outcome"],
+  "observability": {
+    "log_level": "info",
+    "emit_samples": false
+  }
+}
+

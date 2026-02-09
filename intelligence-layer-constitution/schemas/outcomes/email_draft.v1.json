@@ -23,6 +23,11 @@
             "language": { "type": "string", "default": "en" },
             "subject": { "type": "string", "minLength": 1 },
             "body": { "type": "string", "minLength": 1 },
+            "version_id": { "$ref": "../common/defs.v1.json#/$defs/Uuid" },
+            "version_number": { "type": "integer", "minimum": 1 },
+            "source_version_id": { "$ref": "../common/defs.v1.json#/$defs/Uuid" },
+            "rationale": { "type": "string" },
+            "diff_summary": { "type": "object" },
             "attachments": {
               "type": "array",
               "default": [],
@@ -45,4 +50,3 @@
     }
   ]
 }
-

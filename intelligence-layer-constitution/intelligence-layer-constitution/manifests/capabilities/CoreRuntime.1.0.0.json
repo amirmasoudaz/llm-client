@@ -1,0 +1,28 @@
+{
+  "capability": {
+    "name": "CoreRuntime",
+    "version": "1.0.0",
+    "stage": "v1",
+    "description": "Core workflow runtime primitives: threads, query workflows, human gates, SSE eventing.",
+    "supported_intents": ["Thread.Init", "Workflow.Gate.Resolve"],
+    "dependencies": {
+      "agents": [],
+      "operators": ["Thread.CreateOrLoad@1.0.0", "Workflow.Gate.Resolve@1.0.0"],
+      "tools": []
+    },
+    "plan_templates": [
+      { "intent_type": "Thread.Init", "plan_template_ref": "plan-templates/thread_init.plan.v1.json" },
+      { "intent_type": "Workflow.Gate.Resolve", "plan_template_ref": "plan-templates/workflow_gate_resolve.plan.v1.json" }
+    ],
+    "outcomes": [
+      { "type": "PlatformPatch.Receipt", "schema": "schemas/outcomes/platform_patch_receipt.v1.json" }
+    ],
+    "metrics": {
+      "ops": [
+        { "name": "P95LatencySeconds", "target": "<=12" },
+        { "name": "SSEDisconnectRate", "target": "<=0.02" }
+      ]
+    }
+  }
+}
+

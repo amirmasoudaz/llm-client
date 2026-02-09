@@ -26,6 +26,7 @@ This is a navigation aid for the schema and workflow template files in this repo
 - `schemas/intents/documents_optimize.v1.json`
 - `schemas/intents/documents_compose_sop.v1.json`
 - `schemas/intents/workflow_gate_resolve.v1.json`
+- `schemas/intents/student_profile_collect.v1.json`
 
 ## Plans
 
@@ -77,10 +78,26 @@ This is a navigation aid for the schema and workflow template files in this repo
 - `schemas/operators/email_optimize_draft.output.v1.json`
 - `schemas/operators/email_apply_to_platform_propose.input.v1.json`
 - `schemas/operators/email_apply_to_platform_propose.output.v1.json`
+- `schemas/operators/funding_email_draft_update_propose.input.v1.json`
+- `schemas/operators/funding_email_draft_update_propose.output.v1.json`
+- `schemas/operators/funding_email_draft_update_apply.input.v1.json`
+- `schemas/operators/funding_email_draft_update_apply.output.v1.json`
 - `schemas/operators/paper_metadata_extract.input.v1.json`
 - `schemas/operators/paper_metadata_extract.output.v1.json`
 - `schemas/operators/funding_request_fields_update_propose.input.v1.json`
 - `schemas/operators/funding_request_fields_update_propose.output.v1.json`
+- `schemas/operators/funding_request_fields_update_apply.input.v1.json`
+- `schemas/operators/funding_request_fields_update_apply.output.v1.json`
+- `schemas/operators/student_profile_load_or_create.input.v1.json`
+- `schemas/operators/student_profile_load_or_create.output.v1.json`
+- `schemas/operators/student_profile_update.input.v1.json`
+- `schemas/operators/student_profile_update.output.v1.json`
+- `schemas/operators/student_profile_requirements_evaluate.input.v1.json`
+- `schemas/operators/student_profile_requirements_evaluate.output.v1.json`
+- `schemas/operators/memory_upsert.input.v1.json`
+- `schemas/operators/memory_upsert.output.v1.json`
+- `schemas/operators/memory_retrieve.input.v1.json`
+- `schemas/operators/memory_retrieve.output.v1.json`
 - `schemas/operators/documents_upload.input.v1.json`
 - `schemas/operators/documents_upload.output.v1.json`
 - `schemas/operators/documents_process.input.v1.json`

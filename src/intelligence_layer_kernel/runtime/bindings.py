@@ -167,10 +167,38 @@ def _compute_target_fields_hash(ctx: dict[str, Any]) -> str:
     return _hash_json(normalized)
 
 
+def _compute_profile_updates_hash(ctx: dict[str, Any]) -> str:
+    updates = get_path(ctx, "intent.inputs.profile_updates") or {}
+    if not isinstance(updates, dict):
+        updates = {}
+    return _hash_json(updates)
+
+
+def _compute_memory_updates_hash(ctx: dict[str, Any]) -> str:
+    entries = get_path(ctx, "intent.inputs.memory_updates") or []
+    if not isinstance(entries, list):
+        entries = []
+    normalized: list[dict[str, Any]] = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        normalized.append(
+            {
+                "type": str(entry.get("type") or ""),
+                "content": str(entry.get("content") or ""),
+                "source": str(entry.get("source") or "user"),
+            }
+        )
+    normalized.sort(key=lambda item: (item["type"], item["content"], item["source"]))
+    return _hash_json(normalized)
+
+
 _COMPUTED: dict[str, Callable[[dict[str, Any]], Any]] = {
     "email_body_hash": _compute_email_body_hash,
     "requested_edits_hash": _compute_requested_edits_hash,
     "fields_hash": _compute_fields_hash,
     "source_hash": _compute_source_hash,
     "target_fields_hash": _compute_target_fields_hash,
+    "profile_updates_hash": _compute_profile_updates_hash,
+    "memory_updates_hash": _compute_memory_updates_hash,
 }

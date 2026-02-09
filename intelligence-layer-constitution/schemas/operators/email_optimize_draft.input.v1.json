@@ -19,6 +19,10 @@
             "requested_edits": { "type": "array", "items": { "type": "string" }, "default": [] },
             "subject_override": { "type": "string" },
             "custom_instructions": { "type": "string" },
+            "source_draft_outcome_id": { "$ref": "../common/defs.v1.json#/$defs/Uuid" },
+            "source_draft_version": { "type": "integer", "minimum": 1 },
+            "email_id": { "$ref": "../common/defs.v1.json#/$defs/FundingEmailId" },
+            "review_report": { "$ref": "../outcomes/email_review.v1.json" },
             "professor": {
               "type": "object",
               "additionalProperties": true,
@@ -34,6 +38,10 @@
               "properties": {
                 "id": { "$ref": "../common/defs.v1.json#/$defs/FundingRequestId" }
               }
+            },
+            "student_profile": {
+              "type": "object",
+              "additionalProperties": true
             }
           }
         }

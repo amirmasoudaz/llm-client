@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/sse/artifact_ready.v1.json",
+  "title": "SSE Event: artifact_ready (v1)",
+  "allOf": [
+    { "$ref": "event_base.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": { "const": "artifact_ready" },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["artifact_id", "kind", "artifact"],
+          "properties": {
+            "artifact_id": { "$ref": "../common/defs.v1.json#/$defs/Uuid" },
+            "kind": { "type": "string", "enum": ["pdf", "docx", "markdown", "json", "text"] },
+            "download_url": { "type": "string", "format": "uri" },
+            "artifact": { "$ref": "../common/defs.v1.json#/$defs/ArtifactRef" },
+            "metadata": { "type": "object", "default": {} }
+          }
+        }
+      }
+    }
+  ]
+}
+

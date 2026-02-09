@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/intents/funding_outreach_email_review.v1.json",
+  "title": "Intent: Funding.Outreach.Email.Review (v1)",
+  "allOf": [
+    { "$ref": "../common/intent_base.v1.json" },
+    {
+      "type": "object",
+      "required": ["thread_id"],
+      "properties": {
+        "schema_version": { "const": "1.0" },
+        "intent_type": { "const": "Funding.Outreach.Email.Review" },
+        "inputs": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "email_text_override": { "type": "string" },
+            "email_subject_override": { "type": "string" },
+            "review_mode": { "type": "string", "enum": ["rubric"], "default": "rubric" },
+            "custom_instructions": { "type": "string" }
+          },
+          "default": {}
+        }
+      }
+    }
+  ]
+}

@@ -132,13 +132,13 @@ function reducer(state: State, action: Action): State {
 const StateContext = createContext<State | null>(null);
 const DispatchContext = createContext<Dispatch<Action> | null>(null);
 
-export function ThreadProvider({ children }: { children: ReactNode }) {
+export function ThreadProvider({children}: { children: ReactNode }) {
     const [state, dispatch] = useReducer(reducer, initialState);
 
     return (
-        <StateContext.Provider value= { state } >
-        <DispatchContext.Provider value={ dispatch }>
-            { children }
+        <StateContext.Provider value={state}>
+        <DispatchContext.Provider value={dispatch}>
+            {children}
             </DispatchContext.Provider>
             </StateContext.Provider>
   );

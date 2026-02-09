@@ -12,11 +12,21 @@
           "additionalProperties": false,
           "required": ["outcome"],
           "properties": {
-            "outcome": { "$ref": "../outcomes/platform_patch_proposal.v1.json" }
+            "outcome": { "$ref": "../outcomes/platform_patch_proposal.v1.json" },
+            "preview": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["request_id", "before", "after"],
+              "properties": {
+                "request_id": { "$ref": "../common/defs.v1.json#/$defs/FundingRequestId" },
+                "before": { "type": "object" },
+                "after": { "type": "object" },
+                "expected_updated_at": { "$ref": "../common/defs.v1.json#/$defs/ISODateTime" }
+              }
+            }
           }
         }
       }
     }
   ]
 }
-

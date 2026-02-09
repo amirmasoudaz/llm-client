@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import Any, AsyncIterator
@@ -36,16 +37,58 @@ from intelligence_layer_kernel.operators.implementations.platform_context_load i
 from intelligence_layer_kernel.operators.implementations.funding_request_fields_update_propose import (
     FundingRequestFieldsUpdateProposeOperator,
 )
+from intelligence_layer_kernel.operators.implementations.funding_request_fields_update_apply import (
+    FundingRequestFieldsUpdateApplyOperator,
+)
+from intelligence_layer_kernel.operators.implementations.email_optimize_draft import (
+    EmailOptimizeDraftOperator,
+)
+from intelligence_layer_kernel.operators.implementations.funding_email_draft_update_propose import (
+    FundingEmailDraftUpdateProposeOperator,
+)
+from intelligence_layer_kernel.operators.implementations.funding_email_draft_update_apply import (
+    FundingEmailDraftUpdateApplyOperator,
+)
+from intelligence_layer_kernel.operators.implementations.email_apply_to_platform_propose import (
+    EmailApplyToPlatformProposeOperator,
+)
 from intelligence_layer_kernel.operators.implementations.email_review_draft import EmailReviewDraftOperator
 from intelligence_layer_kernel.operators.implementations.conversation_suggestions_generate import (
     ConversationSuggestionsGenerateOperator,
 )
+from intelligence_layer_kernel.operators.implementations.professor_profile_retrieve import (
+    ProfessorProfileRetrieveOperator,
+)
+from intelligence_layer_kernel.operators.implementations.professor_summarize import (
+    ProfessorSummarizeOperator,
+)
+from intelligence_layer_kernel.operators.implementations.professor_alignment_score import (
+    ProfessorAlignmentScoreOperator,
+)
+from intelligence_layer_kernel.operators.implementations.student_profile_load_or_create import (
+    StudentProfileLoadOrCreateOperator,
+)
+from intelligence_layer_kernel.operators.implementations.student_profile_update import (
+    StudentProfileUpdateOperator,
+)
+from intelligence_layer_kernel.operators.implementations.student_profile_requirements_evaluate import (
+    StudentProfileRequirementsEvaluateOperator,
+)
+from intelligence_layer_kernel.operators.implementations.memory_upsert import MemoryUpsertOperator
+from intelligence_layer_kernel.operators.implementations.memory_retrieve import MemoryRetrieveOperator
 from intelligence_layer_kernel.runtime import WorkflowKernel
 
 
 load_env()  # keep prototyping simple: auto-load repo `.env` for the Layer 2 API process
 
-app = FastAPI(title="CanApply Intelligence Layer (Layer 2)", version="0.0.1")
+app = FastAPI(
+    title="CanApply Intelligence Layer (Layer 2)",
+    version="0.0.1",
+    description="API for workflow execution, thread management, and operator actions.",
+    docs_url="/docs",       # Swagger UI (set to None to disable)
+    redoc_url="/redoc",     # ReDoc (set to None to disable)
+    openapi_url="/openapi.json",
+)
 
 
 async def _emit_progress_event(
@@ -161,8 +204,23 @@ async def _startup() -> None:
     operator_registry.register(WorkflowGateResolveOperator(pool=pool, tenant_id=ildb.tenant_id))
     operator_registry.register(PlatformContextLoadOperator(pool=pool, tenant_id=ildb.tenant_id))
     operator_registry.register(FundingRequestFieldsUpdateProposeOperator())
+    operator_registry.register(FundingRequestFieldsUpdateApplyOperator())
+    operator_registry.register(EmailOptimizeDraftOperator())
+    operator_registry.register(FundingEmailDraftUpdateProposeOperator())
+    operator_registry.register(FundingEmailDraftUpdateApplyOperator())
+    operator_registry.register(EmailApplyToPlatformProposeOperator())
     operator_registry.register(EmailReviewDraftOperator())
     operator_registry.register(ConversationSuggestionsGenerateOperator())
+    operator_registry.register(ProfessorProfileRetrieveOperator())
+    operator_registry.register(ProfessorSummarizeOperator())
+    operator_registry.register(ProfessorAlignmentScoreOperator())
+    operator_registry.register(StudentProfileLoadOrCreateOperator(pool=pool, tenant_id=ildb.tenant_id))
+    operator_registry.register(StudentProfileUpdateOperator(pool=pool, tenant_id=ildb.tenant_id))
+    operator_registry.register(
+        StudentProfileRequirementsEvaluateOperator(pool=pool, tenant_id=ildb.tenant_id)
+    )
+    operator_registry.register(MemoryUpsertOperator(pool=pool, tenant_id=ildb.tenant_id))
+    operator_registry.register(MemoryRetrieveOperator(pool=pool, tenant_id=ildb.tenant_id))
     job_store = OperatorJobStore(pool=pool, tenant_id=ildb.tenant_id)
     event_writer = EventWriter(pool=pool)
     policy_engine = ILPolicyEngine()
@@ -176,6 +234,7 @@ async def _startup() -> None:
         event_writer=event_writer,
     )
 
+    app.state.operator_registry = operator_registry
     app.state.operator_executor = operator_executor
     app.state.event_writer = event_writer
     app.state.workflow_kernel = WorkflowKernel(
@@ -213,6 +272,7 @@ async def _shutdown() -> None:
 async def init_thread(req: ThreadInitRequest, response: Response, request: Request) -> ThreadInitResponse:
     ildb: ILDB = app.state.ildb
     auth_adapter: DevBypassAuthAdapter = app.state.auth_adapter
+    operator_registry: OperatorRegistry = app.state.operator_registry
     auth = await auth_adapter.authenticate(
         request=request,
         funding_request_id=req.funding_request_id,
@@ -229,11 +289,64 @@ async def init_thread(req: ThreadInitRequest, response: Response, request: Reque
         funding_request_id=req.funding_request_id,
     )
     response.status_code = 201 if is_new else 200
+    onboarding_gate = "ready"
+    missing_requirements: list[str] = []
+    try:
+        workflow_id = str(uuid.uuid4())
+        correlation_id = str(uuid.uuid4())
+        auth_context = AuthContext(
+            tenant_id=ildb.tenant_id,
+            principal={"type": "student", "id": student_id},
+            scopes=list(auth.scopes),
+        )
+        load_call = OperatorCall(
+            payload={"thread_id": thread_id, "source": "system"},
+            idempotency_key=f"profile_load_or_create:{ildb.tenant_id}:{thread_id}",
+            auth_context=auth_context,
+            trace_context=OperatorTraceContext(
+                correlation_id=correlation_id,
+                workflow_id=workflow_id,
+                step_id="init_profile_load",
+            ),
+        )
+        load_operator = operator_registry.get("StudentProfile.LoadOrCreate", "1.0.0")
+        load_result = await load_operator.run(load_call)
+        if load_result.status == "succeeded":
+            evaluate_call = OperatorCall(
+                payload={
+                    "thread_id": thread_id,
+                    "intent_type": "Funding.Outreach.Email.Generate",
+                    "required_requirements": ["base_profile_complete", "background_data_complete"],
+                    "strict": False,
+                },
+                idempotency_key=f"profile_requirements_eval:{ildb.tenant_id}:{thread_id}:init",
+                auth_context=auth_context,
+                trace_context=OperatorTraceContext(
+                    correlation_id=correlation_id,
+                    workflow_id=workflow_id,
+                    step_id="init_profile_requirements",
+                ),
+            )
+            evaluate_operator = operator_registry.get("StudentProfile.Requirements.Evaluate", "1.0.0")
+            evaluate_result = await evaluate_operator.run(evaluate_call)
+            if evaluate_result.status == "succeeded":
+                requirements = (evaluate_result.result or {}).get("requirements")
+                if isinstance(requirements, dict):
+                    missing_raw = requirements.get("missing_requirements")
+                    if isinstance(missing_raw, list):
+                        missing_requirements = [str(item) for item in missing_raw if str(item).strip()]
+                    onboarding_gate = "needs_onboarding" if missing_requirements else "ready"
+    except Exception:
+        onboarding_gate = "ready"
+        missing_requirements = []
+
     resp = ThreadInitResponse(
         thread_id=str(thread_id),
         thread_status=status,
         is_new=is_new,
         message="created_thread" if is_new else "existing_thread",
+        onboarding_gate=onboarding_gate,
+        missing_requirements=missing_requirements,
     )
     if auth.bypass:
         resp.message = "auth_bypass"
@@ -257,6 +370,77 @@ class SubmitQueryRequest(BaseModel):
 class SubmitQueryResponse(BaseModel):
     query_id: str
     sse_url: str
+
+
+_EMAIL_RE = re.compile(r"([A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,})")
+
+
+def _extract_profile_gate_payload(message: str, gate_preview: dict[str, Any] | None) -> dict[str, Any]:
+    text = message.strip()
+    if not text:
+        return {}
+
+    missing_fields: set[str] = set()
+    if isinstance(gate_preview, dict):
+        data = gate_preview.get("data")
+        if isinstance(data, dict):
+            raw_missing = data.get("missing_fields")
+            if isinstance(raw_missing, list):
+                for item in raw_missing:
+                    item_text = str(item).strip()
+                    if item_text:
+                        missing_fields.add(item_text)
+
+    updates: dict[str, Any] = {}
+
+    email_match = _EMAIL_RE.search(text)
+    if email_match:
+        updates["email"] = email_match.group(1)
+
+    first_name_match = re.search(r"\bfirst\s+name\s*(?:is|=|:)\s*([A-Za-z][A-Za-z'\-]{0,63})", text, re.IGNORECASE)
+    if first_name_match:
+        updates["first_name"] = first_name_match.group(1)
+    last_name_match = re.search(r"\blast\s+name\s*(?:is|=|:)\s*([A-Za-z][A-Za-z'\-]{0,63})", text, re.IGNORECASE)
+    if last_name_match:
+        updates["last_name"] = last_name_match.group(1)
+
+    name_match = re.search(
+        r"\bmy\s+name\s+is\s+([A-Za-z][A-Za-z'\-]{0,63})(?:\s+([A-Za-z][A-Za-z'\-]{0,63}))?",
+        text,
+        re.IGNORECASE,
+    )
+    if name_match:
+        updates.setdefault("first_name", name_match.group(1))
+        if name_match.group(2):
+            updates.setdefault("last_name", name_match.group(2))
+
+    iam_match = re.search(
+        r"\bi\s+am\s+([A-Za-z][A-Za-z'\-]{0,63})(?:\s+([A-Za-z][A-Za-z'\-]{0,63}))?",
+        text,
+        re.IGNORECASE,
+    )
+    if iam_match:
+        updates.setdefault("first_name", iam_match.group(1))
+        if iam_match.group(2):
+            updates.setdefault("last_name", iam_match.group(2))
+
+    research_match = re.search(
+        r"\bresearch\s+interest\s*(?:is|to|=|:)?\s*([^,\n;]+)",
+        text,
+        re.IGNORECASE,
+    )
+    if research_match:
+        research_interest = research_match.group(1).strip(" .")
+        if research_interest:
+            updates["research_interest"] = research_interest
+    elif "context.background.research_interests" in missing_fields:
+        fallback_interest = re.search(r"\binterested\s+in\s+([^,\n;]+)", text, re.IGNORECASE)
+        if fallback_interest:
+            research_interest = fallback_interest.group(1).strip(" .")
+            if research_interest:
+                updates["research_interest"] = research_interest
+
+    return updates
 
 
 @app.post("/v1/threads/{thread_id}/queries", response_model=SubmitQueryResponse)
@@ -295,22 +479,21 @@ async def submit_query(thread_id: str, req: SubmitQueryRequest, request: Request
         workflow_id = workflow_id_override or uuid.uuid4()
         preflight_correlation_id = uuid.uuid4()
 
-        await _emit_progress_event(
-            event_writer=event_writer,
-            tenant_id=ildb.tenant_id,
-            workflow_id=workflow_id,
-            actor={"role": "system", "type": "system", "id": "request"},
-            stage="query_received",
-            correlation_id=preflight_correlation_id,
-            thread_id=thread_id_int,
-        )
-
         auth = await auth_adapter.authenticate(
             request=request,
             funding_request_id=int(thread["funding_request_id"]),
             student_id_override=int(thread["student_id"]),
         )
         if not auth.ok:
+            await _emit_progress_event(
+                event_writer=event_writer,
+                tenant_id=ildb.tenant_id,
+                workflow_id=workflow_id,
+                actor={"role": "system", "type": "system", "id": "request"},
+                stage="query_received",
+                correlation_id=preflight_correlation_id,
+                thread_id=thread_id_int,
+            )
             await _emit_progress_event(
                 event_writer=event_writer,
                 tenant_id=ildb.tenant_id,
@@ -357,12 +540,37 @@ async def submit_query(thread_id: str, req: SubmitQueryRequest, request: Request
             "trust_level": auth.trust_level,
             "scopes": list(auth.scopes),
         }
-        if auth.bypass:
-            actor["auth_bypass"] = True
+
+        pending_gate = await ildb.get_latest_waiting_profile_gate(thread_id=thread_id_int)
+        if pending_gate is not None:
+            gate_id = str(pending_gate["gate_id"])
+            gate_workflow_id = str(pending_gate["workflow_id"])
+            gate_preview = pending_gate.get("preview")
+            profile_payload = _extract_profile_gate_payload(req.message, gate_preview if isinstance(gate_preview, dict) else None)
+            await kernel.resolve_action(
+                action_id=gate_id,
+                status="accepted",
+                payload=profile_payload,
+                actor=actor,
+                source="chat",
+            )
+            return SubmitQueryResponse(
+                query_id=gate_workflow_id,
+                sse_url=f"/v1/workflows/{gate_workflow_id}/events",
+            )
 
         credit_manager: CreditManager = app.state.credit_manager
         request_key = request_key_for_workflow(workflow_id)
         reserve_amount = await credit_manager.estimate_reserve_credits(req.message)
+        await _emit_progress_event(
+            event_writer=event_writer,
+            tenant_id=ildb.tenant_id,
+            workflow_id=workflow_id,
+            actor={"role": "system", "type": "system", "id": "request"},
+            stage="query_received",
+            correlation_id=preflight_correlation_id,
+            thread_id=thread_id_int,
+        )
         await _emit_progress_event(
             event_writer=event_writer,
             tenant_id=ildb.tenant_id,

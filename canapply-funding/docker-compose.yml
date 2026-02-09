@@ -1,0 +1,92 @@
+services:
+  # Outreach API (email review and sending)
+  core:
+    build: .
+    container_name: funding_core_api
+    command: >
+      gunicorn src.outreach_main:app
+      --workers 4
+      --worker-class uvicorn.workers.UvicornWorker
+      --bind 0.0.0.0:4003
+    env_file: .env
+    environment:
+      EXEC_LOCATION: local
+      PYTHONPATH: /app
+      HOST: 0.0.0.0
+      QDRANT_URL: "http://qdrant:6333"
+      QDRANT_API_KEY: ""
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - root_qdrant-net
+      - internal
+    volumes:
+      - ./cache:/app/cache
+    restart: unless-stopped
+
+  # Recommender API (tag recommendations and indexing)
+  recommender:
+    build: .
+    container_name: funding_recommender_api
+    command: >
+      gunicorn src.recommender_main:app
+      --workers 1
+      --worker-class uvicorn.workers.UvicornWorker
+      --preload
+      --bind 0.0.0.0:4004
+    env_file: .env
+    environment:
+      EXEC_LOCATION: local
+      PYTHONPATH: /app
+      HOST: 0.0.0.0
+      QDRANT_URL: "http://qdrant:6333"
+      QDRANT_API_KEY: ""
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - root_qdrant-net
+      - internal
+    volumes:
+      - ./cache:/app/cache
+    restart: unless-stopped
+
+  # Reminders Worker (background process for reply checks and reminders)
+  reminders:
+    build: .
+    container_name: funding_reminders_worker
+    command: python src/reminders_worker.py
+    env_file: .env
+    environment:
+      EXEC_LOCATION: local
+      PYTHONPATH: /app
+      QDRANT_URL: "http://qdrant:6333"
+      QDRANT_API_KEY: ""
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - root_qdrant-net
+      - internal
+    volumes:
+      - ./cache:/app/cache
+    restart: on-failure
+
+  # Nginx Gateway (unified entry point)
+  gateway:
+    image: nginx:alpine
+    container_name: funding_gateway
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "4003:4003"
+    networks:
+      - internal
+    depends_on:
+      - core
+      - recommender
+    restart: unless-stopped
+
+networks:
+  root_qdrant-net:
+    external: true
+  internal:
+    driver: bridge

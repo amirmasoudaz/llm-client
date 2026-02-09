@@ -1,6 +1,6 @@
 // Metrics Panel - Real-time workflow metrics
 
-import { useThreadState } from '../stores/thread';
+import { useThreadState } from '../stores/thread.tsx';
 
 export function MetricsPanel() {
     const state = useThreadState();

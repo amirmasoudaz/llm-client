@@ -1,0 +1,27 @@
+{
+  "schema_version": "1.0",
+  "plan_template_id": "Workflow.Gate.Resolve@1.0.0",
+  "intent_type": "Workflow.Gate.Resolve",
+  "plan_version": "planner-1.0",
+  "description": "Record a human/user resolution for a waiting action gate and resume the paused workflow if applicable.",
+  "steps": [
+    {
+      "step_id": "s1",
+      "kind": "operator",
+      "name": "Workflow.Gate.Resolve",
+      "operator_name": "Workflow.Gate.Resolve",
+      "operator_version": "1.0.0",
+      "effects": ["db_write"],
+      "policy_tags": ["workflow", "gate"],
+      "risk_level": "low",
+      "cache_policy": "never",
+      "idempotency_template": "gate_resolve:{tenant_id}:{intent.inputs.action_id}:{intent.inputs.status}",
+      "payload": {
+        "action_id": { "from": "intent.inputs.action_id" },
+        "status": { "from": "intent.inputs.status" },
+        "payload": { "from": "intent.inputs.payload" }
+      },
+      "produces": ["steps.s1.result.resolution"]
+    }
+  ]
+}

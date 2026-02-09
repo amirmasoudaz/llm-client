@@ -14,12 +14,14 @@
           "required": ["action_id", "action_type", "title", "description"],
           "properties": {
             "action_id": { "$ref": "../common/defs.v1.json#/$defs/Uuid" },
+            "apply_action_id": { "$ref": "../common/defs.v1.json#/$defs/Uuid" },
             "action_type": {
               "type": "string",
               "enum": [
                 "apply_platform_patch",
                 "upload_required",
                 "collect_fields",
+                "collect_profile_fields",
                 "select_option",
                 "confirm",
                 "redirect",
@@ -40,4 +42,3 @@
     }
   ]
 }
-
