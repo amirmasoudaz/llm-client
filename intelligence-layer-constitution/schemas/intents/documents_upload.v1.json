@@ -17,7 +17,20 @@
           "properties": {
             "document_type": {
               "type": "string",
-              "enum": ["resume", "sop", "transcript", "portfolio", "other"]
+              "enum": [
+                "cv",
+                "sop",
+                "letter",
+                "transcript",
+                "portfolio",
+                "study_plan",
+                "certificate",
+                "language_test",
+                "identification",
+                "photograph",
+                "other",
+                "resume"
+              ]
             },
             "title": { "type": "string" },
             "lifecycle": { "type": "string", "enum": ["temp", "sandbox", "final"], "default": "sandbox" },

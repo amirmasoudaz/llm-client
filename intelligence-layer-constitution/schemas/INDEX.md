@@ -60,6 +60,8 @@ This is a navigation aid for the schema and workflow template files in this repo
 - `schemas/operators/thread_create_or_load.output.v1.json`
 - `schemas/operators/platform_context_load.input.v1.json`
 - `schemas/operators/platform_context_load.output.v1.json`
+- `schemas/operators/platform_attachments_list.input.v1.json`
+- `schemas/operators/platform_attachments_list.output.v1.json`
 - `schemas/operators/workflow_gate_resolve.input.v1.json`
 - `schemas/operators/workflow_gate_resolve.output.v1.json`
 - `schemas/operators/professor_profile_retrieve.input.v1.json`
@@ -100,6 +102,8 @@ This is a navigation aid for the schema and workflow template files in this repo
 - `schemas/operators/memory_retrieve.output.v1.json`
 - `schemas/operators/documents_upload.input.v1.json`
 - `schemas/operators/documents_upload.output.v1.json`
+- `schemas/operators/documents_import_from_platform_attachment.input.v1.json`
+- `schemas/operators/documents_import_from_platform_attachment.output.v1.json`
 - `schemas/operators/documents_process.input.v1.json`
 - `schemas/operators/documents_process.output.v1.json`
 - `schemas/operators/documents_review.input.v1.json`

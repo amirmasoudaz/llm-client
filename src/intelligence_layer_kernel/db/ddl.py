@@ -285,6 +285,76 @@ DDL_STATEMENTS: list[str] = [
     CREATE INDEX IF NOT EXISTS outcomes_thread_type_created
       ON ledger.outcomes (tenant_id, thread_id, outcome_type, created_at DESC);
     """,
+    # ledger.documents
+    """
+    CREATE TABLE IF NOT EXISTS ledger.documents (
+      tenant_id              BIGINT       NOT NULL,
+      document_id            UUID         NOT NULL,
+      thread_id              BIGINT       NOT NULL,
+      funding_request_id     BIGINT       NOT NULL,
+      student_id             BIGINT       NOT NULL,
+      source_attachment_id   BIGINT       NULL,
+      document_type          TEXT         NOT NULL,
+      lifecycle              TEXT         NOT NULL DEFAULT 'sandbox',
+      source_disk            TEXT         NULL,
+      source_path            TEXT         NOT NULL,
+      source_object_uri      TEXT         NOT NULL,
+      source_metadata        JSONB        NOT NULL DEFAULT '{}'::jsonb,
+      content_hash           BYTEA        NOT NULL,
+      content_size_bytes     BIGINT       NOT NULL DEFAULT 0,
+      mime                   TEXT         NULL,
+      storage_path           TEXT         NULL,
+      extracted_text         TEXT         NULL,
+      extracted_fields       JSONB        NOT NULL DEFAULT '{}'::jsonb,
+      created_at             TIMESTAMPTZ  NOT NULL DEFAULT now(),
+      updated_at             TIMESTAMPTZ  NOT NULL DEFAULT now(),
+
+      PRIMARY KEY (tenant_id, document_id),
+      CONSTRAINT documents_attachment_uq UNIQUE (tenant_id, thread_id, source_attachment_id)
+    );
+    """,
+    """
+    ALTER TABLE ledger.documents
+      ADD COLUMN IF NOT EXISTS lifecycle TEXT NOT NULL DEFAULT 'sandbox';
+    """,
+    """
+    ALTER TABLE ledger.documents
+      ADD COLUMN IF NOT EXISTS current_revision_id UUID NULL;
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS documents_thread_created
+      ON ledger.documents (tenant_id, thread_id, created_at DESC);
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS documents_request_type_created
+      ON ledger.documents (tenant_id, funding_request_id, document_type, created_at DESC);
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS documents_student_hash_updated
+      ON ledger.documents (tenant_id, student_id, content_hash, updated_at DESC);
+    """,
+    # ledger.document_revisions
+    """
+    CREATE TABLE IF NOT EXISTS ledger.document_revisions (
+      tenant_id              BIGINT       NOT NULL,
+      revision_id            UUID         NOT NULL,
+      document_id            UUID         NOT NULL,
+      revision_no            INTEGER      NOT NULL,
+      revision_kind          TEXT         NOT NULL,
+      object_uri             TEXT         NULL,
+      content_json           JSONB        NULL,
+      content_hash           BYTEA        NOT NULL,
+      processor_version      TEXT         NULL,
+      created_at             TIMESTAMPTZ  NOT NULL DEFAULT now(),
+
+      PRIMARY KEY (tenant_id, revision_id),
+      CONSTRAINT document_revisions_doc_no_uq UNIQUE (tenant_id, document_id, revision_no)
+    );
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS document_revisions_doc_created
+      ON ledger.document_revisions (tenant_id, document_id, created_at DESC);
+    """,
     # ledger.policy_decisions
     """
     CREATE TABLE IF NOT EXISTS ledger.policy_decisions (

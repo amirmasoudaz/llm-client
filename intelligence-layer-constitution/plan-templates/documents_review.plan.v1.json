@@ -3,7 +3,7 @@
   "plan_template_id": "Documents.Review@1.0.0",
   "intent_type": "Documents.Review",
   "plan_version": "planner-1.0",
-  "description": "Ensure a document is processed, then review it and produce a Document.Review outcome.",
+  "description": "Load request attachments, import the selected document, process text, then emit a structured review.",
   "steps": [
     {
       "step_id": "s1",
@@ -28,6 +28,49 @@
     {
       "step_id": "s2",
       "kind": "operator",
+      "name": "Platform.Attachments.List",
+      "operator_name": "Platform.Attachments.List",
+      "operator_version": "1.0.0",
+      "effects": ["read_only"],
+      "policy_tags": ["documents", "platform_read", "read_only"],
+      "risk_level": "low",
+      "cache_policy": "ttl_only",
+      "idempotency_template": "platform_attachments_list:{tenant_id}:{intent.thread_id}:{intent.inputs.document_type}",
+      "payload": {
+        "thread_id": { "from": "intent.thread_id" },
+        "document_type": { "from": "intent.inputs.document_type" },
+        "attachment_ids": { "from": "intent.inputs.attachment_ids" }
+      },
+      "produces": [
+        "context.documents.attachments",
+        "context.documents.selected_attachment",
+        "context.documents.requested_document_type",
+        "context.documents.requested_attachment_kinds"
+      ]
+    },
+    {
+      "step_id": "s3",
+      "kind": "operator",
+      "name": "Documents.ImportFromPlatformAttachment",
+      "operator_name": "Documents.ImportFromPlatformAttachment",
+      "operator_version": "1.0.0",
+      "effects": ["db_write", "s3_sandbox_write", "produce_outcome"],
+      "policy_tags": ["documents", "platform_read", "pii_allowed"],
+      "risk_level": "low",
+      "cache_policy": "never",
+      "idempotency_template": "doc_import:{tenant_id}:{intent.thread_id}:{context.documents.selected_attachment.attachment_id}:{context.documents.requested_document_type}",
+      "payload": {
+        "thread_id": { "from": "intent.thread_id" },
+        "document_type": { "from": "context.documents.requested_document_type" },
+        "attachment_ids": { "from": "intent.inputs.attachment_ids" },
+        "attachments": { "from": "context.documents.attachments" },
+        "selected_attachment": { "from": "context.documents.selected_attachment" }
+      },
+      "produces": ["outcome.document_uploaded"]
+    },
+    {
+      "step_id": "s4",
+      "kind": "operator",
       "name": "Documents.Process",
       "operator_name": "Documents.Process",
       "operator_version": "1.0.0",
@@ -35,15 +78,15 @@
       "policy_tags": ["documents", "pii_allowed"],
       "risk_level": "low",
       "cache_policy": "use_if_safe",
-      "idempotency_template": "doc_process:{tenant_id}:{intent.inputs.document_id}:default",
+      "idempotency_template": "doc_process:{tenant_id}:{outcome.document_uploaded.payload.document_id}:default",
       "payload": {
-        "document_id": { "from": "intent.inputs.document_id" },
+        "document_id": { "from": "outcome.document_uploaded.payload.document_id" },
         "processing_profile": { "const": "default" }
       },
       "produces": ["outcome.document_processed"]
     },
     {
-      "step_id": "s3",
+      "step_id": "s5",
       "kind": "operator",
       "name": "Documents.Review",
       "operator_name": "Documents.Review",
@@ -52,14 +95,32 @@
       "policy_tags": ["documents", "draft_only"],
       "risk_level": "low",
       "cache_policy": "use_if_safe",
-      "idempotency_template": "doc_review:{tenant_id}:{intent.inputs.document_id}:{outcome.document_processed.hash.value}:{intent.inputs.review_goal}",
+      "idempotency_template": "doc_review:{tenant_id}:{outcome.document_uploaded.payload.document_id}:{outcome.document_processed.hash.value}:{intent.inputs.review_goal}",
       "payload": {
-        "document_id": { "from": "intent.inputs.document_id" },
+        "document_id": { "from": "outcome.document_uploaded.payload.document_id" },
         "document_processed": { "from": "outcome.document_processed" },
         "review_goal": { "from": "intent.inputs.review_goal" },
         "custom_instructions": { "from": "intent.inputs.custom_instructions" }
       },
       "produces": ["outcome.document_review"]
+    },
+    {
+      "step_id": "s6",
+      "kind": "operator",
+      "name": "Conversation.Suggestions.Generate",
+      "operator_name": "Conversation.Suggestions.Generate",
+      "operator_version": "1.0.0",
+      "effects": ["produce_outcome"],
+      "policy_tags": ["read_only"],
+      "risk_level": "low",
+      "cache_policy": "use_if_safe",
+      "idempotency_template": "suggestions:{tenant_id}:{thread_id}:{outcome.document_review.hash.value}",
+      "payload": {
+        "intent_type": { "from": "intent.intent_type" },
+        "platform": { "from": "context.platform" },
+        "outcomes": { "from": "outcome" }
+      },
+      "produces": ["outcome.suggestions"]
     }
   ]
 }

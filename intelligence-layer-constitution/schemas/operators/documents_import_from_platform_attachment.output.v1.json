@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/operators/documents_import_from_platform_attachment.output.v1.json",
+  "title": "Operator: Documents.ImportFromPlatformAttachment (output) (v1)",
+  "allOf": [
+    { "$ref": "operator_result_base.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "result": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["outcome"],
+          "properties": {
+            "outcome": { "$ref": "../outcomes/document_uploaded.v1.json" },
+            "selected_attachment": {
+              "type": ["object", "null"],
+              "additionalProperties": true
+            },
+            "fetch_status": { "type": "string" },
+            "requested_attachment_kinds": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

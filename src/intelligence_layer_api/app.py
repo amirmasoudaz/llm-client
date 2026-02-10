@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import logging
 import re
 import uuid
 from datetime import datetime, timezone
 from typing import Any, AsyncIterator
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi import Response
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
@@ -15,6 +16,14 @@ from agent_runtime import ExecutionRequest, BudgetSpec, PolicyRef
 from llm_client import load_env
 
 from .il_db import ILDB, get_pool
+from .documents import (
+    build_presigned_download_url,
+    fetch_document_metadata,
+    fetch_document_revisions,
+    ingest_thread_document,
+    stage_upload_artifact,
+    upload_storage_health,
+)
 from .runtime_kernel import KernelContainer, build_kernel
 from .settings import get_settings
 from .auth import DevBypassAuthAdapter
@@ -39,6 +48,21 @@ from intelligence_layer_kernel.operators.implementations.funding_request_fields_
 )
 from intelligence_layer_kernel.operators.implementations.funding_request_fields_update_apply import (
     FundingRequestFieldsUpdateApplyOperator,
+)
+from intelligence_layer_kernel.operators.implementations.platform_attachments_list import (
+    PlatformAttachmentsListOperator,
+)
+from intelligence_layer_kernel.operators.implementations.documents_import_from_platform_attachment import (
+    DocumentsImportFromPlatformAttachmentOperator,
+)
+from intelligence_layer_kernel.operators.implementations.documents_process import (
+    DocumentsProcessOperator,
+)
+from intelligence_layer_kernel.operators.implementations.documents_review import (
+    DocumentsReviewOperator,
+)
+from intelligence_layer_kernel.operators.implementations.documents_upload import (
+    DocumentsUploadOperator,
 )
 from intelligence_layer_kernel.operators.implementations.email_optimize_draft import (
     EmailOptimizeDraftOperator,
@@ -76,10 +100,14 @@ from intelligence_layer_kernel.operators.implementations.student_profile_require
 )
 from intelligence_layer_kernel.operators.implementations.memory_upsert import MemoryUpsertOperator
 from intelligence_layer_kernel.operators.implementations.memory_retrieve import MemoryRetrieveOperator
+from intelligence_layer_kernel.operators.implementations.documents_common import extract_attachment_ids
 from intelligence_layer_kernel.runtime import WorkflowKernel
+from intelligence_layer_kernel.runtime.store import OutcomeStore
 
 
 load_env()  # keep prototyping simple: auto-load repo `.env` for the Layer 2 API process
+
+logger = logging.getLogger("intelligence_layer_api")
 
 app = FastAPI(
     title="CanApply Intelligence Layer (Layer 2)",
@@ -169,6 +197,14 @@ async def healthz() -> dict[str, str]:
     return {"ok": "true"}
 
 
+@app.get("/v1/debug/storage/upload-health")
+async def debug_upload_storage_health() -> dict[str, Any]:
+    settings = get_settings()
+    if not settings.debug:
+        raise HTTPException(status_code=404, detail="not found")
+    return upload_storage_health()
+
+
 @app.get("/v1/debug/platform/funding_request/{funding_request_id}/context")
 async def debug_platform_context(funding_request_id: int) -> dict[str, Any]:
     settings = get_settings()
@@ -203,6 +239,13 @@ async def _startup() -> None:
     operator_registry.register(ThreadCreateOrLoadOperator(pool=pool, tenant_id=ildb.tenant_id))
     operator_registry.register(WorkflowGateResolveOperator(pool=pool, tenant_id=ildb.tenant_id))
     operator_registry.register(PlatformContextLoadOperator(pool=pool, tenant_id=ildb.tenant_id))
+    operator_registry.register(PlatformAttachmentsListOperator(pool=pool, tenant_id=ildb.tenant_id))
+    operator_registry.register(DocumentsUploadOperator(pool=pool, tenant_id=ildb.tenant_id))
+    operator_registry.register(
+        DocumentsImportFromPlatformAttachmentOperator(pool=pool, tenant_id=ildb.tenant_id)
+    )
+    operator_registry.register(DocumentsProcessOperator(pool=pool, tenant_id=ildb.tenant_id))
+    operator_registry.register(DocumentsReviewOperator(pool=pool, tenant_id=ildb.tenant_id))
     operator_registry.register(FundingRequestFieldsUpdateProposeOperator())
     operator_registry.register(FundingRequestFieldsUpdateApplyOperator())
     operator_registry.register(EmailOptimizeDraftOperator())
@@ -235,6 +278,7 @@ async def _startup() -> None:
     )
 
     app.state.operator_registry = operator_registry
+    app.state.outcome_store = OutcomeStore(pool=pool, tenant_id=ildb.tenant_id)
     app.state.operator_executor = operator_executor
     app.state.event_writer = event_writer
     app.state.workflow_kernel = WorkflowKernel(
@@ -255,6 +299,21 @@ async def _startup() -> None:
         reservation_ttl_sec=settings.credits_reservation_ttl_sec,
         min_reserve_credits=settings.credits_min_reserve,
     )
+    storage_health = upload_storage_health()
+    app.state.upload_storage_health = storage_health
+    if storage_health.get("ready"):
+        logger.info(
+            "upload storage ready mode=%s bucket=%s prefix=%s",
+            storage_health.get("mode"),
+            storage_health.get("bucket"),
+            storage_health.get("prefix"),
+        )
+    else:
+        logger.warning(
+            "upload storage not ready mode=%s reasons=%s",
+            storage_health.get("mode"),
+            ",".join(storage_health.get("reasons") or []),
+        )
 
 
 @app.on_event("shutdown")
@@ -355,7 +414,7 @@ async def init_thread(req: ThreadInitRequest, response: Response, request: Reque
 
 class SubmitQueryRequest(BaseModel):
     message: str = Field(..., min_length=1)
-    attachments: list[dict[str, Any]] = Field(default_factory=list)
+    attachments: list[Any] = Field(default_factory=list)
     # Optional client-supplied idempotency/correlation ID (UUID)
     query_id: str | None = None
 
@@ -370,6 +429,46 @@ class SubmitQueryRequest(BaseModel):
 class SubmitQueryResponse(BaseModel):
     query_id: str
     sse_url: str
+
+
+class ThreadAttachmentUploadResponse(BaseModel):
+    attachment_id: int
+    document_id: str
+    document_type: str
+    content_hash: str
+    mime: str
+    size_bytes: int
+    dedupe_reused: bool
+    parsed: bool
+
+
+class DocumentRevisionResponse(BaseModel):
+    revision_id: str
+    revision_no: int
+    revision_kind: str
+    content_hash: str
+    processor_version: str | None = None
+    created_at: str | None = None
+    download_url: str | None = None
+
+
+class DocumentMetadataResponse(BaseModel):
+    document_id: str
+    thread_id: int
+    funding_request_id: int
+    student_id: int
+    source_attachment_id: int | None = None
+    document_type: str
+    lifecycle: str
+    mime: str
+    content_hash: str
+    content_size_bytes: int
+    source_object_uri: str
+    current_revision_id: str | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
+    download_url: str | None = None
+    revisions: list[DocumentRevisionResponse] = Field(default_factory=list)
 
 
 _EMAIL_RE = re.compile(r"([A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,})")
@@ -441,6 +540,273 @@ def _extract_profile_gate_payload(message: str, gate_preview: dict[str, Any] | N
                 updates["research_interest"] = research_interest
 
     return updates
+
+
+@app.post("/v1/threads/{thread_id}/attachments", response_model=ThreadAttachmentUploadResponse)
+async def upload_thread_attachment(
+    thread_id: str,
+    request: Request,
+    document_type: str | None = Query(default=None),
+    title: str | None = Query(default=None),
+    file_name: str | None = Query(default=None),
+) -> ThreadAttachmentUploadResponse:
+    ildb: ILDB = app.state.ildb
+    auth_adapter: DevBypassAuthAdapter = app.state.auth_adapter
+    settings = get_settings()
+
+    try:
+        thread_id_int = int(thread_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="thread_id must be an integer") from exc
+
+    thread = await ildb.get_thread(thread_id=thread_id_int)
+    if not thread:
+        raise HTTPException(status_code=404, detail="thread not found")
+
+    auth = await auth_adapter.authenticate(
+        request=request,
+        funding_request_id=int(thread["funding_request_id"]),
+        student_id_override=int(thread["student_id"]),
+    )
+    if not auth.ok:
+        raise HTTPException(status_code=auth.status_code, detail=auth.reason or "unauthorized")
+    principal_id = int(auth.principal_id or 0)
+    if principal_id != int(thread["student_id"]):
+        raise HTTPException(status_code=403, detail="forbidden")
+
+    try:
+        data = await request.body()
+        incoming_name = file_name or request.headers.get("x-file-name") or "document.bin"
+        incoming_content_type = request.headers.get("content-type")
+        lifecycle = "sandbox"
+        if settings.use_workflow_kernel:
+            kernel: WorkflowKernel = app.state.workflow_kernel
+            outcome_store: OutcomeStore = app.state.outcome_store
+            staged_artifact = stage_upload_artifact(
+                tenant_id=ildb.tenant_id,
+                thread_id=thread_id_int,
+                student_id=int(thread["student_id"]),
+                file_bytes=data,
+                file_name=incoming_name,
+                content_type=incoming_content_type,
+            )
+            actor = {
+                "tenant_id": ildb.tenant_id,
+                "principal": {"type": "student", "id": principal_id},
+                "role": "student",
+                "trust_level": auth.trust_level,
+                "scopes": list(auth.scopes),
+            }
+            workflow_id = uuid.uuid4()
+            result = await kernel.start_intent(
+                intent_type="Documents.Upload",
+                inputs={
+                    "document_type": document_type or "cv",
+                    "title": title,
+                    "lifecycle": lifecycle,
+                    "artifact": {
+                        "object_uri": staged_artifact["object_uri"],
+                        "hash": staged_artifact["hash"],
+                        "mime": staged_artifact["mime"],
+                        "name": staged_artifact["name"],
+                        "size_bytes": staged_artifact["size_bytes"],
+                    },
+                },
+                thread_id=thread_id_int,
+                scope_type="funding_request",
+                scope_id=str(thread["funding_request_id"]),
+                actor=actor,
+                source="api.upload",
+                workflow_id=workflow_id,
+            )
+            if result.status != "completed":
+                raise HTTPException(status_code=500, detail="document upload workflow did not complete")
+            outcomes = await outcome_store.list_by_workflow(workflow_id=result.workflow_id)
+            uploaded_document_id = _extract_uploaded_document_id(outcomes)
+            if not uploaded_document_id:
+                raise HTTPException(status_code=500, detail="document upload outcome missing")
+            uploaded_row = await fetch_document_metadata(
+                pool=ildb.pool,
+                tenant_id=ildb.tenant_id,
+                document_id=uploaded_document_id,
+            )
+            if uploaded_row is None:
+                raise HTTPException(status_code=500, detail="uploaded document not found")
+            source_metadata = uploaded_row.get("source_metadata")
+            dedupe_reused = False
+            if isinstance(source_metadata, dict):
+                dedupe_reused = bool(source_metadata.get("dedupe_reused"))
+            uploaded = ThreadAttachmentUploadResponse(
+                attachment_id=int(uploaded_row.get("source_attachment_id") or 0),
+                document_id=uploaded_document_id,
+                document_type=str(uploaded_row.get("document_type") or document_type or "cv"),
+                content_hash=str(uploaded_row.get("content_hash") or ""),
+                mime=str(uploaded_row.get("mime") or incoming_content_type or "application/octet-stream"),
+                size_bytes=int(uploaded_row.get("content_size_bytes") or len(data)),
+                dedupe_reused=dedupe_reused,
+                parsed=bool(
+                    (isinstance(source_metadata, dict) and source_metadata.get("parsed"))
+                    or dedupe_reused
+                ),
+            )
+            return uploaded
+        uploaded = await ingest_thread_document(
+            pool=ildb.pool,
+            tenant_id=ildb.tenant_id,
+            thread_id=thread_id_int,
+            student_id=int(thread["student_id"]),
+            funding_request_id=int(thread["funding_request_id"]),
+            file_bytes=data,
+            file_name=incoming_name,
+            content_type=incoming_content_type,
+            document_type_hint=document_type,
+            title=title,
+            lifecycle=lifecycle,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"document upload failed: {exc}") from exc
+
+    return ThreadAttachmentUploadResponse(
+        attachment_id=uploaded.attachment_id,
+        document_id=uploaded.document_id,
+        document_type=uploaded.document_type,
+        content_hash=uploaded.content_hash,
+        mime=uploaded.mime,
+        size_bytes=uploaded.size_bytes,
+        dedupe_reused=uploaded.dedupe_reused,
+        parsed=uploaded.parsed,
+    )
+
+
+def _extract_uploaded_document_id(outcomes: list[dict[str, Any]]) -> str | None:
+    for item in outcomes:
+        if str(item.get("outcome_type") or "") != "Documents.Upload":
+            continue
+        content = item.get("content")
+        if not isinstance(content, dict):
+            continue
+        outcome = content.get("outcome")
+        if not isinstance(outcome, dict):
+            continue
+        payload = outcome.get("payload")
+        if not isinstance(payload, dict):
+            continue
+        document_id = payload.get("document_id")
+        if isinstance(document_id, str) and document_id.strip():
+            return document_id.strip()
+    return None
+
+
+@app.get("/v1/documents/{document_id}", response_model=DocumentMetadataResponse)
+async def get_document_metadata(document_id: str, request: Request) -> DocumentMetadataResponse:
+    ildb: ILDB = app.state.ildb
+    auth_adapter: DevBypassAuthAdapter = app.state.auth_adapter
+
+    metadata = await fetch_document_metadata(pool=ildb.pool, tenant_id=ildb.tenant_id, document_id=document_id)
+    if metadata is None:
+        raise HTTPException(status_code=404, detail="document not found")
+
+    auth = await auth_adapter.authenticate(
+        request=request,
+        funding_request_id=int(metadata["funding_request_id"]),
+        student_id_override=int(metadata["student_id"]),
+    )
+    if not auth.ok:
+        raise HTTPException(status_code=auth.status_code, detail=auth.reason or "unauthorized")
+    if int(auth.principal_id or 0) != int(metadata["student_id"]):
+        raise HTTPException(status_code=403, detail="forbidden")
+
+    revisions = await fetch_document_revisions(
+        pool=ildb.pool,
+        tenant_id=ildb.tenant_id,
+        document_id=document_id,
+    )
+    revision_models: list[DocumentRevisionResponse] = []
+    for revision in revisions:
+        revision_models.append(
+            DocumentRevisionResponse(
+                revision_id=str(revision["revision_id"]),
+                revision_no=int(revision["revision_no"]),
+                revision_kind=str(revision["revision_kind"]),
+                content_hash=str(revision["content_hash"]),
+                processor_version=str(revision.get("processor_version") or "") or None,
+                created_at=revision.get("created_at"),
+                download_url=build_presigned_download_url(object_uri=str(revision.get("object_uri") or "")),
+            )
+        )
+
+    return DocumentMetadataResponse(
+        document_id=str(metadata["document_id"]),
+        thread_id=int(metadata["thread_id"]),
+        funding_request_id=int(metadata["funding_request_id"]),
+        student_id=int(metadata["student_id"]),
+        source_attachment_id=metadata.get("source_attachment_id"),
+        document_type=str(metadata["document_type"]),
+        lifecycle=str(metadata["lifecycle"]),
+        mime=str(metadata["mime"]),
+        content_hash=str(metadata["content_hash"]),
+        content_size_bytes=int(metadata["content_size_bytes"]),
+        source_object_uri=str(metadata["source_object_uri"]),
+        current_revision_id=str(metadata["current_revision_id"]) if metadata.get("current_revision_id") else None,
+        created_at=metadata.get("created_at"),
+        updated_at=metadata.get("updated_at"),
+        download_url=build_presigned_download_url(object_uri=str(metadata["source_object_uri"])),
+        revisions=revision_models,
+    )
+
+
+@app.get("/v1/documents/{document_id}/download")
+async def get_document_download_url(
+    document_id: str,
+    request: Request,
+    revision_id: str | None = Query(default=None),
+    expires_sec: int = Query(default=900, ge=60, le=86400),
+) -> dict[str, Any]:
+    ildb: ILDB = app.state.ildb
+    auth_adapter: DevBypassAuthAdapter = app.state.auth_adapter
+
+    metadata = await fetch_document_metadata(pool=ildb.pool, tenant_id=ildb.tenant_id, document_id=document_id)
+    if metadata is None:
+        raise HTTPException(status_code=404, detail="document not found")
+
+    auth = await auth_adapter.authenticate(
+        request=request,
+        funding_request_id=int(metadata["funding_request_id"]),
+        student_id_override=int(metadata["student_id"]),
+    )
+    if not auth.ok:
+        raise HTTPException(status_code=auth.status_code, detail=auth.reason or "unauthorized")
+    if int(auth.principal_id or 0) != int(metadata["student_id"]):
+        raise HTTPException(status_code=403, detail="forbidden")
+
+    object_uri = str(metadata["source_object_uri"] or "")
+    resolved_revision_id: str | None = None
+    if revision_id:
+        revisions = await fetch_document_revisions(
+            pool=ildb.pool,
+            tenant_id=ildb.tenant_id,
+            document_id=document_id,
+        )
+        matched = next((item for item in revisions if str(item.get("revision_id")) == revision_id), None)
+        if matched is None:
+            raise HTTPException(status_code=404, detail="revision not found")
+        object_uri = str(matched.get("object_uri") or object_uri)
+        resolved_revision_id = str(matched.get("revision_id"))
+
+    download_url = build_presigned_download_url(object_uri=object_uri, expires_sec=expires_sec)
+    if not download_url:
+        raise HTTPException(status_code=422, detail="download URL is unavailable for this document")
+
+    return {
+        "document_id": document_id,
+        "revision_id": resolved_revision_id,
+        "expires_sec": expires_sec,
+        "download_url": download_url,
+    }
 
 
 @app.post("/v1/threads/{thread_id}/queries", response_model=SubmitQueryResponse)
@@ -617,6 +983,7 @@ async def submit_query(thread_id: str, req: SubmitQueryRequest, request: Request
                 scope_id=str(thread["funding_request_id"]),
                 actor=actor,
                 message=req.message,
+                attachments=extract_attachment_ids(req.attachments),
                 source="chat",
                 workflow_id=workflow_id,
             )

@@ -1,0 +1,22 @@
+{
+  "name": "Documents.ImportFromPlatformAttachment",
+  "type": "operator",
+  "version": "1.0.0",
+  "owner": "canapply",
+  "description": "Import a funding-request attachment into the IL document ledger and emit a Document.Uploaded outcome.",
+  "schemas": {
+    "input": "schemas/operators/documents_import_from_platform_attachment.input.v1.json",
+    "output": "schemas/operators/documents_import_from_platform_attachment.output.v1.json"
+  },
+  "requires": {
+    "tools": [],
+    "capabilities": [],
+    "context_fields": []
+  },
+  "policy_tags": ["documents", "platform_read", "pii_allowed"],
+  "effects": ["db_write", "s3_sandbox_write", "produce_outcome"],
+  "observability": {
+    "log_level": "info",
+    "emit_samples": false
+  }
+}

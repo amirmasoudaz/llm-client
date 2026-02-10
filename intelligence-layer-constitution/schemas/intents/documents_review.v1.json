@@ -13,9 +13,30 @@
         "inputs": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["document_id"],
           "properties": {
             "document_id": { "$ref": "../common/defs.v1.json#/$defs/DocumentId" },
+            "document_type": {
+              "type": "string",
+              "enum": [
+                "cv",
+                "sop",
+                "letter",
+                "transcript",
+                "portfolio",
+                "study_plan",
+                "certificate",
+                "language_test",
+                "identification",
+                "photograph",
+                "other",
+                "resume",
+                "cover_letter"
+              ]
+            },
+            "attachment_ids": {
+              "type": "array",
+              "items": { "type": "integer", "minimum": 1 }
+            },
             "review_goal": { "type": "string", "default": "quality" },
             "custom_instructions": { "type": "string" }
           }

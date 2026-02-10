@@ -33,7 +33,12 @@ class IntentSwitchboard:
             ("review sop", "Documents.Review"),
         ]
 
-    def classify(self, message: str) -> tuple[str, dict[str, Any]]:
+    def classify(
+        self,
+        message: str,
+        *,
+        attachment_ids: list[int] | None = None,
+    ) -> tuple[str, dict[str, Any]]:
         text = message.strip()
         lowered = text.lower()
         field_values = self._extract_funding_request_fields(text)
@@ -49,6 +54,9 @@ class IntentSwitchboard:
         optimize_inputs = self._extract_email_optimize_inputs(text)
         if optimize_inputs is not None:
             return "Funding.Outreach.Email.Optimize", optimize_inputs
+        document_review_inputs = self._extract_document_review_inputs(text, attachment_ids=attachment_ids)
+        if document_review_inputs is not None:
+            return "Documents.Review", document_review_inputs
         if "profile" in lowered and ("update" in lowered or "complete" in lowered or "onboarding" in lowered):
             return "Student.Profile.Collect", {}
         if lowered.startswith("remember ") or "my preference" in lowered:
@@ -59,6 +67,8 @@ class IntentSwitchboard:
             return "Funding.Outreach.Email.Review", {}
         for needle, intent_type in self._rules:
             if needle in lowered:
+                if intent_type == "Documents.Review":
+                    return intent_type, self._default_document_review_inputs(text, attachment_ids=attachment_ids)
                 return intent_type, {}
         # Default to email review when unsure.
         return "Funding.Outreach.Email.Review", {}
@@ -157,3 +167,67 @@ class IntentSwitchboard:
         if not value:
             return None
         return value
+
+    def _extract_document_review_inputs(
+        self,
+        text: str,
+        *,
+        attachment_ids: list[int] | None = None,
+    ) -> dict[str, Any] | None:
+        lowered = text.lower()
+        review_cues = ("review", "assess", "evaluate", "critique", "feedback")
+        if not any(cue in lowered for cue in review_cues):
+            return None
+
+        document_type = self._infer_document_type(lowered)
+        if document_type is None and "document" not in lowered and "attachment" not in lowered:
+            return None
+
+        return self._default_document_review_inputs(
+            text,
+            document_type=document_type,
+            attachment_ids=attachment_ids,
+        )
+
+    def _default_document_review_inputs(
+        self,
+        text: str,
+        *,
+        document_type: str | None = None,
+        attachment_ids: list[int] | None = None,
+    ) -> dict[str, Any]:
+        lowered = text.lower()
+        doc_type = document_type or self._infer_document_type(lowered) or "cv"
+
+        review_goal = "quality"
+        if any(token in lowered for token in ("concise", "short", "brevity", "shorter")):
+            review_goal = "brevity"
+        elif any(token in lowered for token in ("grammar", "clarity", "clear", "readability")):
+            review_goal = "clarity"
+
+        inputs: dict[str, Any] = {
+            "document_type": doc_type,
+            "review_goal": review_goal,
+            "custom_instructions": text.strip(),
+        }
+        if attachment_ids:
+            inputs["attachment_ids"] = [int(item) for item in attachment_ids if int(item) > 0]
+        return inputs
+
+    def _infer_document_type(self, lowered_text: str) -> str | None:
+        if any(token in lowered_text for token in ("cv", "resume")):
+            return "cv"
+        if any(
+            token in lowered_text
+            for token in ("sop", "statement of purpose", "personal statement", "cover letter", "motivation letter")
+        ):
+            if any(token in lowered_text for token in ("cover letter", "motivation letter")):
+                return "letter"
+            return "sop"
+        if "transcript" in lowered_text:
+            return "transcript"
+        if "portfolio" in lowered_text:
+            return "portfolio"
+        if "study plan" in lowered_text:
+            return "study_plan"
+        return None

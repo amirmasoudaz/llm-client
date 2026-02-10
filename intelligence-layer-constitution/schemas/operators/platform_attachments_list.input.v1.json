@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "schemas/operators/documents_upload.input.v1.json",
-  "title": "Operator: Documents.Upload (input) (v1)",
+  "$id": "schemas/operators/platform_attachments_list.input.v1.json",
+  "title": "Operator: Platform.Attachments.List (input) (v1)",
   "allOf": [
     { "$ref": "operator_call_base.v1.json" },
     {
@@ -10,9 +10,8 @@
         "payload": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["student_id", "thread_id", "document_type", "lifecycle", "artifact"],
+          "required": ["thread_id"],
           "properties": {
-            "student_id": { "$ref": "../common/defs.v1.json#/$defs/StudentId" },
             "thread_id": { "$ref": "../common/defs.v1.json#/$defs/ThreadId" },
             "document_type": {
               "type": "string",
@@ -28,12 +27,14 @@
                 "identification",
                 "photograph",
                 "other",
-                "resume"
+                "resume",
+                "cover_letter"
               ]
             },
-            "title": { "type": "string" },
-            "lifecycle": { "type": "string", "enum": ["temp", "sandbox", "final"] },
-            "artifact": { "$ref": "../common/defs.v1.json#/$defs/ArtifactRef" }
+            "attachment_ids": {
+              "type": "array",
+              "items": { "type": "integer", "minimum": 1 }
+            }
           }
         }
       }

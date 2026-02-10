@@ -28,7 +28,6 @@ class LetterGenerationRespSchema(BaseModel):
     # Letter content
     date: str = Field(..., description="Date of the letter (e.g., November 9, 2025 or use current date)")
     salutation: str = Field(..., description="Opening salutation (e.g., Dear Dr. Smith,)")
-    body: str = Field(...,
-                      description="Full body content of the statement of purpose, including all paragraphs. Should cover: research interest, relevant background/experience, specific fit with the program/lab, and future goals. Use \\n\\n to separate paragraphs in LaTeX.")
+    body: list[str] = Field(..., description="List of paragraphs in the body of the statement of purpose. Should cover: research interest, relevant background/experience, specific fit with the program/lab, and future goals.")
     closing_valediction: str = Field(...,
                                      description="Closing phrase (e.g., Sincerely, Thank you for your consideration)")
