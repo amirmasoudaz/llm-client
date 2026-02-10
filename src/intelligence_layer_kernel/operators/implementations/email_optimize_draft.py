@@ -9,7 +9,6 @@ from typing import Any
 
 from blake3 import blake3
 
-from ...prompts import PromptTemplateLoader
 from ..base import Operator
 from ..types import OperatorCall, OperatorError, OperatorMetrics, OperatorResult
 
@@ -48,14 +47,6 @@ class EmailOptimizeDraftOperator(Operator):
         review_report = payload.get("review_report") if isinstance(payload.get("review_report"), dict) else None
         source_version_id = _maybe_text(payload.get("source_draft_outcome_id"))
         source_version_number = _maybe_int(payload.get("source_draft_version"))
-
-        _render_optimize_prompt(
-            payload=payload,
-            subject=draft_subject or "",
-            body=draft_body,
-            requested_edits=requested_edits,
-            review_report=review_report,
-        )
 
         optimized_subject, optimized_body, rationale, diff_summary = _optimize_draft(
             subject=draft_subject or "Prospective Student Inquiry",
@@ -100,34 +91,6 @@ class EmailOptimizeDraftOperator(Operator):
             metrics=OperatorMetrics(latency_ms=int((time.monotonic() - start) * 1000)),
             error=None,
         )
-
-
-_PROMPT_LOADER: PromptTemplateLoader | None = None
-
-
-def _render_optimize_prompt(
-    *,
-    payload: dict[str, Any],
-    subject: str,
-    body: str,
-    requested_edits: list[str],
-    review_report: dict[str, Any] | None,
-) -> None:
-    global _PROMPT_LOADER
-    if _PROMPT_LOADER is None:
-        _PROMPT_LOADER = PromptTemplateLoader()
-    _PROMPT_LOADER.render(
-        "email_optimize_draft.v1",
-        {
-            "email": {"subject": subject, "body": body},
-            "requested_edits": requested_edits,
-            "review_report": review_report or {},
-            "professor": payload.get("professor") or {},
-            "funding_request": payload.get("funding_request") or {},
-            "student_profile": payload.get("student_profile") or {},
-            "custom_instructions": payload.get("custom_instructions"),
-        },
-    )
 
 
 def _optimize_draft(

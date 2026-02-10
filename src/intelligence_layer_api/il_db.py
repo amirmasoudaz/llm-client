@@ -174,6 +174,8 @@ class ILDB:
                   pricing_version_id UUID NOT NULL,
                   credit_rate_version TEXT NOT NULL,
                   estimated BOOLEAN NOT NULL DEFAULT false,
+                  template_id TEXT NULL,
+                  template_hash TEXT NULL,
                   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
                   PRIMARY KEY (tenant_id, usage_event_id),
                   CONSTRAINT usage_events_pricing_fk
@@ -185,6 +187,12 @@ class ILDB:
             )
             await conn.execute(
                 "CREATE INDEX IF NOT EXISTS usage_events_workflow_created ON billing.usage_events (tenant_id, workflow_id, created_at DESC);"
+            )
+            await conn.execute(
+                "ALTER TABLE billing.usage_events ADD COLUMN IF NOT EXISTS template_id TEXT NULL;"
+            )
+            await conn.execute(
+                "ALTER TABLE billing.usage_events ADD COLUMN IF NOT EXISTS template_hash TEXT NULL;"
             )
             await conn.execute(
                 """

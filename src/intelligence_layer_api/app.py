@@ -103,6 +103,7 @@ from intelligence_layer_kernel.operators.implementations.memory_retrieve import 
 from intelligence_layer_kernel.operators.implementations.documents_common import extract_attachment_ids
 from intelligence_layer_kernel.runtime import WorkflowKernel
 from intelligence_layer_kernel.runtime.store import OutcomeStore
+from intelligence_layer_kernel.prompts import PromptTemplateLoader
 
 
 load_env()  # keep prototyping simple: auto-load repo `.env` for the Layer 2 API process
@@ -275,6 +276,7 @@ async def _startup() -> None:
         policy_engine=policy_engine,
         policy_store=policy_store,
         event_writer=event_writer,
+        prompt_loader=PromptTemplateLoader(),
     )
 
     app.state.operator_registry = operator_registry
@@ -1134,6 +1136,55 @@ async def workflow_events(workflow_id: str) -> StreamingResponse:
             yield chunk
 
     return StreamingResponse(gen(), media_type="text/event-stream")
+
+
+class WorkflowOutcomesResponse(BaseModel):
+    workflow_id: str
+    mode: str
+    run_status: str
+    recomputed: bool = False
+    outcomes: list[dict[str, Any]]
+
+
+@app.get("/v1/workflows/{workflow_id}/outcomes", response_model=WorkflowOutcomesResponse)
+async def workflow_outcomes(
+    workflow_id: str,
+    mode: str = Query(default="reproduce"),
+) -> WorkflowOutcomesResponse:
+    if mode != "reproduce":
+        raise HTTPException(status_code=400, detail="unsupported mode; only reproduce is available")
+
+    try:
+        workflow_uuid = uuid.UUID(workflow_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="workflow_id must be a UUID") from exc
+
+    ildb: ILDB = app.state.ildb
+    outcome_store: OutcomeStore = app.state.outcome_store
+
+    run = await ildb.get_workflow_run(workflow_id=workflow_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="workflow not found")
+
+    raw_outcomes = await outcome_store.list_by_workflow(workflow_id=workflow_uuid)
+    outcomes: list[dict[str, Any]] = []
+    for item in raw_outcomes:
+        normalized = dict(item)
+        workflow_value = normalized.get("workflow_id")
+        if workflow_value is not None:
+            normalized["workflow_id"] = str(workflow_value)
+        outcome_id = normalized.get("outcome_id")
+        if outcome_id is not None:
+            normalized["outcome_id"] = str(outcome_id)
+        outcomes.append(normalized)
+
+    return WorkflowOutcomesResponse(
+        workflow_id=workflow_id,
+        mode=mode,
+        run_status=str(run.get("status") or "unknown"),
+        recomputed=False,
+        outcomes=outcomes,
+    )
 
 
 class HelloWorkflowRequest(BaseModel):

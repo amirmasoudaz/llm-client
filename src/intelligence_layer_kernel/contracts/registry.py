@@ -14,6 +14,7 @@ class ContractPaths:
     schemas: Path
     manifests: Path
     plan_templates: Path
+    prompts: Path
 
 
 @dataclass
@@ -45,6 +46,7 @@ class ContractRegistry:
             schemas=root / "schemas",
             manifests=root / "manifests",
             plan_templates=root / "plan-templates",
+            prompts=root.parent / "src" / "intelligence_layer_prompts",
         )
 
         self._loaded = False
@@ -281,6 +283,19 @@ class ContractRegistry:
             if not self._schemas_by_relpath.get(str(output_ref)):
                 errors.append(f"operator manifest {name}@{version} output schema missing: {output_ref}")
 
+            for prompt_ref in _iter_prompt_template_refs(manifest):
+                normalized_prompt = _normalize_prompt_template_ref(prompt_ref)
+                if normalized_prompt is None:
+                    errors.append(
+                        f"operator manifest {name}@{version} has invalid prompt template ref: {prompt_ref}"
+                    )
+                    continue
+                prompt_path = self.paths.prompts / normalized_prompt
+                if not prompt_path.exists():
+                    errors.append(
+                        f"operator manifest {name}@{version} prompt template missing: {normalized_prompt}"
+                    )
+
     def _validate_plan_templates(self, errors: list[str]) -> None:
         template_schema = self._schemas_by_relpath.get("schemas/plans/plan_template.v1.json")
         if template_schema is None:
@@ -401,3 +416,46 @@ def _extract_intent_type(schema: dict[str, Any]) -> str | None:
             if isinstance(intent, dict) and "const" in intent:
                 return str(intent.get("const"))
     return None
+
+
+def _iter_prompt_template_refs(manifest: dict[str, Any]) -> Iterable[str]:
+    direct_keys = ("prompt_template", "prompt_template_id")
+    for key in direct_keys:
+        value = manifest.get(key)
+        if isinstance(value, str) and value.strip():
+            yield value
+
+    prompt_templates = manifest.get("prompt_templates")
+    if isinstance(prompt_templates, str):
+        if prompt_templates.strip():
+            yield prompt_templates
+        return
+    if isinstance(prompt_templates, list):
+        for item in prompt_templates:
+            if isinstance(item, str) and item.strip():
+                yield item
+            if isinstance(item, dict):
+                template_id = item.get("template_id") or item.get("id")
+                if isinstance(template_id, str) and template_id.strip():
+                    yield template_id
+        return
+    if isinstance(prompt_templates, dict):
+        for value in prompt_templates.values():
+            if isinstance(value, str) and value.strip():
+                yield value
+            if isinstance(value, dict):
+                template_id = value.get("template_id") or value.get("id")
+                if isinstance(template_id, str) and template_id.strip():
+                    yield template_id
+
+
+def _normalize_prompt_template_ref(template_ref: str) -> str | None:
+    normalized = template_ref.strip().lstrip("/")
+    if not normalized:
+        return None
+    if not normalized.endswith(".j2"):
+        normalized += ".j2"
+    parts = [part for part in normalized.split("/") if part]
+    if len(parts) < 3:
+        return None
+    return "/".join(parts)

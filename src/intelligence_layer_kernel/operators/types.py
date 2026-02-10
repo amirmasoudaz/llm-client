@@ -120,6 +120,8 @@ class OperatorResult:
     artifacts: list[dict[str, Any]] = field(default_factory=list)
     nondeterminism: dict[str, Any] | None = None
     schema_version: str = "1.0"
+    prompt_template_id: str | None = field(default=None, repr=False, compare=False)
+    prompt_template_hash: str | None = field(default=None, repr=False, compare=False)
 
     def to_dict(self) -> dict[str, Any]:
         data: dict[str, Any] = {

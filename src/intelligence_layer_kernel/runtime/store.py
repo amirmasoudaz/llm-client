@@ -392,6 +392,8 @@ class OutcomeStore:
         operator_version: str,
         status: str,
         content: dict[str, Any] | None,
+        template_id: str | None = None,
+        template_hash: str | None = None,
     ) -> uuid.UUID | None:
         if content is None:
             return None
@@ -406,16 +408,16 @@ class OutcomeStore:
                   tenant_id, outcome_id, lineage_id, version, parent_outcome_id,
                   outcome_type, schema_version, status, visibility,
                   workflow_id, thread_id, intent_id, plan_id, step_id, job_id,
-                  content, content_hash,
+                  content, content_hash, template_id, template_hash,
                   confidence, data_classes,
                   producer_kind, producer_name, producer_version, created_at
                 ) VALUES (
                   $1,$2,$3,1,NULL,
                   $4,'1.0',$5,'private',
                   $6,$7,$8,$9,$10,$11,
-                  $12::jsonb,$13,
-                  NULL,$14,
-                  'operator',$15,$16,now()
+                  $12::jsonb,$13,$14,$15,
+                  NULL,$16,
+                  'operator',$17,$18,now()
                 );
                 """,
                 self._tenant_id,
@@ -431,6 +433,8 @@ class OutcomeStore:
                 job_id,
                 json.dumps(content),
                 content_hash,
+                template_id,
+                template_hash,
                 [],
                 operator_name,
                 operator_version,
@@ -441,7 +445,7 @@ class OutcomeStore:
         async with self._pool.acquire() as conn:
             rows = await conn.fetch(
                 """
-                SELECT outcome_id, outcome_type, status, workflow_id, step_id, content
+                SELECT outcome_id, outcome_type, status, workflow_id, step_id, content, template_id, template_hash
                 FROM ledger.outcomes
                 WHERE tenant_id=$1 AND workflow_id=$2
                 ORDER BY created_at ASC;
@@ -457,6 +461,8 @@ class OutcomeStore:
                     "workflow_id": row["workflow_id"],
                     "step_id": row["step_id"],
                     "content": _coerce_json(row["content"]),
+                    "template_id": row["template_id"],
+                    "template_hash": row["template_hash"],
                 }
                 for row in rows
             ]

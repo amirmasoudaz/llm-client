@@ -9,7 +9,7 @@ from jsonschema import Draft202012Validator
 
 from ..contracts import ContractRegistry
 from ..events import EventWriter, LedgerEvent
-from ..prompts import PromptTemplateLoader
+from ..prompts import PromptTemplateLoader, PromptRenderResult
 from ..policy import PolicyEngine, PolicyDecisionStore, PolicyContext
 from .base import Operator
 from .registry import OperatorRegistry
@@ -45,6 +45,7 @@ class OperatorExecutor:
             raise ValueError(f"operator manifest missing schemas: {operator_name}@{operator_version}")
 
         self._validate_schema(input_ref, call.to_dict())
+        prompt_render = self._render_manifest_prompt(manifest=manifest, payload=call.payload)
 
         effects = list(manifest.get("effects", []) or [])
         policy_tags = list(manifest.get("policy_tags", []) or [])
@@ -77,6 +78,7 @@ class OperatorExecutor:
                 metrics=OperatorMetrics(latency_ms=0),
                 error=None,
             )
+            self._attach_prompt_metadata(result, prompt_render)
             self._validate_schema(output_ref, result.to_dict())
             return result
 
@@ -88,6 +90,7 @@ class OperatorExecutor:
                 metrics=OperatorMetrics(latency_ms=0),
                 error=None,
             )
+            self._attach_prompt_metadata(result, prompt_render)
             self._validate_schema(output_ref, result.to_dict())
             return result
 
@@ -124,6 +127,7 @@ class OperatorExecutor:
                 metrics=OperatorMetrics(latency_ms=0),
                 error=error,
             )
+            self._attach_prompt_metadata(result, prompt_render)
             if claim.job_id and claim.attempt_no:
                 await self._job_store.complete_job(
                     job_id=claim.job_id,
@@ -170,6 +174,7 @@ class OperatorExecutor:
                 metrics=OperatorMetrics(latency_ms=0),
                 error=error,
             )
+            self._attach_prompt_metadata(result, prompt_render)
             if claim.job_id and claim.attempt_no:
                 await self._job_store.complete_job(
                     job_id=claim.job_id,
@@ -216,6 +221,7 @@ class OperatorExecutor:
 
         # Ensure latency
         result.metrics.latency_ms = int((time.monotonic() - start) * 1000)
+        self._attach_prompt_metadata(result, prompt_render)
 
         self._validate_schema(output_ref, result.to_dict())
 
@@ -274,3 +280,76 @@ class OperatorExecutor:
         if errors:
             messages = "; ".join([f"{err.message}" for err in errors])
             raise ValueError(f"schema validation failed for {schema_ref}: {messages}")
+
+    def _render_manifest_prompt(
+        self,
+        *,
+        manifest: dict[str, Any],
+        payload: dict[str, Any],
+    ) -> PromptRenderResult | None:
+        template_id = self._resolve_manifest_prompt_template(manifest)
+        if not template_id:
+            return None
+        if self._prompt_loader is None:
+            raise ValueError("prompt loader is required for manifest-defined prompt templates")
+        return self._prompt_loader.render(template_id, self._build_prompt_context(payload))
+
+    def _resolve_manifest_prompt_template(self, manifest: dict[str, Any]) -> str | None:
+        direct = manifest.get("prompt_template_id") or manifest.get("prompt_template")
+        if isinstance(direct, str) and direct.strip():
+            return direct.strip()
+
+        prompt_templates = manifest.get("prompt_templates")
+        if isinstance(prompt_templates, str) and prompt_templates.strip():
+            return prompt_templates.strip()
+        if isinstance(prompt_templates, dict):
+            primary = prompt_templates.get("primary")
+            if isinstance(primary, str) and primary.strip():
+                return primary.strip()
+            for value in prompt_templates.values():
+                if isinstance(value, str) and value.strip():
+                    return value.strip()
+                if isinstance(value, dict):
+                    template_id = value.get("template_id") or value.get("id")
+                    if isinstance(template_id, str) and template_id.strip():
+                        return template_id.strip()
+        if isinstance(prompt_templates, list):
+            for item in prompt_templates:
+                if isinstance(item, str) and item.strip():
+                    return item.strip()
+                if isinstance(item, dict):
+                    template_id = item.get("template_id") or item.get("id")
+                    if isinstance(template_id, str) and template_id.strip():
+                        return template_id.strip()
+        return None
+
+    def _build_prompt_context(self, payload: dict[str, Any]) -> dict[str, Any]:
+        context = dict(payload)
+        if not isinstance(context.get("email"), dict):
+            context["email"] = {
+                "subject": (
+                    payload.get("subject")
+                    or payload.get("current_subject")
+                    or payload.get("fallback_subject")
+                    or payload.get("subject_override")
+                    or ""
+                ),
+                "body": payload.get("body") or payload.get("current_body") or payload.get("fallback_body") or "",
+            }
+        context["professor"] = payload.get("professor") if isinstance(payload.get("professor"), dict) else {}
+        context["funding_request"] = (
+            payload.get("funding_request") if isinstance(payload.get("funding_request"), dict) else {}
+        )
+        context["student_profile"] = (
+            payload.get("student_profile") if isinstance(payload.get("student_profile"), dict) else {}
+        )
+        context["requested_edits"] = payload.get("requested_edits") if isinstance(payload.get("requested_edits"), list) else []
+        context["review_report"] = payload.get("review_report") if isinstance(payload.get("review_report"), dict) else {}
+        context["custom_instructions"] = payload.get("custom_instructions")
+        return context
+
+    def _attach_prompt_metadata(self, result: OperatorResult, prompt_render: PromptRenderResult | None) -> None:
+        if prompt_render is None:
+            return
+        result.prompt_template_id = prompt_render.template_id
+        result.prompt_template_hash = prompt_render.template_hash

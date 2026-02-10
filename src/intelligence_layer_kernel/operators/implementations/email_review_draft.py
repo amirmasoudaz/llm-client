@@ -9,7 +9,6 @@ from typing import Any
 from blake3 import blake3
 
 from ..base import Operator
-from ...prompts import PromptTemplateLoader
 from ..types import OperatorCall, OperatorResult, OperatorMetrics, OperatorError
 
 
@@ -22,7 +21,6 @@ class EmailReviewDraftOperator(Operator):
         payload = call.payload
         body = payload.get("body") or payload.get("fallback_body") or ""
         subject = payload.get("subject") or payload.get("fallback_subject") or ""
-        _render_review_prompt(payload, subject=subject, body=body)
 
         if not isinstance(body, str) or body.strip() == "":
             error = OperatorError(
@@ -70,22 +68,6 @@ class EmailReviewDraftOperator(Operator):
             metrics=OperatorMetrics(latency_ms=int((time.monotonic() - start) * 1000)),
             error=None,
         )
-
-
-_PROMPT_LOADER: PromptTemplateLoader | None = None
-
-
-def _render_review_prompt(payload: dict[str, Any], *, subject: str, body: str) -> None:
-    global _PROMPT_LOADER
-    if _PROMPT_LOADER is None:
-        _PROMPT_LOADER = PromptTemplateLoader()
-    context = {
-        "email": {"subject": subject, "body": body},
-        "professor": payload.get("professor") or {},
-        "funding_request": payload.get("funding_request") or {},
-        "custom_instructions": payload.get("custom_instructions"),
-    }
-    _PROMPT_LOADER.render("email_review_draft.v1", context)
 
 
 def _build_outcome(payload: dict[str, Any]) -> dict[str, Any]:

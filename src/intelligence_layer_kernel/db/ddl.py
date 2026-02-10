@@ -263,6 +263,8 @@ DDL_STATEMENTS: list[str] = [
       content                JSONB        NULL,
       content_object_uri     TEXT         NULL,
       content_hash           BYTEA        NULL,
+      template_id            TEXT         NULL,
+      template_hash          TEXT         NULL,
 
       confidence             DOUBLE PRECISION NULL,
       data_classes           TEXT[]       NOT NULL DEFAULT ARRAY[]::TEXT[],
@@ -276,6 +278,14 @@ DDL_STATEMENTS: list[str] = [
       PRIMARY KEY (tenant_id, outcome_id),
       CONSTRAINT outcomes_lineage_version_uq UNIQUE (tenant_id, lineage_id, version)
     );
+    """,
+    """
+    ALTER TABLE ledger.outcomes
+      ADD COLUMN IF NOT EXISTS template_id TEXT NULL;
+    """,
+    """
+    ALTER TABLE ledger.outcomes
+      ADD COLUMN IF NOT EXISTS template_hash TEXT NULL;
     """,
     """
     CREATE INDEX IF NOT EXISTS outcomes_workflow_created

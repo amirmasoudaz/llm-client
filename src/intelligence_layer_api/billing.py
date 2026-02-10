@@ -219,12 +219,18 @@ class CreditManager:
                 actual_credits = int(actual_credits or 0)
 
                 if actual_credits <= 0:
+                    template_id, template_hash = await self._lookup_workflow_prompt_template(
+                        conn,
+                        workflow_id=workflow_id,
+                    )
                     actual_credits = reserved_credits
                     await self._insert_estimated_usage(
                         conn,
                         principal_id=principal_id,
                         workflow_id=workflow_id,
                         credits=actual_credits,
+                        template_id=template_id,
+                        template_hash=template_hash,
                     )
 
                 if actual_credits > reserved_credits:
@@ -381,15 +387,24 @@ class CreditManager:
         principal_id: int,
         workflow_id: uuid.UUID,
         credits: int,
+        template_id: str | None = None,
+        template_hash: str | None = None,
     ) -> None:
         usage_event_id = uuid.uuid4()
+        usage_payload: dict[str, Any] = {"estimated": True}
+        if template_id or template_hash:
+            usage_payload["prompt_template"] = {
+                "template_id": template_id,
+                "template_hash": template_hash,
+            }
         await conn.execute(
             """
             INSERT INTO billing.usage_events (
               tenant_id, usage_event_id, principal_id, workflow_id, job_id,
               operation_type, provider, model, usage, cost_usd, effective_cost_usd,
-              credits_charged, pricing_version_id, credit_rate_version, estimated
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11,$12,$13,$14,$15);
+              credits_charged, pricing_version_id, credit_rate_version, estimated,
+              template_id, template_hash
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11,$12,$13,$14,$15,$16,$17);
             """,
             self._tenant_id,
             usage_event_id,
@@ -399,14 +414,44 @@ class CreditManager:
             "workflow",
             "internal",
             "none",
-            json.dumps({"estimated": True}),
+            json.dumps(usage_payload),
             0.0,
             0.0,
             int(credits),
             self._pricing_version_id,
             self._credit_rate_version,
             True,
+            template_id,
+            template_hash,
         )
+
+    async def _lookup_workflow_prompt_template(
+        self,
+        conn,
+        *,
+        workflow_id: uuid.UUID,
+    ) -> tuple[str | None, str | None]:
+        row = await conn.fetchrow(
+            """
+            SELECT template_id, template_hash
+            FROM ledger.outcomes
+            WHERE tenant_id=$1
+              AND workflow_id=$2
+              AND template_id IS NOT NULL
+              AND template_hash IS NOT NULL
+            ORDER BY created_at DESC
+            LIMIT 1;
+            """,
+            self._tenant_id,
+            workflow_id,
+        )
+        if row is None:
+            return None, None
+        template_id = row["template_id"]
+        template_hash = row["template_hash"]
+        if template_id is None or template_hash is None:
+            return None, None
+        return str(template_id), str(template_hash)
 
 
 def request_key_for_workflow(workflow_id: uuid.UUID) -> bytes:

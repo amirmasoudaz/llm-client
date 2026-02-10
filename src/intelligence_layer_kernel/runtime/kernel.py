@@ -556,6 +556,8 @@ class WorkflowKernel:
             operator_version=op_version,
             status="succeeded",
             content=result.result,
+            template_id=result.prompt_template_id,
+            template_hash=result.prompt_template_hash,
         )
 
         self._apply_produces(ctx.data, step.get("produces") or [], result.result)

@@ -29,6 +29,13 @@ class PromptTemplateLoader:
         template_hash = blake3(source.encode("utf-8")).hexdigest()
         return PromptRenderResult(template_id=normalized, template_hash=template_hash, text=text)
 
+    def template_exists(self, template_id: str) -> bool:
+        return self.resolve_template_path(template_id).exists()
+
+    def resolve_template_path(self, template_id: str) -> Path:
+        normalized = _normalize_template_id(template_id)
+        return self._base_path / normalized
+
     def _get_template_source(self, template_id: str) -> str:
         source, _filename, _uptodate = self._env.loader.get_source(self._env, template_id)
         return source
@@ -50,7 +57,14 @@ def _build_environment(base_path: Path):
 
 
 def _normalize_template_id(template_id: str) -> str:
-    template_id = template_id.strip().lstrip("/")
-    if not template_id.endswith(".j2"):
-        template_id = template_id + ".j2"
-    return template_id
+    normalized = template_id.strip().lstrip("/")
+    if not normalized:
+        raise ValueError("template_id must not be empty")
+    if not normalized.endswith(".j2"):
+        normalized = normalized + ".j2"
+    parts = [part for part in normalized.split("/") if part]
+    if len(parts) < 3:
+        raise ValueError(
+            "template_id must follow 'src/intelligence_layer_prompts/{operator_name}/{version}/{name}.j2' layout"
+        )
+    return "/".join(parts)
