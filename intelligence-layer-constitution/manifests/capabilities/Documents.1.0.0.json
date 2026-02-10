@@ -19,7 +19,9 @@
       "agents": ["Switchboard@1.x", "FollowUp@1.x"],
       "operators": [
         "Platform.Context.Load@1.0.0",
+        "Platform.Attachments.List@1.0.0",
         "Documents.Upload@1.0.0",
+        "Documents.ImportFromPlatformAttachment@1.0.0",
         "Documents.Process@1.0.0",
         "Documents.Review@1.0.0",
         "Documents.Optimize@1.0.0",
@@ -55,4 +57,3 @@
     }
   }
 }
-

@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/operators/platform_attachments_list.output.v1.json",
+  "title": "Operator: Platform.Attachments.List (output) (v1)",
+  "allOf": [
+    { "$ref": "operator_result_base.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "result": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": [
+            "thread_id",
+            "funding_request_id",
+            "student_id",
+            "requested_document_type",
+            "requested_attachment_kinds",
+            "attachments",
+            "selected_attachment"
+          ],
+          "properties": {
+            "thread_id": { "$ref": "../common/defs.v1.json#/$defs/ThreadId" },
+            "funding_request_id": { "$ref": "../common/defs.v1.json#/$defs/FundingRequestId" },
+            "student_id": { "$ref": "../common/defs.v1.json#/$defs/StudentId" },
+            "requested_document_type": {
+              "type": "string",
+              "enum": [
+                "cv",
+                "sop",
+                "letter",
+                "transcript",
+                "portfolio",
+                "study_plan",
+                "certificate",
+                "language_test",
+                "identification",
+                "photograph",
+                "other",
+                "resume"
+              ]
+            },
+            "requested_attachment_kinds": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "attachments": {
+              "type": "array",
+              "items": { "type": "object", "additionalProperties": true }
+            },
+            "selected_attachment": {
+              "type": ["object", "null"],
+              "additionalProperties": true
+            }
+          }
+        }
+      }
+    }
+  ]
+}

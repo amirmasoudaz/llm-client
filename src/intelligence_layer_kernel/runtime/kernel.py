@@ -45,10 +45,11 @@ class WorkflowKernel:
         scope_id: str,
         actor: dict[str, Any],
         message: str,
+        attachments: list[int] | None = None,
         source: str = "chat",
         workflow_id: uuid.UUID | None = None,
     ) -> WorkflowResult:
-        intent_type, inputs = self._switchboard.classify(message)
+        intent_type, inputs = self._switchboard.classify(message, attachment_ids=attachments or [])
         return await self.start_intent(
             intent_type=intent_type,
             inputs=inputs,
