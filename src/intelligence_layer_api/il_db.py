@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 import asyncpg
 
@@ -501,6 +502,24 @@ class ILDB:
 _pool_lock = asyncio.Lock()
 _pool: asyncpg.Pool | None = None
 
+def _redact_postgres_dsn(dsn: str) -> str:
+    try:
+        parts = urlsplit(dsn)
+        if not parts.password:
+            return dsn
+
+        hostport = parts.hostname or ""
+        if parts.port:
+            hostport = f"{hostport}:{parts.port}"
+
+        if parts.username:
+            netloc = f"{parts.username}:***@{hostport}"
+        else:
+            netloc = hostport
+
+        return urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))
+    except Exception:
+        return dsn
 
 async def get_pool(dsn: str) -> asyncpg.Pool:
     global _pool
@@ -508,5 +527,15 @@ async def get_pool(dsn: str) -> asyncpg.Pool:
         return _pool
     async with _pool_lock:
         if _pool is None:
-            _pool = await asyncpg.create_pool(dsn=dsn, min_size=1, max_size=10)
+            try:
+                _pool = await asyncpg.create_pool(dsn=dsn, min_size=1, max_size=10)
+            except asyncpg.exceptions.InvalidCatalogNameError as e:
+                redacted = _redact_postgres_dsn(dsn)
+                raise RuntimeError(
+                    "Postgres database does not exist for the configured IL runtime store.\n"
+                    f"- DSN: {redacted}\n"
+                    "- If you're using this repo's docker-compose, run: `docker compose up -d postgres redis`\n"
+                    "- Then set: `IL_PG_DSN=postgresql://postgres:postgres@localhost:5433/intelligence_layer`\n"
+                    "- If you're using a local Postgres instance, create the database first (e.g. `createdb intelligence_layer`)."
+                ) from e
         return _pool

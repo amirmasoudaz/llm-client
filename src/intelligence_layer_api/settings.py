@@ -136,8 +136,12 @@ class Settings:
     )
 
     # Intelligence layer Postgres (ledgers/runtime)
-    il_pg_dsn: str = getenv("IL_PG_DSN", getenv("PG_DSN", "postgresql://postgres:postgres@localhost:5432/intelligence_layer"))
-
+    # Default aligns with this repo's `docker-compose.yml` (5433 -> container 5432).
+    il_pg_dsn: str = getenv(
+        "IL_PG_DSN",
+        getenv("PG_DSN", "postgresql://postgres:postgres@localhost:5433/intelligence_layer"),
+    )
+    
     # Platform (MariaDB/MySQL) connection
     platform_db_host: str = getenv("PLATFORM_DB_HOST", getenv("DB_HOST", "127.0.0.1"))
     platform_db_port: int = int(getenv("PLATFORM_DB_PORT", getenv("DB_PORT", "3306")))

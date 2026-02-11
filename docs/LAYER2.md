@@ -23,10 +23,12 @@ docker compose up -d postgres redis
 Example:
 
 ```bash
-IL_PG_DSN="postgresql://postgres:postgres@localhost:5432/intelligence_layer"
+IL_PG_DSN="postgresql://postgres:postgres@localhost:5433/intelligence_layer"
 ```
 
 Note: if you already have `PG_DSN` set (used by other parts of this repo), set `IL_PG_DSN` explicitly so Layer 2 doesn’t accidentally connect to the wrong database.
+
+Note: this repo’s `docker-compose.yml` maps Postgres to host port `5433` by default.
 
 ### Platform DB (MariaDB/MySQL)
 
