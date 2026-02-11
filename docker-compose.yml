@@ -21,7 +21,7 @@ services:
     container_name: il_redis
     command: ["redis-server", "--appendonly", "yes"]
     ports:
-      - "6379:6379"
+      - "6380:6379"
     volumes:
       - il_redis_data:/data
     healthcheck:
