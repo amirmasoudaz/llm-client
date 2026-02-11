@@ -61,6 +61,11 @@ class WorkflowKernel:
     tenant_id: int
     switchboard: IntentSwitchboard | None = None
     usage_recorder: UsageRecorder | None = None
+    apply_steps_enabled: bool = True
+    apply_shadow_mode: bool = False
+    replies_enabled: bool = True
+    replies_canary_percent: int = 100
+    replies_canary_principals: tuple[int, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "_intent_store", IntentStore(pool=self.pool, tenant_id=self.tenant_id))
@@ -83,10 +88,13 @@ class WorkflowKernel:
         source: str = "chat",
         workflow_id: uuid.UUID | None = None,
     ) -> WorkflowResult:
+        allowed_intents = self._allowed_intents_for_actor(actor=actor)
+        if not allowed_intents:
+            allowed_intents = self.contracts.list_intent_types()
         intent_type, inputs = self._switchboard.classify(
             message,
             attachment_ids=attachments or [],
-            allowed_intents=self.contracts.list_intent_types(),
+            allowed_intents=allowed_intents,
         )
         return await self.start_intent(
             intent_type=intent_type,
@@ -329,6 +337,41 @@ class WorkflowKernel:
             created_at=datetime.now(timezone.utc),
         )
 
+    def _allowed_intents_for_actor(self, *, actor: dict[str, Any]) -> list[str]:
+        intents = self.contracts.list_intent_types()
+        allowed: list[str] = []
+        for intent_type in intents:
+            if self._intent_enabled_for_actor(intent_type=intent_type, actor=actor):
+                allowed.append(intent_type)
+        return allowed
+
+    def _intent_enabled_for_actor(self, *, intent_type: str, actor: dict[str, Any]) -> bool:
+        if not _is_reply_intent(intent_type):
+            return True
+        if not self.replies_enabled:
+            return False
+
+        principal = actor.get("principal") if isinstance(actor.get("principal"), dict) else {}
+        principal_id = _coerce_positive_int(principal.get("id"))
+        if principal_id is None:
+            return self._normalized_canary_percent() > 0
+        if principal_id in set(self.replies_canary_principals):
+            return True
+
+        percent = self._normalized_canary_percent()
+        if percent >= 100:
+            return True
+        if percent <= 0:
+            return False
+        return _stable_percent_bucket(principal_id) < percent
+
+    def _normalized_canary_percent(self) -> int:
+        try:
+            value = int(self.replies_canary_percent)
+        except Exception:
+            return 100
+        return max(0, min(100, value))
+
     async def _execute_existing_workflow(
         self,
         *,
@@ -481,6 +524,42 @@ class WorkflowKernel:
                 status = "READY"
 
             if not self._deps_satisfied(step, state_by_id):
+                continue
+
+            apply_mode = self._apply_step_mode(step)
+            if apply_mode is not None:
+                await self._workflow_store.mark_step_succeeded(workflow_id=workflow_id, step_id=step_id)
+                state["status"] = "SUCCEEDED"
+                stage = "apply_shadow_mode" if apply_mode == "shadow" else "apply_steps_disabled"
+                await self._emit_progress(
+                    workflow_id=workflow_id,
+                    intent_id=intent.intent_id,
+                    plan_id=plan.plan_id,
+                    thread_id=intent.thread_id,
+                    correlation_id=intent.correlation_id,
+                    actor=actor,
+                    stage=stage,
+                    detail={
+                        "step_id": step_id,
+                        "name": step.get("name"),
+                        "mode": apply_mode,
+                    },
+                )
+                await self._emit_event(
+                    workflow_id=workflow_id,
+                    intent_id=intent.intent_id,
+                    plan_id=plan.plan_id,
+                    thread_id=intent.thread_id,
+                    correlation_id=intent.correlation_id,
+                    actor=actor,
+                    event_type="apply_step_skipped",
+                    payload={
+                        "step_id": step_id,
+                        "operator_name": step.get("operator_name"),
+                        "mode": apply_mode,
+                    },
+                    step_id=step_id,
+                )
                 continue
 
             kind = step["kind"]
@@ -1145,6 +1224,10 @@ class WorkflowKernel:
             sources = params.get("sources") or []
             if not any(_has_value(ctx.get(src)) for src in sources if isinstance(src, str)):
                 missing_fields = [str(params.get("missing_field_key") or "email_draft")]
+        elif check_name == "EnsureReplyPresent":
+            sources = params.get("sources") or []
+            if not any(_has_value(ctx.get(src)) for src in sources if isinstance(src, str)):
+                missing_fields = [str(params.get("missing_field_key") or "professor_reply")]
         elif check_name == "Onboarding.Ensure":
             requirements_state = ctx.get("context.profile.requirements")
             if not isinstance(requirements_state, dict):
@@ -1243,6 +1326,12 @@ class WorkflowKernel:
                 default_description = (
                     "No draft email was found. Generate a draft in the Funding Outreach UI, "
                     "then retry optimization."
+                )
+            if check_name == "EnsureReplyPresent":
+                default_title = "No professor reply yet"
+                default_description = (
+                    "No professor reply is available for this request yet. "
+                    "Please wait for a reply, then try again."
                 )
             if check_name == "EnsureAttachmentPresent":
                 requested_document_type = str(
@@ -1483,6 +1572,15 @@ class WorkflowKernel:
                 return False
         return True
 
+    def _apply_step_mode(self, step: dict[str, Any]) -> str | None:
+        if not _is_apply_step(step):
+            return None
+        if not self.apply_steps_enabled:
+            return "disabled"
+        if self.apply_shadow_mode:
+            return "shadow"
+        return None
+
     def _apply_produces(self, ctx: dict[str, Any], produces: list[str], result: dict[str, Any] | None) -> None:
         if not result:
             return
@@ -1681,6 +1779,33 @@ def _coerce_non_negative_int(value: Any) -> int:
     except (TypeError, ValueError):
         return 0
     return parsed if parsed >= 0 else 0
+
+
+def _is_reply_intent(intent_type: str) -> bool:
+    return intent_type in {
+        "Funding.Outreach.Reply.Interpret",
+        "Funding.Outreach.FollowUp.Draft",
+    }
+
+
+def _is_apply_step(step: dict[str, Any]) -> bool:
+    effects = step.get("effects")
+    if isinstance(effects, list) and any(str(item) == "db_write_platform" for item in effects):
+        return True
+    kind = str(step.get("kind") or "")
+    if kind == "human_gate":
+        gate_cfg = step.get("gate")
+        if isinstance(gate_cfg, dict):
+            gate_type = str(gate_cfg.get("gate_type") or "")
+            if gate_type == "apply_platform_patch":
+                return True
+    operator_name = str(step.get("operator_name") or "")
+    return operator_name.endswith(".Apply")
+
+
+def _stable_percent_bucket(value: int) -> int:
+    digest = blake3(str(value).encode("utf-8")).digest()
+    return int.from_bytes(digest[:2], "big") % 100
 
 
 def _estimate_output_tokens(operator_name: str) -> int:

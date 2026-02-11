@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
+import time
 import uuid
+from collections import defaultdict, deque
 from datetime import datetime, timezone
 from typing import Any, AsyncIterator
 
@@ -26,7 +29,13 @@ from .documents import (
 )
 from .runtime_kernel import KernelContainer, build_kernel
 from .settings import get_settings
-from .auth import AuthAdapter, DevBypassAuthAdapter, PlatformSessionAuthAdapter
+from .auth import (
+    AuthAdapter,
+    AuthResult,
+    DevBypassAuthAdapter,
+    PlatformSessionAuthAdapter,
+    SanctumBearerAuthAdapter,
+)
 from .billing import CreditManager, request_key_for_workflow
 from intelligence_layer_ops.platform_tools import platform_load_funding_thread_context
 from intelligence_layer_kernel.contracts import ContractRegistry
@@ -80,6 +89,15 @@ from intelligence_layer_kernel.operators.implementations.email_review_draft impo
 from intelligence_layer_kernel.operators.implementations.conversation_suggestions_generate import (
     ConversationSuggestionsGenerateOperator,
 )
+from intelligence_layer_kernel.operators.implementations.funding_reply_load import (
+    FundingReplyLoadOperator,
+)
+from intelligence_layer_kernel.operators.implementations.reply_interpret import (
+    ReplyInterpretOperator,
+)
+from intelligence_layer_kernel.operators.implementations.follow_up_draft import (
+    FollowUpDraftOperator,
+)
 from intelligence_layer_kernel.operators.implementations.professor_profile_retrieve import (
     ProfessorProfileRetrieveOperator,
 )
@@ -118,6 +136,50 @@ app = FastAPI(
     redoc_url="/redoc",     # ReDoc (set to None to disable)
     openapi_url="/openapi.json",
 )
+
+
+class _PrincipalRateLimiter:
+    def __init__(self, *, max_events: int, window_seconds: int = 60) -> None:
+        self._max_events = max(1, int(max_events))
+        self._window_seconds = max(1, int(window_seconds))
+        self._events: dict[int, deque[float]] = defaultdict(deque)
+        self._lock = asyncio.Lock()
+
+    async def allow(self, *, principal_id: int) -> tuple[bool, int]:
+        now = time.monotonic()
+        async with self._lock:
+            bucket = self._events[principal_id]
+            cutoff = now - self._window_seconds
+            while bucket and bucket[0] < cutoff:
+                bucket.popleft()
+            if len(bucket) >= self._max_events:
+                retry_after = max(1, int(self._window_seconds - (now - bucket[0])))
+                return False, retry_after
+            bucket.append(now)
+            return True, 0
+
+
+_UNTRUSTED_INPUT_PATTERNS = (
+    r"ignore\\s+(all\\s+)?(previous|prior)\\s+instructions",
+    r"developer\\s+message",
+    r"system\\s+prompt",
+    r"jailbreak",
+    r"do\\s+anything\\s+now",
+)
+
+
+def _sanitize_untrusted_input(text: str, *, max_chars: int) -> tuple[str, list[str]]:
+    normalized = str(text or "")
+    flags: list[str] = []
+    if len(normalized) > max_chars:
+        normalized = normalized[:max_chars]
+        flags.append("input_truncated")
+    lowered = normalized.lower()
+    if any(re.search(pattern, lowered) for pattern in _UNTRUSTED_INPUT_PATTERNS):
+        flags.append("prompt_injection_pattern")
+    if len(re.findall(r"https?://", lowered)) >= 8:
+        flags.append("high_link_density")
+    return normalized.strip(), flags
 
 
 async def _emit_progress_event(
@@ -209,6 +271,30 @@ async def _enforce_funding_request_ownership(
         raise HTTPException(status_code=403, detail="forbidden")
 
 
+async def _authenticate_thread_access(
+    *,
+    request: Request,
+    auth_adapter: AuthAdapter,
+    thread: dict[str, Any],
+) -> AuthResult:
+    auth = await auth_adapter.authenticate(
+        request=request,
+        funding_request_id=int(thread["funding_request_id"]),
+        student_id_override=int(thread["student_id"]),
+    )
+    if not auth.ok:
+        raise HTTPException(status_code=auth.status_code, detail=auth.reason or "unauthorized")
+    principal_id = int(auth.principal_id or 0)
+    if principal_id != int(thread["student_id"]):
+        raise HTTPException(status_code=403, detail="forbidden")
+    await _enforce_funding_request_ownership(
+        auth_adapter=auth_adapter,
+        funding_request_id=int(thread["funding_request_id"]),
+        principal_id=principal_id,
+    )
+    return auth
+
+
 class ThreadInitRequest(BaseModel):
     funding_request_id: int = Field(..., ge=1)
     student_id: int | None = Field(default=None, ge=1)
@@ -264,6 +350,11 @@ async def _startup() -> None:
     app.state.ildb = ildb
     app.state.kernel_container = kernel_container
     app.state.sse_projector = SSEProjector(pool=pool, tenant_id=ildb.tenant_id)
+    app.state.query_submit_semaphore = asyncio.Semaphore(max(1, settings.query_concurrency_limit))
+    app.state.query_rate_limiter = _PrincipalRateLimiter(
+        max_events=settings.query_rate_limit_per_minute,
+        window_seconds=60,
+    )
 
     contracts = ContractRegistry()
     contracts.load()
@@ -286,6 +377,9 @@ async def _startup() -> None:
     operator_registry.register(EmailApplyToPlatformProposeOperator())
     operator_registry.register(EmailReviewDraftOperator())
     operator_registry.register(ConversationSuggestionsGenerateOperator())
+    operator_registry.register(FundingReplyLoadOperator(pool=pool, tenant_id=ildb.tenant_id))
+    operator_registry.register(ReplyInterpretOperator())
+    operator_registry.register(FollowUpDraftOperator())
     operator_registry.register(ProfessorProfileRetrieveOperator())
     operator_registry.register(ProfessorSummarizeOperator())
     operator_registry.register(ProfessorAlignmentScoreOperator())
@@ -308,12 +402,23 @@ async def _startup() -> None:
         policy_store=policy_store,
         event_writer=event_writer,
         prompt_loader=PromptTemplateLoader(),
+        operator_timeout_ms=settings.operator_timeout_ms,
+        max_retry_attempts=settings.operator_max_retries,
+        retry_base_ms=settings.operator_retry_base_ms,
+        retry_jitter_ms=settings.operator_retry_jitter_ms,
+        circuit_breaker_failure_threshold=settings.operator_circuit_breaker_threshold,
+        circuit_breaker_open_ms=settings.operator_circuit_breaker_open_ms,
     )
 
     app.state.operator_registry = operator_registry
     app.state.outcome_store = OutcomeStore(pool=pool, tenant_id=ildb.tenant_id)
     app.state.operator_executor = operator_executor
     app.state.event_writer = event_writer
+    replies_canary_principals: tuple[int, ...] = tuple(
+        int(value)
+        for value in settings.replies_canary_principal_ids
+        if str(value).strip().isdigit()
+    )
     credit_manager = CreditManager(
         pool=pool,
         tenant_id=ildb.tenant_id,
@@ -321,6 +426,7 @@ async def _startup() -> None:
         bootstrap_credits=settings.credits_bootstrap_amount,
         reservation_ttl_sec=settings.credits_reservation_ttl_sec,
         min_reserve_credits=settings.credits_min_reserve,
+        settlement_outbox_max_retries=settings.credits_settlement_outbox_max_retries,
     )
     app.state.credit_manager = credit_manager
     app.state.workflow_kernel = WorkflowKernel(
@@ -332,9 +438,16 @@ async def _startup() -> None:
         pool=pool,
         tenant_id=ildb.tenant_id,
         usage_recorder=credit_manager,
+        apply_steps_enabled=settings.feature_apply_steps_enabled,
+        apply_shadow_mode=settings.feature_apply_shadow_mode,
+        replies_enabled=settings.feature_replies_enabled,
+        replies_canary_percent=settings.replies_canary_percent,
+        replies_canary_principals=replies_canary_principals,
     )
     if settings.auth_mode == "platform_session":
         app.state.auth_adapter = PlatformSessionAuthAdapter.from_settings(settings)
+    elif settings.auth_mode == "sanctum_bearer":
+        app.state.auth_adapter = SanctumBearerAuthAdapter.from_settings(settings)
     else:
         app.state.auth_adapter = DevBypassAuthAdapter(allow_bypass=settings.auth_bypass)
     storage_health = upload_storage_health()
@@ -990,6 +1103,62 @@ async def submit_query(thread_id: str, req: SubmitQueryRequest, request: Request
             "scopes": list(auth.scopes),
         }
         credit_manager: CreditManager = app.state.credit_manager
+        if hasattr(credit_manager, "process_settlement_outbox"):
+            try:
+                await credit_manager.process_settlement_outbox(max_items=10)
+            except Exception:
+                logger.exception("credit settlement outbox processing failed")
+
+        rate_limiter: _PrincipalRateLimiter | None = getattr(app.state, "query_rate_limiter", None)
+        if rate_limiter is None:
+            rate_limiter = _PrincipalRateLimiter(max_events=100000, window_seconds=60)
+        rate_allowed, retry_after_sec = await rate_limiter.allow(principal_id=principal_id)
+        if not rate_allowed:
+            await _emit_final_error_event(
+                event_writer=event_writer,
+                tenant_id=ildb.tenant_id,
+                workflow_id=workflow_id,
+                actor=actor,
+                message=f"rate limit exceeded; retry after {retry_after_sec}s",
+                correlation_id=preflight_correlation_id,
+                thread_id=thread_id_int,
+            )
+            await _emit_workflow_event(
+                event_writer=event_writer,
+                tenant_id=ildb.tenant_id,
+                workflow_id=workflow_id,
+                actor=actor,
+                event_type="rate_limited",
+                payload={"retry_after_sec": retry_after_sec},
+                correlation_id=preflight_correlation_id,
+                thread_id=thread_id_int,
+            )
+            return SubmitQueryResponse(
+                query_id=str(workflow_id),
+                sse_url=f"/v1/workflows/{workflow_id}/events",
+            )
+
+        input_guard_enabled = bool(getattr(settings, "input_guard_enabled", True))
+        input_guard_max_chars = int(getattr(settings, "input_guard_max_chars", 12000))
+        guarded_message = req.message
+        input_guard_flags: list[str] = []
+        if input_guard_enabled:
+            guarded_message, input_guard_flags = _sanitize_untrusted_input(
+                req.message,
+                max_chars=input_guard_max_chars,
+            )
+            if input_guard_flags:
+                actor["input_risk"] = {"flags": input_guard_flags}
+                await _emit_workflow_event(
+                    event_writer=event_writer,
+                    tenant_id=ildb.tenant_id,
+                    workflow_id=workflow_id,
+                    actor=actor,
+                    event_type="input_guard_triggered",
+                    payload={"flags": input_guard_flags},
+                    correlation_id=preflight_correlation_id,
+                    thread_id=thread_id_int,
+                )
 
         pending_gate = await ildb.get_latest_waiting_profile_gate(thread_id=thread_id_int)
         if pending_gate is not None:
@@ -1017,7 +1186,10 @@ async def submit_query(thread_id: str, req: SubmitQueryRequest, request: Request
                         "provider": "openai",
                         "model": "gpt-5-nano",
                     }
-            profile_payload = _extract_profile_gate_payload(req.message, gate_preview if isinstance(gate_preview, dict) else None)
+            profile_payload = _extract_profile_gate_payload(
+                guarded_message,
+                gate_preview if isinstance(gate_preview, dict) else None,
+            )
             await kernel.resolve_action(
                 action_id=gate_id,
                 status="accepted",
@@ -1032,7 +1204,7 @@ async def submit_query(thread_id: str, req: SubmitQueryRequest, request: Request
 
         request_key = request_key_for_workflow(workflow_id)
         reserve_amount = await credit_manager.estimate_reserve_credits(
-            req.message,
+            guarded_message,
             provider="openai",
             model="gpt-5-nano",
         )
@@ -1122,19 +1294,58 @@ async def submit_query(thread_id: str, req: SubmitQueryRequest, request: Request
             correlation_id=preflight_correlation_id,
             thread_id=thread_id_int,
         )
+        submit_sem: asyncio.Semaphore | None = getattr(app.state, "query_submit_semaphore", None)
+        if submit_sem is None:
+            submit_sem = asyncio.Semaphore(1024)
+        acquired = False
+        backpressure_timeout_ms = int(getattr(settings, "query_backpressure_timeout_ms", 750))
+        try:
+            await asyncio.wait_for(
+                submit_sem.acquire(),
+                timeout=max(0.1, backpressure_timeout_ms / 1000.0),
+            )
+            acquired = True
+        except TimeoutError:
+            await _emit_final_error_event(
+                event_writer=event_writer,
+                tenant_id=ildb.tenant_id,
+                workflow_id=workflow_id,
+                actor=actor,
+                message="system busy; please retry shortly",
+                correlation_id=preflight_correlation_id,
+                thread_id=thread_id_int,
+            )
+            await _emit_workflow_event(
+                event_writer=event_writer,
+                tenant_id=ildb.tenant_id,
+                workflow_id=workflow_id,
+                actor=actor,
+                event_type="backpressure",
+                payload={"status": "rejected"},
+                correlation_id=preflight_correlation_id,
+                thread_id=thread_id_int,
+            )
+            return SubmitQueryResponse(
+                query_id=str(workflow_id),
+                sse_url=f"/v1/workflows/{workflow_id}/events",
+            )
+
         try:
             result = await kernel.handle_message(
                 thread_id=thread_id_int,
                 scope_type="funding_request",
                 scope_id=str(thread["funding_request_id"]),
                 actor=actor,
-                message=req.message,
+                message=guarded_message,
                 attachments=extract_attachment_ids(req.attachments),
                 source="chat",
                 workflow_id=workflow_id,
             )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        finally:
+            if acquired:
+                submit_sem.release()
 
         if result.status != "waiting":
             settlement = await credit_manager.settle(
@@ -1158,6 +1369,27 @@ async def submit_query(thread_id: str, req: SubmitQueryRequest, request: Request
                     correlation_id=preflight_correlation_id,
                     thread_id=thread_id_int,
                 )
+            else:
+                if hasattr(credit_manager, "enqueue_settlement_retry"):
+                    outbox_id = await credit_manager.enqueue_settlement_retry(
+                        principal_id=principal_id,
+                        workflow_id=workflow_id,
+                        request_key=request_key,
+                        reason=settlement.reason,
+                    )
+                    await _emit_workflow_event(
+                        event_writer=event_writer,
+                        tenant_id=ildb.tenant_id,
+                        workflow_id=workflow_id,
+                        actor=actor,
+                        event_type="credits_settlement_retry_scheduled",
+                        payload={
+                            "outbox_id": str(outbox_id),
+                            "reason": settlement.reason or "settlement_failed",
+                        },
+                        correlation_id=preflight_correlation_id,
+                        thread_id=thread_id_int,
+                    )
 
         return SubmitQueryResponse(
             query_id=str(result.workflow_id),
@@ -1247,13 +1479,19 @@ async def submit_query(thread_id: str, req: SubmitQueryRequest, request: Request
 
 
 @app.get("/v1/queries/{query_id}/events")
-async def query_events(query_id: str) -> StreamingResponse:
+async def query_events(query_id: str, request: Request) -> StreamingResponse:
     ildb: ILDB = app.state.ildb
+    auth_adapter: AuthAdapter = app.state.auth_adapter
     _kc: KernelContainer = app.state.kernel_container
 
-    job_id = await ildb.get_job_id_for_query(query_id=query_id)
-    if not job_id:
+    query = await ildb.get_query(query_id=query_id)
+    if not query:
         raise HTTPException(status_code=404, detail="query not found")
+    thread = await ildb.get_thread(thread_id=int(query["thread_id"]))
+    if not thread:
+        raise HTTPException(status_code=404, detail="thread not found")
+    await _authenticate_thread_access(request=request, auth_adapter=auth_adapter, thread=thread)
+    job_id = str(query["job_id"])
 
     async def gen() -> AsyncIterator[str]:
         last_ts = 0.0
@@ -1293,8 +1531,20 @@ async def query_events(query_id: str) -> StreamingResponse:
 
 
 @app.get("/v1/workflows/{workflow_id}/events")
-async def workflow_events(workflow_id: str) -> StreamingResponse:
+async def workflow_events(workflow_id: str, request: Request) -> StreamingResponse:
+    ildb: ILDB = app.state.ildb
+    auth_adapter: AuthAdapter = app.state.auth_adapter
     projector: SSEProjector = app.state.sse_projector
+    run = await ildb.get_workflow_run(workflow_id=workflow_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="workflow not found")
+    thread_id = run.get("thread_id")
+    if thread_id is None:
+        raise HTTPException(status_code=404, detail="workflow_not_scoped")
+    thread = await ildb.get_thread(thread_id=int(thread_id))
+    if not thread:
+        raise HTTPException(status_code=404, detail="thread not found")
+    await _authenticate_thread_access(request=request, auth_adapter=auth_adapter, thread=thread)
 
     async def gen() -> AsyncIterator[str]:
         async for chunk in projector.stream(workflow_id=workflow_id):
@@ -1316,6 +1566,7 @@ class WorkflowOutcomesResponse(BaseModel):
 @app.get("/v1/workflows/{workflow_id}/outcomes", response_model=WorkflowOutcomesResponse)
 async def workflow_outcomes(
     workflow_id: str,
+    request: Request,
     mode: str = Query(default="reproduce"),
 ) -> WorkflowOutcomesResponse:
     normalized_mode = mode.strip().lower()
@@ -1328,11 +1579,19 @@ async def workflow_outcomes(
         raise HTTPException(status_code=400, detail="workflow_id must be a UUID") from exc
 
     ildb: ILDB = app.state.ildb
+    auth_adapter: AuthAdapter = app.state.auth_adapter
     outcome_store: OutcomeStore = app.state.outcome_store
 
     run = await ildb.get_workflow_run(workflow_id=workflow_id)
     if run is None:
         raise HTTPException(status_code=404, detail="workflow not found")
+    thread_id = run.get("thread_id")
+    if thread_id is None:
+        raise HTTPException(status_code=404, detail="workflow_not_scoped")
+    thread = await ildb.get_thread(thread_id=int(thread_id))
+    if not thread:
+        raise HTTPException(status_code=404, detail="thread not found")
+    auth = await _authenticate_thread_access(request=request, auth_adapter=auth_adapter, thread=thread)
 
     effective_workflow_uuid = workflow_uuid
     recomputed = False
@@ -1342,10 +1601,10 @@ async def workflow_outcomes(
             raise HTTPException(status_code=400, detail="workflow kernel is unavailable")
         actor = {
             "tenant_id": ildb.tenant_id,
-            "principal": {"type": "system", "id": "workflow_outcomes"},
-            "role": "system",
-            "trust_level": 0,
-            "scopes": ["workflow:rerun"],
+            "principal": {"type": "student", "id": int(auth.principal_id or 0)},
+            "role": "student",
+            "trust_level": int(auth.trust_level),
+            "scopes": [*list(auth.scopes), "workflow:rerun"],
         }
         try:
             rerun = await kernel.rerun_workflow(
@@ -1361,6 +1620,9 @@ async def workflow_outcomes(
         run = await ildb.get_workflow_run(workflow_id=str(effective_workflow_uuid))
         if run is None:
             raise HTTPException(status_code=404, detail="workflow not found")
+        rerun_thread_id = run.get("thread_id")
+        if rerun_thread_id is None or int(rerun_thread_id) != int(thread_id):
+            raise HTTPException(status_code=403, detail="forbidden")
 
     raw_outcomes = await outcome_store.list_by_workflow(workflow_id=effective_workflow_uuid)
     outcomes: list[dict[str, Any]] = []
@@ -1683,36 +1945,48 @@ class ResolveActionRequest(BaseModel):
 
 
 @app.post("/v1/actions/{action_id}/resolve")
-async def resolve_action(action_id: str, req: ResolveActionRequest) -> dict[str, Any]:
+async def resolve_action(action_id: str, req: ResolveActionRequest, request: Request) -> dict[str, Any]:
+    ildb: ILDB = app.state.ildb
+    auth_adapter: AuthAdapter = app.state.auth_adapter
+    gate = await ildb.get_gate(gate_id=action_id)
+    if not gate:
+        raise HTTPException(status_code=404, detail="action_not_found")
+    workflow_id = gate.get("workflow_id")
+    if not workflow_id:
+        raise HTTPException(status_code=404, detail="workflow_not_found")
+    run = await ildb.get_workflow_run(workflow_id=str(workflow_id))
+    if run is None:
+        raise HTTPException(status_code=404, detail="workflow not found")
+    thread_id = run.get("thread_id")
+    if thread_id is None:
+        raise HTTPException(status_code=404, detail="workflow_not_scoped")
+    thread = await ildb.get_thread(thread_id=int(thread_id))
+    if not thread:
+        raise HTTPException(status_code=404, detail="thread not found")
+    auth = await _authenticate_thread_access(request=request, auth_adapter=auth_adapter, thread=thread)
+    principal_id = int(auth.principal_id or 0)
+
     kernel: WorkflowKernel | None = getattr(app.state, "workflow_kernel", None)
     if kernel is not None:
-        ildb: ILDB = app.state.ildb
         credit_manager: CreditManager = app.state.credit_manager
-        gate = await ildb.get_gate(gate_id=action_id)
-        workflow_uuid: uuid.UUID | None = None
-        thread: dict[str, Any] | None = None
-        if gate and gate.get("workflow_id"):
+        if hasattr(credit_manager, "process_settlement_outbox"):
             try:
-                workflow_uuid = uuid.UUID(str(gate["workflow_id"]))
-            except (TypeError, ValueError):
-                workflow_uuid = None
-            if workflow_uuid is not None:
-                run = await ildb.get_workflow_run(workflow_id=str(workflow_uuid))
-                if run and run.get("thread_id") is not None:
-                    thread = await ildb.get_thread(thread_id=int(run["thread_id"]))
-        principal_id = int(thread["student_id"]) if thread and thread.get("student_id") is not None else None
+                await credit_manager.process_settlement_outbox(max_items=10)
+            except Exception:
+                logger.exception("credit settlement outbox processing failed")
+        workflow_uuid: uuid.UUID | None
+        try:
+            workflow_uuid = uuid.UUID(str(workflow_id))
+        except (TypeError, ValueError):
+            workflow_uuid = None
         actor = {
             "tenant_id": getattr(app.state, "ildb").tenant_id,
-            "principal": (
-                {"type": "student", "id": principal_id}
-                if principal_id is not None
-                else {"type": "system", "id": "action_resolver"}
-            ),
-            "role": "student" if principal_id is not None else "system",
-            "trust_level": 0,
-            "scopes": ["resolve_action"],
+            "principal": {"type": "student", "id": principal_id},
+            "role": "student",
+            "trust_level": int(auth.trust_level),
+            "scopes": [*list(auth.scopes), "resolve_action"],
         }
-        if workflow_uuid is not None and principal_id is not None:
+        if workflow_uuid is not None:
             request_key = request_key_for_workflow(workflow_uuid)
             reservation = await credit_manager.reservation_snapshot(request_key=request_key)
             if reservation is not None and reservation.get("status") == "reserved":
@@ -1744,11 +2018,20 @@ async def resolve_action(action_id: str, req: ResolveActionRequest) -> dict[str,
                     thread = await ildb.get_thread(thread_id=int(thread_id))
                     if thread:
                         principal_id = int(thread["student_id"])
-                        await credit_manager.settle(
+                        workflow_uuid = uuid.UUID(str(gate["workflow_id"]))
+                        request_key = request_key_for_workflow(workflow_uuid)
+                        settlement = await credit_manager.settle(
                             principal_id=principal_id,
-                            workflow_id=uuid.UUID(str(gate["workflow_id"])),
-                            request_key=request_key_for_workflow(uuid.UUID(str(gate["workflow_id"]))),
+                            workflow_id=workflow_uuid,
+                            request_key=request_key,
                         )
+                        if not settlement.ok and hasattr(credit_manager, "enqueue_settlement_retry"):
+                            await credit_manager.enqueue_settlement_retry(
+                                principal_id=principal_id,
+                                workflow_id=workflow_uuid,
+                                request_key=request_key,
+                                reason=settlement.reason,
+                            )
         return {"ok": True, "action_id": action_id, "status": req.status}
 
     kc: KernelContainer = app.state.kernel_container
@@ -1763,19 +2046,29 @@ class CancelQueryRequest(BaseModel):
 
 
 @app.post("/v1/queries/{query_id}/cancel")
-async def cancel_query(query_id: str, req: CancelQueryRequest | None = None) -> dict[str, Any]:
+async def cancel_query(query_id: str, request: Request, req: CancelQueryRequest | None = None) -> dict[str, Any]:
     ildb: ILDB = app.state.ildb
+    auth_adapter: AuthAdapter = app.state.auth_adapter
     kc: KernelContainer = app.state.kernel_container
 
-    job_id = await ildb.get_job_id_for_query(query_id=query_id)
-    if not job_id:
+    query = await ildb.get_query(query_id=query_id)
+    if not query:
         raise HTTPException(status_code=404, detail="query not found")
+    thread = await ildb.get_thread(thread_id=int(query["thread_id"]))
+    if not thread:
+        raise HTTPException(status_code=404, detail="thread not found")
+    await _authenticate_thread_access(request=request, auth_adapter=auth_adapter, thread=thread)
+    job_id = str(query["job_id"])
 
     await kc.kernel.cancel(job_id, reason=req.reason if req else None)
     return {"ok": True, "query_id": query_id, "job_id": job_id}
 
 
 @app.post("/v1/workflows/{workflow_id}/cancel")
-async def cancel_workflow(workflow_id: str, req: CancelQueryRequest | None = None) -> dict[str, Any]:
+async def cancel_workflow(
+    workflow_id: str,
+    request: Request,
+    req: CancelQueryRequest | None = None,
+) -> dict[str, Any]:
     # Alias: workflow_id == query_id (constitution alignment)
-    return await cancel_query(workflow_id, req)
+    return await cancel_query(workflow_id, request, req)

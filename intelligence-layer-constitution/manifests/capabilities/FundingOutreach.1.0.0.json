@@ -10,6 +10,8 @@
       "Funding.Outreach.Email.Generate",
       "Funding.Outreach.Email.Review",
       "Funding.Outreach.Email.Optimize",
+      "Funding.Outreach.Reply.Interpret",
+      "Funding.Outreach.FollowUp.Draft",
       "Funding.Paper.Metadata.Extract",
       "Funding.Request.Fields.Update"
     ],
@@ -31,6 +33,9 @@
         "Email.ApplyToPlatform.Propose@1.0.0",
         "FundingEmail.Draft.Update.Propose@1.0.0",
         "FundingEmail.Draft.Update.Apply@1.0.0",
+        "FundingReply.Load@1.0.0",
+        "Reply.Interpret@1.0.0",
+        "FollowUp.Draft@1.0.0",
         "Conversation.Suggestions.Generate@1.0.0",
         "Paper.Metadata.Extract@1.0.0",
         "FundingRequest.Fields.Update.Propose@1.0.0",
@@ -60,6 +65,14 @@
         "plan_template_ref": "plan-templates/funding_outreach_email_optimize.plan.v1.json"
       },
       {
+        "intent_type": "Funding.Outreach.Reply.Interpret",
+        "plan_template_ref": "plan-templates/funding_outreach_reply_interpret.plan.v1.json"
+      },
+      {
+        "intent_type": "Funding.Outreach.FollowUp.Draft",
+        "plan_template_ref": "plan-templates/funding_outreach_followup_draft.plan.v1.json"
+      },
+      {
         "intent_type": "Funding.Paper.Metadata.Extract",
         "plan_template_ref": "plan-templates/funding_paper_metadata_extract.plan.v1.json"
       },
@@ -82,6 +95,7 @@
       { "type": "Alignment.Score", "schema": "schemas/outcomes/alignment_score.v1.json" },
       { "type": "Email.Draft", "schema": "schemas/outcomes/email_draft.v1.json" },
       { "type": "Email.Review", "schema": "schemas/outcomes/email_review.v1.json" },
+      { "type": "Reply.Interpretation", "schema": "schemas/outcomes/reply_interpretation.v1.json" },
       { "type": "Conversation.Suggestions", "schema": "schemas/outcomes/conversation_suggestions.v1.json" },
       { "type": "Paper.Metadata", "schema": "schemas/outcomes/paper_metadata.v1.json" },
       { "type": "PlatformPatch.Proposal", "schema": "schemas/outcomes/platform_patch_proposal.v1.json" },

@@ -27,6 +27,14 @@ class IntentSwitchboard:
             ("complete my profile", "Student.Profile.Collect"),
             ("update my profile", "Student.Profile.Collect"),
             ("onboarding", "Student.Profile.Collect"),
+            ("interpret reply", "Funding.Outreach.Reply.Interpret"),
+            ("analyze reply", "Funding.Outreach.Reply.Interpret"),
+            ("classify reply", "Funding.Outreach.Reply.Interpret"),
+            ("reply meaning", "Funding.Outreach.Reply.Interpret"),
+            ("draft follow up", "Funding.Outreach.FollowUp.Draft"),
+            ("draft follow-up", "Funding.Outreach.FollowUp.Draft"),
+            ("write follow up", "Funding.Outreach.FollowUp.Draft"),
+            ("write follow-up", "Funding.Outreach.FollowUp.Draft"),
             ("optimize email", "Funding.Outreach.Email.Optimize"),
             ("email optimize", "Funding.Outreach.Email.Optimize"),
             ("review email", "Funding.Outreach.Email.Review"),
@@ -86,6 +94,9 @@ class IntentSwitchboard:
         attachment_ids: list[int],
     ) -> tuple[str, dict[str, Any]] | None:
         lowered = text.lower()
+        reply_inputs = self._extract_reply_intent_inputs(text=text, lowered=lowered)
+        if reply_inputs is not None:
+            return reply_inputs
         field_values = self._extract_funding_request_fields(text)
         if field_values:
             field_list = ", ".join(sorted(field_values.keys()))
@@ -285,6 +296,52 @@ class IntentSwitchboard:
             return None
         value = match.group(1).strip(" '\"\t\n\r.")
         if not value:
+            return None
+        return value
+
+    def _extract_reply_intent_inputs(self, *, text: str, lowered: str) -> tuple[str, dict[str, Any]] | None:
+        follow_up_cues = (
+            "follow up",
+            "follow-up",
+            "next email",
+            "reply draft",
+            "respond to professor",
+            "response draft",
+        )
+        interpret_cues = (
+            "interpret reply",
+            "analyze reply",
+            "classify reply",
+            "what does this reply mean",
+            "what should i infer from this reply",
+            "digest this reply",
+        )
+        if any(cue in lowered for cue in follow_up_cues):
+            return "Funding.Outreach.FollowUp.Draft", self._build_reply_inputs(text)
+        if any(cue in lowered for cue in interpret_cues):
+            return "Funding.Outreach.Reply.Interpret", self._build_reply_inputs(text)
+        if "reply" in lowered and "professor" in lowered and "meaning" in lowered:
+            return "Funding.Outreach.Reply.Interpret", self._build_reply_inputs(text)
+        if "professor replied" in lowered and any(token in lowered for token in ("what", "next", "do now")):
+            return "Funding.Outreach.Reply.Interpret", self._build_reply_inputs(text)
+        return None
+
+    def _build_reply_inputs(self, text: str) -> dict[str, Any]:
+        inputs: dict[str, Any] = {"custom_instructions": text.strip()}
+        reply_id = self._extract_reply_id(text)
+        if reply_id is not None:
+            inputs["reply_id"] = reply_id
+        return inputs
+
+    def _extract_reply_id(self, text: str) -> int | None:
+        match = re.search(r"\breply(?:\s+id)?\s*[:=#]?\s*(\d+)\b", text, flags=re.IGNORECASE)
+        if not match:
+            return None
+        try:
+            value = int(match.group(1))
+        except ValueError:
+            return None
+        if value <= 0:
             return None
         return value
 

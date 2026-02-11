@@ -1,0 +1,25 @@
+{
+  "name": "FollowUp.Draft",
+  "type": "operator",
+  "version": "1.0.0",
+  "owner": "canapply",
+  "description": "Draft a follow-up email based on interpreted professor reply context.",
+  "schemas": {
+    "input": "schemas/operators/follow_up_draft.input.v1.json",
+    "output": "schemas/operators/follow_up_draft.output.v1.json"
+  },
+  "prompt_templates": {
+    "primary": "FollowUp.Draft/1.0.0/followup_draft"
+  },
+  "requires": {
+    "tools": [],
+    "capabilities": [],
+    "context_fields": []
+  },
+  "policy_tags": ["draft_only", "untrusted_input"],
+  "effects": ["produce_outcome"],
+  "observability": {
+    "log_level": "info",
+    "emit_samples": false
+  }
+}

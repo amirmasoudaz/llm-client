@@ -1,0 +1,102 @@
+{
+  "schema_version": "1.0",
+  "plan_template_id": "Funding.Outreach.Reply.Interpret@1.0.0",
+  "intent_type": "Funding.Outreach.Reply.Interpret",
+  "plan_version": "planner-1.0",
+  "description": "Load latest professor reply, interpret intent, and generate next prompt suggestions.",
+  "steps": [
+    {
+      "step_id": "s1",
+      "kind": "operator",
+      "name": "Platform.Context.Load",
+      "operator_name": "Platform.Context.Load",
+      "operator_version": "1.0.0",
+      "effects": ["read_only"],
+      "policy_tags": ["read_only", "platform_read"],
+      "risk_level": "low",
+      "cache_policy": "ttl_only",
+      "idempotency_template": "platform_context:{tenant_id}:{thread_id}",
+      "payload": { "thread_id": { "from": "intent.thread_id" } },
+      "produces": ["context.platform", "context.intelligence"]
+    },
+    {
+      "step_id": "s2",
+      "kind": "operator",
+      "name": "FundingReply.Load",
+      "operator_name": "FundingReply.Load",
+      "operator_version": "1.0.0",
+      "effects": ["read_only"],
+      "policy_tags": ["read_only", "platform_read", "untrusted_input"],
+      "risk_level": "low",
+      "cache_policy": "ttl_only",
+      "idempotency_template": "reply_load:{tenant_id}:{context.platform.funding_request.id}:{intent.inputs.reply_id}",
+      "payload": {
+        "thread_id": { "from": "intent.thread_id" },
+        "funding_request_id": { "from": "context.platform.funding_request.id" },
+        "reply_id": { "from": "intent.inputs.reply_id" },
+        "max_items": { "const": 5 }
+      },
+      "produces": ["context.replies"]
+    },
+    {
+      "step_id": "s3",
+      "kind": "policy_check",
+      "name": "Ensure.Reply.Present",
+      "effects": ["read_only"],
+      "policy_tags": ["requires_input"],
+      "risk_level": "low",
+      "cache_policy": "never",
+      "check": {
+        "check_name": "EnsureReplyPresent",
+        "params": {
+          "sources": [
+            "context.replies.latest_reply.reply_body_cleaned",
+            "context.replies.latest_reply.reply_body_raw"
+          ],
+          "on_missing_action_type": "collect_fields",
+          "on_missing_title": "No professor reply yet",
+          "on_missing_description": "No professor reply is available for this request. Please wait for a reply, then try again.",
+          "on_missing_requires_user_input": false
+        }
+      }
+    },
+    {
+      "step_id": "s4",
+      "kind": "operator",
+      "name": "Reply.Interpret",
+      "operator_name": "Reply.Interpret",
+      "operator_version": "1.0.0",
+      "effects": ["produce_outcome"],
+      "policy_tags": ["draft_only", "untrusted_input"],
+      "risk_level": "low",
+      "cache_policy": "use_if_safe",
+      "idempotency_template": "reply_interpret:{tenant_id}:{context.platform.funding_request.id}:{intent.inputs.reply_id}",
+      "payload": {
+        "reply": { "from": "context.replies.latest_reply" },
+        "funding_request": { "from": "context.platform.funding_request" },
+        "email_context": { "from": "context.platform.email" },
+        "student_profile": { "from": "context.intelligence.profile" },
+        "custom_instructions": { "from": "intent.inputs.custom_instructions" }
+      },
+      "produces": ["outcome.reply_interpretation"]
+    },
+    {
+      "step_id": "s5",
+      "kind": "operator",
+      "name": "Conversation.Suggestions.Generate",
+      "operator_name": "Conversation.Suggestions.Generate",
+      "operator_version": "1.0.0",
+      "effects": ["produce_outcome"],
+      "policy_tags": ["read_only"],
+      "risk_level": "low",
+      "cache_policy": "use_if_safe",
+      "idempotency_template": "suggestions:{tenant_id}:{thread_id}:{outcome.reply_interpretation.hash.value}",
+      "payload": {
+        "intent_type": { "from": "intent.intent_type" },
+        "platform": { "from": "context.platform" },
+        "outcomes": { "from": "outcome" }
+      },
+      "produces": ["outcome.suggestions"]
+    }
+  ]
+}

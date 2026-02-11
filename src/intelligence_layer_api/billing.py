@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+import random
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -58,6 +59,7 @@ class CreditManager:
         bootstrap_credits: int,
         reservation_ttl_sec: int,
         min_reserve_credits: int,
+        settlement_outbox_max_retries: int = 8,
     ) -> None:
         self._pool = pool
         self._tenant_id = tenant_id
@@ -65,6 +67,7 @@ class CreditManager:
         self._bootstrap_credits = bootstrap_credits
         self._reservation_ttl = int(reservation_ttl_sec)
         self._min_reserve = int(min_reserve_credits)
+        self._settlement_outbox_max_retries = max(1, int(settlement_outbox_max_retries))
         self._pricing_version_id: uuid.UUID | None = None
         self._credit_rate_version: str | None = None
         self._credits_per_usd: float = 100.0
@@ -588,6 +591,150 @@ class CreditManager:
                     balance_after=new_balance,
                 )
 
+    async def enqueue_settlement_retry(
+        self,
+        *,
+        principal_id: int,
+        workflow_id: uuid.UUID,
+        request_key: bytes,
+        reason: str | None,
+    ) -> uuid.UUID:
+        await self._ensure_defaults()
+        async with self._pool.acquire() as conn:
+            async with conn.transaction():
+                row = await conn.fetchrow(
+                    """
+                    SELECT outbox_id
+                    FROM billing.credit_settlement_outbox
+                    WHERE tenant_id=$1 AND request_key=$2
+                    LIMIT 1;
+                    """,
+                    self._tenant_id,
+                    request_key,
+                )
+                if row is not None:
+                    outbox_id = row["outbox_id"]
+                    await conn.execute(
+                        """
+                        UPDATE billing.credit_settlement_outbox
+                        SET status='pending',
+                            next_attempt_at=now(),
+                            last_error=$3,
+                            updated_at=now()
+                        WHERE tenant_id=$1 AND outbox_id=$2;
+                        """,
+                        self._tenant_id,
+                        outbox_id,
+                        reason,
+                    )
+                    return outbox_id
+
+                outbox_id = uuid.uuid4()
+                await conn.execute(
+                    """
+                    INSERT INTO billing.credit_settlement_outbox (
+                      tenant_id, outbox_id, principal_id, workflow_id, request_key,
+                      status, attempt_count, next_attempt_at, last_error
+                    ) VALUES ($1,$2,$3,$4,$5,'pending',0,now(),$6);
+                    """,
+                    self._tenant_id,
+                    outbox_id,
+                    principal_id,
+                    workflow_id,
+                    request_key,
+                    reason,
+                )
+                return outbox_id
+
+    async def process_settlement_outbox(self, *, max_items: int = 20) -> int:
+        await self._ensure_defaults()
+        if max_items <= 0:
+            return 0
+
+        async with self._pool.acquire() as conn:
+            async with conn.transaction():
+                rows = await conn.fetch(
+                    """
+                    SELECT outbox_id, principal_id, workflow_id, request_key, attempt_count
+                    FROM billing.credit_settlement_outbox
+                    WHERE tenant_id=$1
+                      AND status='pending'
+                      AND next_attempt_at <= now()
+                    ORDER BY next_attempt_at ASC
+                    LIMIT $2
+                    FOR UPDATE SKIP LOCKED;
+                    """,
+                    self._tenant_id,
+                    int(max_items),
+                )
+
+        processed = 0
+        for row in rows:
+            processed += 1
+            outbox_id = row["outbox_id"]
+            principal_id = int(row["principal_id"])
+            workflow_id = row["workflow_id"]
+            request_key = bytes(row["request_key"])
+            attempt_count = int(row["attempt_count"] or 0)
+
+            settlement = await self.settle(
+                principal_id=principal_id,
+                workflow_id=workflow_id,
+                request_key=request_key,
+            )
+            async with self._pool.acquire() as conn:
+                if settlement.ok:
+                    await conn.execute(
+                        """
+                        UPDATE billing.credit_settlement_outbox
+                        SET status='settled',
+                            updated_at=now(),
+                            last_error=NULL
+                        WHERE tenant_id=$1 AND outbox_id=$2;
+                        """,
+                        self._tenant_id,
+                        outbox_id,
+                    )
+                    continue
+
+                next_attempt = attempt_count + 1
+                if next_attempt >= self._settlement_outbox_max_retries:
+                    await conn.execute(
+                        """
+                        UPDATE billing.credit_settlement_outbox
+                        SET status='failed',
+                            attempt_count=$3,
+                            updated_at=now(),
+                            last_error=$4
+                        WHERE tenant_id=$1 AND outbox_id=$2;
+                        """,
+                        self._tenant_id,
+                        outbox_id,
+                        next_attempt,
+                        settlement.reason,
+                    )
+                    continue
+
+                delay_seconds = _outbox_retry_delay_seconds(next_attempt)
+                await conn.execute(
+                    """
+                    UPDATE billing.credit_settlement_outbox
+                    SET status='pending',
+                        attempt_count=$3,
+                        next_attempt_at=now() + ($4 * INTERVAL '1 second'),
+                        updated_at=now(),
+                        last_error=$5
+                    WHERE tenant_id=$1 AND outbox_id=$2;
+                    """,
+                    self._tenant_id,
+                    outbox_id,
+                    next_attempt,
+                    delay_seconds,
+                    settlement.reason,
+                )
+
+        return processed
+
     async def _ensure_defaults(self) -> None:
         if self._pricing_version_id and self._credit_rate_version:
             return
@@ -695,6 +842,12 @@ def _resolve_model_rates(pricing_json: dict[str, Any], *, provider: str, model: 
     input_rate = float(raw.get("input_per_1k_usd", 0.00005))
     output_rate = float(raw.get("output_per_1k_usd", 0.00040))
     return {"input_per_1k_usd": input_rate, "output_per_1k_usd": output_rate}
+
+
+def _outbox_retry_delay_seconds(attempt_count: int) -> int:
+    base = min(300, 2 ** min(10, max(0, attempt_count)))
+    jitter = random.randint(0, 5)
+    return int(base + jitter)
 
 
 def request_key_for_workflow(workflow_id: uuid.UUID) -> bytes:

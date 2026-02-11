@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import Request
@@ -43,6 +45,27 @@ _DEFAULT_OWNER_QUERIES: tuple[str, ...] = (
     "SELECT student_id AS owner_id FROM funding_requests WHERE id=%s LIMIT 1;",
     "SELECT user_id AS owner_id FROM funding_requests WHERE id=%s LIMIT 1;",
 )
+
+_DEFAULT_SANCTUM_TOKEN_QUERY = """
+SELECT pat.id AS token_id,
+       pat.tokenable_id AS principal_id,
+       pat.abilities AS abilities,
+       pat.expires_at AS expires_at
+FROM personal_access_tokens pat
+INNER JOIN students s ON s.id = pat.tokenable_id
+WHERE pat.id = %s
+  AND pat.token = %s
+  AND pat.tokenable_type = %s
+LIMIT 1;
+"""
+
+_DEFAULT_SANCTUM_TOUCH_QUERY = """
+UPDATE personal_access_tokens
+SET last_used_at = UTC_TIMESTAMP()
+WHERE id = %s;
+"""
+
+_DEFAULT_SANCTUM_TOKENABLE_TYPE = "App\\Models\\Student\\Student"
 
 
 @dataclass(frozen=True)
@@ -246,6 +269,127 @@ class PlatformSessionAuthAdapter(AuthAdapter):
         return None
 
 
+class SanctumBearerAuthAdapter(AuthAdapter):
+    def __init__(
+        self,
+        *,
+        platform_db: PlatformDB,
+        token_query: str | None = None,
+        tokenable_type: str = _DEFAULT_SANCTUM_TOKENABLE_TYPE,
+        funding_owner_query: str | None = None,
+        update_last_used_at: bool = False,
+        touch_query: str | None = None,
+    ) -> None:
+        self._platform_db = platform_db
+        self._token_query = (
+            token_query.strip()
+            if isinstance(token_query, str) and token_query.strip()
+            else _DEFAULT_SANCTUM_TOKEN_QUERY
+        )
+        self._tokenable_type = tokenable_type or _DEFAULT_SANCTUM_TOKENABLE_TYPE
+        self._owner_queries = (
+            (funding_owner_query.strip(),)
+            if isinstance(funding_owner_query, str) and funding_owner_query.strip()
+            else _DEFAULT_OWNER_QUERIES
+        )
+        self._update_last_used_at = bool(update_last_used_at)
+        self._touch_query = (
+            touch_query.strip()
+            if isinstance(touch_query, str) and touch_query.strip()
+            else _DEFAULT_SANCTUM_TOUCH_QUERY
+        )
+
+    @classmethod
+    def from_settings(cls, settings: Any) -> SanctumBearerAuthAdapter:
+        db = PlatformDB(
+            PlatformDBConfig(
+                host=str(settings.platform_db_host),
+                port=int(settings.platform_db_port),
+                user=str(settings.platform_db_user),
+                password=str(settings.platform_db_pass),
+                db=str(settings.platform_db_name),
+                minsize=int(settings.platform_db_min),
+                maxsize=int(settings.platform_db_max),
+            )
+        )
+        return cls(
+            platform_db=db,
+            token_query=settings.auth_sanctum_token_query,
+            tokenable_type=str(settings.auth_sanctum_tokenable_type or _DEFAULT_SANCTUM_TOKENABLE_TYPE),
+            funding_owner_query=settings.auth_funding_owner_query,
+            update_last_used_at=bool(settings.auth_sanctum_update_last_used_at),
+            touch_query=settings.auth_sanctum_touch_query,
+        )
+
+    async def authenticate(
+        self,
+        *,
+        request: Request,
+        funding_request_id: int | None = None,
+        student_id_override: int | None = None,
+    ) -> AuthResult:
+        bearer_token = _extract_bearer_token(request)
+        if not bearer_token:
+            return AuthResult(ok=False, reason="missing_bearer_token", status_code=401)
+
+        parsed = _parse_sanctum_token(bearer_token)
+        if parsed is None:
+            return AuthResult(ok=False, reason="invalid_token_format", status_code=401)
+        token_id, plain_token = parsed
+
+        hashed_token = hashlib.sha256(plain_token.encode("utf-8")).hexdigest()
+        token_row = await self._lookup_token(token_id=token_id, hashed_token=hashed_token)
+        if token_row is None:
+            return AuthResult(ok=False, reason="invalid_token", status_code=401)
+
+        if _is_expired(token_row.get("expires_at")):
+            return AuthResult(ok=False, reason="token_expired", status_code=401)
+
+        principal_id = _coerce_positive_int(token_row.get("principal_id"))
+        if principal_id is None:
+            return AuthResult(ok=False, reason="invalid_token_principal", status_code=401)
+
+        if student_id_override is not None and int(student_id_override) != principal_id:
+            return AuthResult(ok=False, reason="forbidden", status_code=403)
+
+        if funding_request_id is not None:
+            owner_id = await self.funding_request_owner_id(funding_request_id=funding_request_id)
+            if owner_id is None:
+                return AuthResult(ok=False, reason="funding_request_not_found", status_code=404)
+            if owner_id != principal_id:
+                return AuthResult(ok=False, reason="forbidden", status_code=403)
+
+        if self._update_last_used_at:
+            await _safe_execute(self._platform_db, sql=self._touch_query, params=(int(token_id),))
+
+        return AuthResult(
+            ok=True,
+            principal_id=principal_id,
+            scopes=_parse_scopes(token_row.get("abilities")),
+            trust_level=0,
+            bypass=False,
+        )
+
+    async def funding_request_owner_id(self, *, funding_request_id: int) -> int | None:
+        params = (int(funding_request_id),)
+        for sql in self._owner_queries:
+            row = await _safe_fetch_one(self._platform_db, sql=sql, params=params)
+            if not row:
+                continue
+            owner = row.get("owner_id") if isinstance(row, dict) else None
+            owner_id = _coerce_positive_int(owner)
+            if owner_id is not None:
+                return owner_id
+        return None
+
+    async def _lookup_token(self, *, token_id: int, hashed_token: str) -> dict[str, Any] | None:
+        params = (int(token_id), str(hashed_token), str(self._tokenable_type))
+        row = await _safe_fetch_one(self._platform_db, sql=self._token_query, params=params)
+        if not row:
+            return None
+        return row
+
+
 def _parse_header_id(request: Request) -> int | None:
     header = request.headers.get("x-student-id") or request.headers.get("x-principal-id")
     if not header:
@@ -258,16 +402,43 @@ def _parse_header_id(request: Request) -> int | None:
 
 
 def _extract_session_token(request: Request, *, cookie_names: tuple[str, ...]) -> str | None:
-    authz = request.headers.get("authorization") or ""
-    if authz.lower().startswith("bearer "):
-        token = authz.split(" ", 1)[1].strip()
-        if token:
-            return token
+    bearer = _extract_bearer_token(request)
+    if bearer:
+        return bearer
     for name in cookie_names:
         value = request.cookies.get(name)
         if isinstance(value, str) and value.strip():
             return value.strip()
     return None
+
+
+def _extract_bearer_token(request: Request) -> str | None:
+    authz = request.headers.get("authorization") or ""
+    if not authz.lower().startswith("bearer "):
+        return None
+    token = authz.split(" ", 1)[1].strip()
+    return token if token else None
+
+
+def _parse_sanctum_token(raw: str) -> tuple[int, str] | None:
+    parts = str(raw or "").split("|", 1)
+    if len(parts) != 2:
+        return None
+    token_id = _coerce_positive_int(parts[0].strip())
+    plain = parts[1].strip()
+    if token_id is None or not plain:
+        return None
+    return token_id, plain
+
+
+def _is_expired(value: Any) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            return value < datetime.utcnow()
+        return value < datetime.now(timezone.utc)
+    return False
 
 
 def _parse_scopes(value: Any) -> list[str]:
@@ -312,3 +483,11 @@ async def _safe_fetch_one(db: PlatformDB, *, sql: str, params: tuple[Any, ...]) 
     if isinstance(row, dict):
         return row
     return None
+
+
+async def _safe_execute(db: PlatformDB, *, sql: str, params: tuple[Any, ...]) -> bool:
+    try:
+        await db.execute(sql, params)
+    except Exception:
+        return False
+    return True

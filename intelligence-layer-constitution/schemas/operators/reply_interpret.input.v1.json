@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/operators/reply_interpret.input.v1.json",
+  "title": "Operator: Reply.Interpret (input) (v1)",
+  "allOf": [
+    { "$ref": "operator_call_base.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["reply"],
+          "properties": {
+            "reply": { "type": "object", "additionalProperties": true },
+            "funding_request": { "type": "object", "additionalProperties": true },
+            "email_context": { "type": "object", "additionalProperties": true },
+            "student_profile": { "type": "object", "additionalProperties": true },
+            "custom_instructions": { "type": "string" }
+          }
+        }
+      }
+    }
+  ]
+}

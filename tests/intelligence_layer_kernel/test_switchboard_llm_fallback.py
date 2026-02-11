@@ -79,3 +79,15 @@ def test_switchboard_enforces_documents_review_default_inputs_for_llm_fallback()
     assert intent_type == "Documents.Review"
     assert inputs["document_type"] == "cv"
     assert inputs["attachment_ids"] == [7]
+
+
+def test_switchboard_routes_reply_followup_intent_with_reply_id() -> None:
+    switchboard = IntentSwitchboard()
+    intent_type, inputs = switchboard.classify(
+        "Professor replied. Draft follow-up for reply id 42.",
+        allowed_intents=["Funding.Outreach.FollowUp.Draft", "Funding.Outreach.Email.Review"],
+    )
+
+    assert intent_type == "Funding.Outreach.FollowUp.Draft"
+    assert inputs["reply_id"] == 42
+    assert "custom_instructions" in inputs

@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 import json
+import random
 import time
 import uuid
+from dataclasses import dataclass
 from typing import Any
 
 from jsonschema import Draft202012Validator
@@ -17,6 +20,12 @@ from .store import OperatorJobStore
 from .types import OperatorCall, OperatorResult, OperatorError, OperatorMetrics
 
 
+@dataclass
+class _CircuitState:
+    consecutive_failures: int = 0
+    open_until_monotonic: float = 0.0
+
+
 class OperatorExecutor:
     def __init__(
         self,
@@ -28,6 +37,12 @@ class OperatorExecutor:
         policy_store: PolicyDecisionStore,
         event_writer: EventWriter,
         prompt_loader: PromptTemplateLoader | None = None,
+        operator_timeout_ms: int = 30000,
+        max_retry_attempts: int = 2,
+        retry_base_ms: int = 200,
+        retry_jitter_ms: int = 150,
+        circuit_breaker_failure_threshold: int = 3,
+        circuit_breaker_open_ms: int = 30000,
     ) -> None:
         self._contracts = contracts
         self._registry = registry
@@ -36,6 +51,13 @@ class OperatorExecutor:
         self._policy_store = policy_store
         self._event_writer = event_writer
         self._prompt_loader = prompt_loader
+        self._operator_timeout_ms = max(1000, int(operator_timeout_ms))
+        self._max_retry_attempts = max(1, int(max_retry_attempts))
+        self._retry_base_ms = max(1, int(retry_base_ms))
+        self._retry_jitter_ms = max(0, int(retry_jitter_ms))
+        self._circuit_breaker_failure_threshold = max(1, int(circuit_breaker_failure_threshold))
+        self._circuit_breaker_open_ms = max(1000, int(circuit_breaker_open_ms))
+        self._circuit_state_by_operator: dict[str, _CircuitState] = {}
 
     async def execute(self, *, operator_name: str, operator_version: str, call: OperatorCall) -> OperatorResult:
         manifest = self._registry.get_manifest(operator_name, operator_version)
@@ -189,6 +211,26 @@ class OperatorExecutor:
         )
 
         start = time.monotonic()
+        operator_key = f"{operator_name}@{operator_version}"
+        dependency_operator = _is_dependency_operator(
+            manifest=manifest,
+            operator_name=operator_name,
+        )
+        if dependency_operator:
+            blocked = self._check_circuit_open(operator_key)
+            if blocked is not None:
+                self._attach_prompt_metadata(blocked, prompt_render)
+                if claim.job_id and claim.attempt_no:
+                    await self._job_store.complete_job(
+                        job_id=claim.job_id,
+                        attempt_no=claim.attempt_no,
+                        status="failed",
+                        result_payload=blocked.to_dict(),
+                        error=blocked.error.to_dict() if blocked.error else None,
+                        metrics=blocked.metrics.to_dict(),
+                    )
+                self._validate_schema(output_ref, blocked.to_dict())
+                return blocked
         try:
             operator = self._registry.get(operator_name, operator_version)
         except KeyError as exc:
@@ -236,25 +278,21 @@ class OperatorExecutor:
             )
             self._validate_schema(output_ref, result.to_dict())
             return result
-        try:
-            result = await operator.run(call)
-        except Exception as exc:  # pragma: no cover - defensive
-            error = OperatorError(
-                code="operator_exception",
-                message=str(exc),
-                category="operator_bug",
-                retryable=False,
-            )
-            result = OperatorResult(
-                status="failed",
-                result=None,
-                artifacts=[],
-                metrics=OperatorMetrics(latency_ms=int((time.monotonic() - start) * 1000)),
-                error=error,
-            )
+        result = await self._execute_with_resilience(
+            operator=operator,
+            call=call,
+            operator_name=operator_name,
+            operator_version=operator_version,
+            dependency_operator=dependency_operator,
+        )
 
         # Ensure latency
         result.metrics.latency_ms = int((time.monotonic() - start) * 1000)
+        if dependency_operator:
+            if result.status == "succeeded":
+                self._record_circuit_success(operator_key)
+            else:
+                self._record_circuit_failure(operator_key)
         self._attach_prompt_metadata(result, prompt_render)
 
         self._validate_schema(output_ref, result.to_dict())
@@ -311,6 +349,115 @@ class OperatorExecutor:
         )
 
         return result
+
+    async def _execute_with_resilience(
+        self,
+        *,
+        operator: Operator,
+        call: OperatorCall,
+        operator_name: str,
+        operator_version: str,
+        dependency_operator: bool,
+    ) -> OperatorResult:
+        last_failure: OperatorResult | None = None
+        for attempt in range(1, self._max_retry_attempts + 1):
+            try:
+                timeout_sec = float(self._operator_timeout_ms) / 1000.0
+                result = await asyncio.wait_for(operator.run(call), timeout=timeout_sec)
+            except asyncio.TimeoutError:
+                result = OperatorResult(
+                    status="failed",
+                    result=None,
+                    artifacts=[],
+                    metrics=OperatorMetrics(latency_ms=0),
+                    error=OperatorError(
+                        code="operator_timeout",
+                        message=(
+                            f"operator timed out after {self._operator_timeout_ms}ms: "
+                            f"{operator_name}@{operator_version}"
+                        ),
+                        category="timeout",
+                        retryable=True,
+                        retry_after_ms=self._next_retry_delay_ms(attempt),
+                    ),
+                )
+            except Exception as exc:  # pragma: no cover - defensive
+                result = OperatorResult(
+                    status="failed",
+                    result=None,
+                    artifacts=[],
+                    metrics=OperatorMetrics(latency_ms=0),
+                    error=OperatorError(
+                        code="operator_exception",
+                        message=str(exc),
+                        category="dependency" if dependency_operator else "operator_bug",
+                        retryable=dependency_operator,
+                        retry_after_ms=self._next_retry_delay_ms(attempt) if dependency_operator else None,
+                    ),
+                )
+
+            if result.status != "failed":
+                return result
+            last_failure = result
+
+            retryable = bool(result.error and result.error.retryable)
+            if not retryable or attempt >= self._max_retry_attempts:
+                return result
+            await asyncio.sleep(self._next_retry_delay_ms(attempt) / 1000.0)
+
+        return last_failure or OperatorResult(
+            status="failed",
+            result=None,
+            artifacts=[],
+            metrics=OperatorMetrics(latency_ms=0),
+            error=OperatorError(
+                code="operator_failed",
+                message="operator failed",
+                category="operator_bug",
+                retryable=False,
+            ),
+        )
+
+    def _next_retry_delay_ms(self, attempt: int) -> int:
+        base = self._retry_base_ms * (2 ** max(0, attempt - 1))
+        jitter = random.randint(0, self._retry_jitter_ms) if self._retry_jitter_ms > 0 else 0
+        return int(base + jitter)
+
+    def _check_circuit_open(self, operator_key: str) -> OperatorResult | None:
+        state = self._circuit_state_by_operator.get(operator_key)
+        if state is None:
+            return None
+        now = time.monotonic()
+        if state.open_until_monotonic <= now:
+            return None
+        retry_after_ms = int(max(1, (state.open_until_monotonic - now) * 1000))
+        return OperatorResult(
+            status="failed",
+            result=None,
+            artifacts=[],
+            metrics=OperatorMetrics(latency_ms=0),
+            error=OperatorError(
+                code="circuit_open",
+                message=f"circuit open for {operator_key}",
+                category="dependency",
+                retryable=True,
+                retry_after_ms=retry_after_ms,
+            ),
+        )
+
+    def _record_circuit_success(self, operator_key: str) -> None:
+        state = self._circuit_state_by_operator.get(operator_key)
+        if state is None:
+            return
+        state.consecutive_failures = 0
+        state.open_until_monotonic = 0.0
+
+    def _record_circuit_failure(self, operator_key: str) -> None:
+        state = self._circuit_state_by_operator.setdefault(operator_key, _CircuitState())
+        state.consecutive_failures += 1
+        if state.consecutive_failures >= self._circuit_breaker_failure_threshold:
+            state.open_until_monotonic = time.monotonic() + (self._circuit_breaker_open_ms / 1000.0)
+            state.consecutive_failures = 0
 
     def _validate_schema(self, schema_ref: str, instance: dict[str, Any]) -> None:
         schema = self._contracts.get_schema_by_ref(schema_ref)
@@ -545,3 +692,13 @@ def _normalize_document_type_variant(value: Any) -> str:
     normalized = str(value or "").strip().lower().replace("-", "_").replace(" ", "_")
     aliases = {"resume": "cv", "cover_letter": "letter", "coverletter": "letter", "motivation_letter": "letter"}
     return aliases.get(normalized, normalized)
+
+
+def _is_dependency_operator(*, manifest: dict[str, Any], operator_name: str) -> bool:
+    if operator_name.startswith(("Platform.", "FundingReply.")):
+        return True
+    tags = manifest.get("policy_tags")
+    if not isinstance(tags, list):
+        return False
+    normalized_tags = {str(item).strip().lower() for item in tags if str(item).strip()}
+    return bool(normalized_tags.intersection({"platform_read", "platform_write"}))

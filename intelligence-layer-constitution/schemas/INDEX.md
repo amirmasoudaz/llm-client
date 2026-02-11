@@ -18,6 +18,8 @@ This is a navigation aid for the schema and workflow template files in this repo
 - `schemas/intents/funding_outreach_email_generate.v1.json`
 - `schemas/intents/funding_outreach_email_review.v1.json`
 - `schemas/intents/funding_outreach_email_optimize.v1.json`
+- `schemas/intents/funding_outreach_reply_interpret.v1.json`
+- `schemas/intents/funding_outreach_followup_draft.v1.json`
 - `schemas/intents/funding_paper_metadata_extract.v1.json`
 - `schemas/intents/funding_request_fields_update.v1.json`
 - `schemas/intents/documents_upload.v1.json`
@@ -41,6 +43,7 @@ This is a navigation aid for the schema and workflow template files in this repo
 - `schemas/outcomes/alignment_score.v1.json`
 - `schemas/outcomes/email_draft.v1.json`
 - `schemas/outcomes/email_review.v1.json`
+- `schemas/outcomes/reply_interpretation.v1.json`
 - `schemas/outcomes/conversation_suggestions.v1.json`
 - `schemas/outcomes/paper_metadata.v1.json`
 - `schemas/outcomes/platform_patch_proposal.v1.json`
@@ -76,6 +79,12 @@ This is a navigation aid for the schema and workflow template files in this repo
 - `schemas/operators/email_review_draft.output.v1.json`
 - `schemas/operators/conversation_suggestions_generate.input.v1.json`
 - `schemas/operators/conversation_suggestions_generate.output.v1.json`
+- `schemas/operators/funding_reply_load.input.v1.json`
+- `schemas/operators/funding_reply_load.output.v1.json`
+- `schemas/operators/reply_interpret.input.v1.json`
+- `schemas/operators/reply_interpret.output.v1.json`
+- `schemas/operators/follow_up_draft.input.v1.json`
+- `schemas/operators/follow_up_draft.output.v1.json`
 - `schemas/operators/email_optimize_draft.input.v1.json`
 - `schemas/operators/email_optimize_draft.output.v1.json`
 - `schemas/operators/email_apply_to_platform_propose.input.v1.json`

@@ -243,6 +243,31 @@ class ILDB:
                   WHERE request_key IS NOT NULL;
                 """
             )
+            await conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS billing.credit_settlement_outbox (
+                  tenant_id BIGINT NOT NULL,
+                  outbox_id UUID NOT NULL,
+                  principal_id BIGINT NOT NULL,
+                  workflow_id UUID NOT NULL,
+                  request_key BYTEA NOT NULL,
+                  status TEXT NOT NULL DEFAULT 'pending',
+                  attempt_count INTEGER NOT NULL DEFAULT 0,
+                  next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                  last_error TEXT NULL,
+                  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                  PRIMARY KEY (tenant_id, outbox_id),
+                  CONSTRAINT credit_settlement_outbox_request_uq UNIQUE (tenant_id, request_key)
+                );
+                """
+            )
+            await conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS credit_settlement_outbox_pending_idx
+                  ON billing.credit_settlement_outbox (tenant_id, status, next_attempt_at);
+                """
+            )
             await ensure_kernel_schema(conn)
 
     async def get_or_create_thread(self, *, student_id: int, funding_request_id: int) -> tuple[int, str, bool]:

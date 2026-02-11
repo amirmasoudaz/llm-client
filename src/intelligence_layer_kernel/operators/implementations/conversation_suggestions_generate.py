@@ -54,12 +54,18 @@ def _build_suggestions(intent_type: str, outcomes: dict[str, Any], platform: dic
     suggestions: list[dict[str, Any]] = []
     email_review = outcomes.get("email_review") if isinstance(outcomes.get("email_review"), dict) else None
     alignment_outcome = outcomes.get("alignment_score") if isinstance(outcomes.get("alignment_score"), dict) else None
+    reply_interpretation = (
+        outcomes.get("reply_interpretation") if isinstance(outcomes.get("reply_interpretation"), dict) else None
+    )
     verdict = None
     if email_review and isinstance(email_review.get("payload"), dict):
         verdict = email_review["payload"].get("verdict")
     alignment_payload = alignment_outcome.get("payload") if isinstance(alignment_outcome, dict) else None
     if not isinstance(alignment_payload, dict):
         alignment_payload = None
+    reply_payload = reply_interpretation.get("payload") if isinstance(reply_interpretation, dict) else None
+    if not isinstance(reply_payload, dict):
+        reply_payload = None
 
     if verdict == "needs_edits":
         suggestions.append({"type": "followup", "text": "Revise the email based on the review feedback."})
@@ -118,6 +124,32 @@ def _build_suggestions(intent_type: str, outcomes: dict[str, Any], platform: dic
                     "type": "followup",
                     "text": f"Draft a targeted email around: {', '.join(str(x) for x in matched_topics[:3])}.",
                 }
+            )
+
+    if reply_payload:
+        classification = str(reply_payload.get("classification") or "").strip().lower()
+        recommended_action = str(reply_payload.get("recommended_action") or "").strip().lower()
+        if recommended_action == "manual_review" or classification == "ambiguous":
+            suggestions.append(
+                {
+                    "type": "followup",
+                    "text": "Ask me to explain the reply interpretation step-by-step before drafting a response.",
+                }
+            )
+        elif classification in {"interview", "needs_info"}:
+            suggestions.append(
+                {
+                    "type": "followup",
+                    "text": "Draft a concise follow-up that answers the professor's request and proposes next steps.",
+                }
+            )
+        elif classification in {"rejection", "no_position", "out_of_scope"}:
+            suggestions.append(
+                {"type": "followup", "text": "Draft a polite thank-you response and suggest the next outreach strategy."}
+            )
+        elif classification == "auto_generated":
+            suggestions.append(
+                {"type": "followup", "text": "Set a reminder strategy and draft a short check-in for later."}
             )
 
     funding_request = platform.get("funding_request") if isinstance(platform.get("funding_request"), dict) else {}

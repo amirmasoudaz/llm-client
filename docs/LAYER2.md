@@ -42,6 +42,33 @@ Layer 2 reads the platform DB directly (staging credentials are OK for now):
 
 Fallbacks (for convenience) also read `DB_HOST/DB_PORT/DB_USER/DB_PASS/DB_NAME/DB_MIN/DB_MAX`.
 
+### Auth mode (development vs production)
+
+Layer 2 supports multiple auth adapters via `IL_AUTH_MODE`:
+
+- `dev_bypass` (default): dev-only, optional identity bypass.
+- `platform_session`: validates platform session tokens/cookies.
+- `sanctum_bearer`: validates Laravel Sanctum bearer tokens (`Authorization: Bearer {id}|{plain}`).
+
+Recommended production settings for Sanctum:
+
+```bash
+IL_AUTH_MODE="sanctum_bearer"
+IL_AUTH_SANCTUM_TOKENABLE_TYPE="App\\Models\\Student\\Student"
+IL_AUTH_SANCTUM_UPDATE_LAST_USED_AT="false"
+```
+
+Optional overrides:
+
+- `IL_AUTH_SANCTUM_TOKEN_QUERY`: custom SQL to resolve the Sanctum token row.
+- `IL_AUTH_SANCTUM_TOUCH_QUERY`: custom SQL for `last_used_at` touch update.
+- `IL_AUTH_FUNDING_OWNER_QUERY`: custom SQL for funding-request owner lookup.
+
+DB permissions for Sanctum mode:
+
+- Required `SELECT` on `personal_access_tokens`, `students`, and ownership lookup table (`funding_requests`).
+- Optional `UPDATE` on `personal_access_tokens.last_used_at` only if `IL_AUTH_SANCTUM_UPDATE_LAST_USED_AT=true`.
+
 ## Run the API (dev)
 
 Install:

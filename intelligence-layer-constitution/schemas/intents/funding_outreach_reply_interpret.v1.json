@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/intents/funding_outreach_reply_interpret.v1.json",
+  "title": "Intent: Funding.Outreach.Reply.Interpret (v1)",
+  "allOf": [
+    { "$ref": "../common/intent_base.v1.json" },
+    {
+      "type": "object",
+      "required": ["thread_id"],
+      "properties": {
+        "schema_version": { "const": "1.0" },
+        "intent_type": { "const": "Funding.Outreach.Reply.Interpret" },
+        "inputs": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "reply_id": { "type": "integer", "minimum": 1 },
+            "force_refresh": { "type": "boolean", "default": false },
+            "custom_instructions": { "type": "string" }
+          },
+          "default": {}
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/intents/funding_outreach_followup_draft.v1.json",
+  "title": "Intent: Funding.Outreach.FollowUp.Draft (v1)",
+  "allOf": [
+    { "$ref": "../common/intent_base.v1.json" },
+    {
+      "type": "object",
+      "required": ["thread_id"],
+      "properties": {
+        "schema_version": { "const": "1.0" },
+        "intent_type": { "const": "Funding.Outreach.FollowUp.Draft" },
+        "inputs": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "reply_id": { "type": "integer", "minimum": 1 },
+            "tone": {
+              "type": "string",
+              "enum": ["professional", "warm", "concise"],
+              "default": "professional"
+            },
+            "subject_override": { "type": "string" },
+            "include_signature": { "type": "boolean", "default": true },
+            "custom_instructions": { "type": "string" }
+          },
+          "default": {}
+        }
+      }
+    }
+  ]
+}

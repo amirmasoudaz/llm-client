@@ -1,0 +1,25 @@
+{
+  "name": "Reply.Interpret",
+  "type": "operator",
+  "version": "1.0.0",
+  "owner": "canapply",
+  "description": "Interpret the latest professor reply and classify intent/actionability.",
+  "schemas": {
+    "input": "schemas/operators/reply_interpret.input.v1.json",
+    "output": "schemas/operators/reply_interpret.output.v1.json"
+  },
+  "prompt_templates": {
+    "primary": "Reply.Interpret/1.0.0/interpret_reply"
+  },
+  "requires": {
+    "tools": [],
+    "capabilities": [],
+    "context_fields": []
+  },
+  "policy_tags": ["draft_only", "untrusted_input"],
+  "effects": ["produce_outcome"],
+  "observability": {
+    "log_level": "info",
+    "emit_samples": false
+  }
+}
