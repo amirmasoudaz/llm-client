@@ -1140,6 +1140,7 @@ class WorkflowKernel:
         missing_requirements: list[str] = []
         missing_fields: list[str] = []
         targeted_questions: list[dict[str, Any]] = []
+        missing_attachment_detail: dict[str, Any] = {}
         if check_name == "EnsureEmailPresent":
             sources = params.get("sources") or []
             if not any(_has_value(ctx.get(src)) for src in sources if isinstance(src, str)):
@@ -1188,14 +1189,49 @@ class WorkflowKernel:
 
             if not missing_fields and missing_requirements:
                 missing_fields = list(missing_requirements)
+        elif check_name == "EnsureAttachmentPresent":
+            attachment_ref = params.get("attachment_ref")
+            attachment_id = None
+            if isinstance(attachment_ref, dict):
+                attachment_id = _coerce_positive_int(attachment_ref.get("attachment_id") or attachment_ref.get("id"))
+
+            requested_document_type = str(params.get("requested_document_type") or "document").strip().lower() or "document"
+            if requested_document_type == "other":
+                requested_document_type = "document"
+
+            requested_attachment_kinds_raw = params.get("requested_attachment_kinds")
+            requested_attachment_kinds: list[str] = []
+            if isinstance(requested_attachment_kinds_raw, list):
+                for item in requested_attachment_kinds_raw:
+                    value = str(item).strip()
+                    if value and value not in requested_attachment_kinds:
+                        requested_attachment_kinds.append(value)
+
+            if attachment_id is None:
+                missing_fields = [f"{requested_document_type}_attachment"]
+                missing_requirements = [f"{requested_document_type}_upload"]
+                missing_attachment_detail = {
+                    "required_document_type": requested_document_type,
+                    "required_attachment_kinds": requested_attachment_kinds,
+                }
         else:
             # Unknown check: treat as passed for now.
             missing_fields = []
 
         if missing_fields or missing_requirements:
-            default_gate_type = "collect_profile_fields" if check_name == "Onboarding.Ensure" else "collect_fields"
+            if check_name == "Onboarding.Ensure":
+                default_gate_type = "collect_profile_fields"
+            elif check_name == "EnsureAttachmentPresent":
+                default_gate_type = "upload_required"
+            else:
+                default_gate_type = "collect_fields"
             gate_type = str(params.get("on_missing_action_type") or default_gate_type)
-            reason_code = "MISSING_REQUIRED_PROFILE_FIELDS" if check_name == "Onboarding.Ensure" else "MISSING_REQUIRED_FIELDS"
+            if check_name == "Onboarding.Ensure":
+                reason_code = "MISSING_REQUIRED_PROFILE_FIELDS"
+            elif check_name == "EnsureAttachmentPresent":
+                reason_code = "MISSING_REQUIRED_ATTACHMENT"
+            else:
+                reason_code = "MISSING_REQUIRED_FIELDS"
             default_title = "Provide required information"
             default_description = (
                 "Please provide the missing profile fields to continue."
@@ -1207,6 +1243,16 @@ class WorkflowKernel:
                 default_description = (
                     "No draft email was found. Generate a draft in the Funding Outreach UI, "
                     "then retry optimization."
+                )
+            if check_name == "EnsureAttachmentPresent":
+                requested_document_type = str(
+                    missing_attachment_detail.get("required_document_type") or "document"
+                ).strip()
+                readable_type = requested_document_type.upper() if requested_document_type else "document"
+                default_title = f"Upload your {readable_type}"
+                default_description = (
+                    f"No {requested_document_type} attachment was found for this request. "
+                    f"Please upload a {requested_document_type} first, then continue."
                 )
 
             title = str(params.get("on_missing_title") or default_title)
@@ -1226,6 +1272,17 @@ class WorkflowKernel:
                     "action": "generate_draft_preview",
                     "method": "GET",
                     "endpoint": endpoint,
+                }
+            if check_name == "EnsureAttachmentPresent":
+                funding_request_id = ctx.get("context.platform.funding_request.id")
+                upload_endpoint = "/api/v1/funding/attachments"
+                if isinstance(funding_request_id, int) and funding_request_id > 0:
+                    upload_endpoint = f"/api/v1/funding/{funding_request_id}/attachments"
+                gate_data.update(missing_attachment_detail)
+                gate_data["action_hint"] = {
+                    "action": "upload_attachment",
+                    "method": "POST",
+                    "endpoint": upload_endpoint,
                 }
             gate_id = await self._open_gate(
                 workflow_id=workflow_id,

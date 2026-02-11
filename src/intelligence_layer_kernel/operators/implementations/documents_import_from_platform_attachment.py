@@ -17,9 +17,10 @@ from .documents_common import (
     infer_document_type,
     list_platform_attachments,
     normalize_requested_document_type,
+    persist_streamed_attachment,
+    remove_cached_file,
     requested_attachment_kinds,
     resolve_thread_scope,
-    write_cached_bytes,
 )
 
 
@@ -102,8 +103,8 @@ class DocumentsImportFromPlatformAttachmentOperator(Operator):
             )
 
         fetched = fetch_attachment_bytes(selected)
-        if not isinstance(fetched.get("bytes"), bytes):
-            fetch_status = str(fetched.get("status") or "unavailable")
+        fetch_status = str(fetched.get("status") or "unavailable")
+        if fetch_status != "downloaded":
             if fetch_status == "blocked_mime":
                 return _failed(
                     start,
@@ -125,12 +126,20 @@ class DocumentsImportFromPlatformAttachmentOperator(Operator):
                 category="dependency",
             )
 
+        stream_path = str(fetched.get("stream_path") or "")
+        if not stream_path:
+            return _failed(
+                start,
+                "attachment_unavailable",
+                "unable to fetch attachment bytes; upload a readable file or configure attachment storage",
+                category="dependency",
+            )
+
         content_hash_hex = str(fetched["hash_hex"])
         content_hash = bytes.fromhex(content_hash_hex)
         size_bytes = int(fetched["size_bytes"])
         mime = str(fetched.get("mime") or selected.get("mime") or "application/octet-stream")
         storage_path: str | None = None
-        data = fetched.get("bytes")
         normalized_document_type = infer_document_type(
             document_type_hint=requested_document_type,
             mime=mime,
@@ -168,6 +177,7 @@ class DocumentsImportFromPlatformAttachmentOperator(Operator):
                     extracted_fields=dedupe.get("extracted_fields") if isinstance(dedupe.get("extracted_fields"), dict) else {},
                 )
             except Exception as exc:
+                remove_cached_file(stream_path)
                 return _failed(start, "document_import_failed", str(exc), category="dependency")
 
             outcome = _build_document_uploaded_outcome(
@@ -181,6 +191,7 @@ class DocumentsImportFromPlatformAttachmentOperator(Operator):
                 size_bytes=size_bytes,
                 mime=mime,
             )
+            remove_cached_file(stream_path)
             return OperatorResult(
                 status="succeeded",
                 result={
@@ -195,8 +206,9 @@ class DocumentsImportFromPlatformAttachmentOperator(Operator):
             )
 
         document_id = uuid.uuid4()
-        if isinstance(data, bytes):
-            storage_path = write_cached_bytes(str(document_id), data)
+        storage_path = persist_streamed_attachment(str(document_id), stream_path)
+        if storage_path is None:
+            storage_path = stream_path
 
         source_object_uri = str(selected.get("object_uri") or "")
         if not source_object_uri:
@@ -223,6 +235,7 @@ class DocumentsImportFromPlatformAttachmentOperator(Operator):
                 extracted_fields={},
             )
         except Exception as exc:
+            remove_cached_file(storage_path)
             return _failed(start, "document_import_failed", str(exc), category="dependency")
 
         outcome = _build_document_uploaded_outcome(

@@ -8,6 +8,12 @@
     "input": "schemas/operators/documents_review.input.v1.json",
     "output": "schemas/operators/documents_review.output.v1.json"
   },
+  "prompt_templates": {
+    "primary": "Documents.Review/1.0.0/review_generic",
+    "cv": "Documents.Review/1.0.0/review_cv",
+    "sop": "Documents.Review/1.0.0/review_sop",
+    "letter": "Documents.Review/1.0.0/review_letter"
+  },
   "requires": {
     "tools": [],
     "capabilities": [],
@@ -20,4 +26,3 @@
     "emit_samples": false
   }
 }
-

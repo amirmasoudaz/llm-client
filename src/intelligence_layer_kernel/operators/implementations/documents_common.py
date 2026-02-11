@@ -5,6 +5,7 @@ import json
 import mimetypes
 import os
 import re
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -419,6 +420,31 @@ def write_cached_bytes(document_id: str, data: bytes) -> str:
     return str(path)
 
 
+def persist_streamed_attachment(document_id: str, stream_path: str | None) -> str | None:
+    if not stream_path:
+        return None
+    source = Path(stream_path)
+    if not source.exists() or not source.is_file():
+        return None
+    destination = cache_path_for_document(document_id)
+    try:
+        source.replace(destination)
+        return str(destination)
+    except Exception:
+        return None
+
+
+def remove_cached_file(path: str | None) -> None:
+    if not path:
+        return
+    try:
+        file_path = Path(path)
+        if file_path.exists() and file_path.is_file():
+            file_path.unlink(missing_ok=True)
+    except Exception:
+        return
+
+
 def read_cached_bytes(path: str | None) -> bytes | None:
     if not path:
         return None
@@ -438,6 +464,7 @@ def fetch_attachment_bytes(attachment: dict[str, Any]) -> dict[str, Any]:
         digest = blake3(object_uri.encode("utf-8")).hexdigest()
         return {
             "bytes": None,
+            "stream_path": None,
             "hash_hex": digest,
             "size_bytes": 0,
             "mime": mime,
@@ -445,28 +472,58 @@ def fetch_attachment_bytes(attachment: dict[str, Any]) -> dict[str, Any]:
         }
 
     max_bytes = max_attachment_bytes()
-    chunks: list[bytes] = []
     hasher = blake3()
     size = 0
+    stream_path: str | None = None
+    wrote_any = False
 
-    for chunk in _iter_attachment_chunks(attachment):
-        size += len(chunk)
-        if size > max_bytes:
-            digest = blake3(object_uri.encode("utf-8")).hexdigest()
-            return {
-                "bytes": None,
-                "hash_hex": digest,
-                "size_bytes": size,
-                "mime": mime,
-                "status": "too_large",
-            }
-        hasher.update(chunk)
-        chunks.append(chunk)
-
-    if not chunks:
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="wb",
+            suffix=".bin",
+            prefix="attachment_",
+            dir=str(cache_directory()),
+            delete=False,
+        ) as handle:
+            stream_path = handle.name
+            for chunk in _iter_attachment_chunks(attachment):
+                if not chunk:
+                    continue
+                wrote_any = True
+                size += len(chunk)
+                if size > max_bytes:
+                    handle.flush()
+                    remove_cached_file(stream_path)
+                    digest = blake3(object_uri.encode("utf-8")).hexdigest()
+                    return {
+                        "bytes": None,
+                        "stream_path": None,
+                        "hash_hex": digest,
+                        "size_bytes": size,
+                        "mime": mime,
+                        "status": "too_large",
+                    }
+                hasher.update(chunk)
+                handle.write(chunk)
+            handle.flush()
+    except Exception:
+        remove_cached_file(stream_path)
         digest = blake3(object_uri.encode("utf-8")).hexdigest()
         return {
             "bytes": None,
+            "stream_path": None,
+            "hash_hex": digest,
+            "size_bytes": 0,
+            "mime": mime,
+            "status": "unavailable",
+        }
+
+    if not wrote_any:
+        remove_cached_file(stream_path)
+        digest = blake3(object_uri.encode("utf-8")).hexdigest()
+        return {
+            "bytes": None,
+            "stream_path": None,
             "hash_hex": digest,
             "size_bytes": 0,
             "mime": mime,
@@ -474,7 +531,8 @@ def fetch_attachment_bytes(attachment: dict[str, Any]) -> dict[str, Any]:
         }
 
     return {
-        "bytes": b"".join(chunks),
+        "bytes": None,
+        "stream_path": stream_path,
         "hash_hex": hasher.hexdigest(),
         "size_bytes": size,
         "mime": mime,

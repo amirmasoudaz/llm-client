@@ -11,30 +11,197 @@
         "payload": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["document_id", "review_goal", "overall_score", "issues"],
+          "required": [
+            "document_id",
+            "document_type",
+            "review_goal",
+            "overall_score",
+            "issues",
+            "structured_report"
+          ],
           "properties": {
             "document_id": { "$ref": "../common/defs.v1.json#/$defs/DocumentId" },
+            "document_type": {
+              "type": "string",
+              "enum": [
+                "cv",
+                "sop",
+                "letter",
+                "transcript",
+                "portfolio",
+                "study_plan",
+                "certificate",
+                "language_test",
+                "identification",
+                "photograph",
+                "other",
+                "resume",
+                "cover_letter"
+              ]
+            },
             "review_goal": { "type": "string", "minLength": 1 },
             "overall_score": { "type": "number", "minimum": 0, "maximum": 1 },
             "issues": {
               "type": "array",
-              "items": {
-                "type": "object",
-                "additionalProperties": false,
-                "required": ["severity", "message"],
-                "properties": {
-                  "severity": { "type": "string", "enum": ["info", "warning", "error"] },
-                  "message": { "type": "string", "minLength": 1 },
-                  "suggestion": { "type": "string" }
-                }
+              "items": { "$ref": "#/$defs/Issue" }
+            },
+            "rubric_scores": {
+              "type": "object",
+              "default": {},
+              "additionalProperties": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
               }
             },
-            "rubric_scores": { "type": "object", "default": {} },
-            "notes": { "type": "string" }
+            "notes": { "type": "string" },
+            "structured_report": { "$ref": "#/$defs/StructuredReport" }
+          }
+        }
+      },
+      "$defs": {
+        "Issue": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["severity", "message"],
+          "properties": {
+            "severity": { "type": "string", "enum": ["info", "warning", "error"] },
+            "message": { "type": "string", "minLength": 1 },
+            "suggestion": { "type": "string" }
+          }
+        },
+        "Improvement": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["severity", "issue", "recommendation"],
+          "properties": {
+            "severity": { "type": "string", "enum": ["info", "warning", "error"] },
+            "section": { "type": "string" },
+            "issue": { "type": "string", "minLength": 1 },
+            "recommendation": { "type": "string", "minLength": 1 }
+          }
+        },
+        "StructuredReport": {
+          "oneOf": [
+            { "$ref": "#/$defs/CvStructuredReport" },
+            { "$ref": "#/$defs/SopStructuredReport" },
+            { "$ref": "#/$defs/LetterStructuredReport" },
+            { "$ref": "#/$defs/GenericStructuredReport" }
+          ]
+        },
+        "CvStructuredReport": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "headline", "strengths", "improvements", "section_scores"],
+          "properties": {
+            "type": { "const": "cv" },
+            "headline": { "type": "string", "minLength": 1 },
+            "strengths": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 }
+            },
+            "improvements": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/Improvement" }
+            },
+            "section_scores": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["contact", "education", "experience", "skills"],
+              "properties": {
+                "contact": { "type": "number", "minimum": 0, "maximum": 1 },
+                "education": { "type": "number", "minimum": 0, "maximum": 1 },
+                "experience": { "type": "number", "minimum": 0, "maximum": 1 },
+                "skills": { "type": "number", "minimum": 0, "maximum": 1 }
+              }
+            }
+          }
+        },
+        "SopStructuredReport": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "headline", "strengths", "improvements", "section_scores"],
+          "properties": {
+            "type": { "const": "sop" },
+            "headline": { "type": "string", "minLength": 1 },
+            "strengths": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 }
+            },
+            "improvements": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/Improvement" }
+            },
+            "section_scores": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["narrative", "research_alignment", "program_fit", "writing_quality"],
+              "properties": {
+                "narrative": { "type": "number", "minimum": 0, "maximum": 1 },
+                "research_alignment": { "type": "number", "minimum": 0, "maximum": 1 },
+                "program_fit": { "type": "number", "minimum": 0, "maximum": 1 },
+                "writing_quality": { "type": "number", "minimum": 0, "maximum": 1 }
+              }
+            }
+          }
+        },
+        "LetterStructuredReport": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "headline", "strengths", "improvements", "section_scores"],
+          "properties": {
+            "type": { "const": "letter" },
+            "headline": { "type": "string", "minLength": 1 },
+            "strengths": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 }
+            },
+            "improvements": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/Improvement" }
+            },
+            "section_scores": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["motivation", "program_fit", "evidence", "tone"],
+              "properties": {
+                "motivation": { "type": "number", "minimum": 0, "maximum": 1 },
+                "program_fit": { "type": "number", "minimum": 0, "maximum": 1 },
+                "evidence": { "type": "number", "minimum": 0, "maximum": 1 },
+                "tone": { "type": "number", "minimum": 0, "maximum": 1 }
+              }
+            }
+          }
+        },
+        "GenericStructuredReport": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "headline", "strengths", "improvements", "section_scores"],
+          "properties": {
+            "type": { "const": "generic" },
+            "headline": { "type": "string", "minLength": 1 },
+            "strengths": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 }
+            },
+            "improvements": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/Improvement" }
+            },
+            "section_scores": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["clarity", "structure", "relevance", "brevity"],
+              "properties": {
+                "clarity": { "type": "number", "minimum": 0, "maximum": 1 },
+                "structure": { "type": "number", "minimum": 0, "maximum": 1 },
+                "relevance": { "type": "number", "minimum": 0, "maximum": 1 },
+                "brevity": { "type": "number", "minimum": 0, "maximum": 1 }
+              }
+            }
           }
         }
       }
     }
   ]
 }
-

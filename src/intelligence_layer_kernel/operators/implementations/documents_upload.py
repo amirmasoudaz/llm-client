@@ -12,7 +12,13 @@ from intelligence_layer_api.documents import ingest_thread_document
 
 from ..base import Operator
 from ..types import OperatorCall, OperatorError, OperatorMetrics, OperatorResult
-from .documents_common import fetch_attachment_bytes, normalize_requested_document_type, resolve_thread_scope
+from .documents_common import (
+    fetch_attachment_bytes,
+    normalize_requested_document_type,
+    read_cached_bytes,
+    remove_cached_file,
+    resolve_thread_scope,
+)
 
 
 class DocumentsUploadOperator(Operator):
@@ -50,13 +56,16 @@ class DocumentsUploadOperator(Operator):
             return _failed(start, "forbidden", "student does not own this thread", category="auth")
 
         fetched = fetch_attachment_bytes(_artifact_to_fetch_input(artifact))
-        file_bytes = fetched.get("bytes")
+        stream_path = str(fetched.get("stream_path") or "")
+        file_bytes = read_cached_bytes(stream_path)
         if not isinstance(file_bytes, bytes):
+            remove_cached_file(stream_path)
             return _failed(start, "artifact_unavailable", "unable to fetch uploaded artifact", category="dependency")
 
         expected_hash = _extract_artifact_hash(artifact)
         actual_hash = str(fetched.get("hash_hex") or "")
         if expected_hash and actual_hash and expected_hash != actual_hash:
+            remove_cached_file(stream_path)
             return _failed(start, "artifact_hash_mismatch", "artifact hash does not match uploaded content")
 
         file_name = str(artifact.get("name") or "document.bin")
@@ -78,9 +87,12 @@ class DocumentsUploadOperator(Operator):
                 lifecycle=lifecycle,
             )
         except ValueError as exc:
+            remove_cached_file(stream_path)
             return _failed(start, "document_upload_validation_failed", str(exc))
         except Exception as exc:
+            remove_cached_file(stream_path)
             return _failed(start, "document_upload_failed", str(exc), category="dependency")
+        remove_cached_file(stream_path)
 
         outcome = _build_document_uploaded_outcome(
             document_id=uploaded.document_id,

@@ -11,7 +11,7 @@ from blake3 import blake3
 
 from ..base import Operator
 from ..types import OperatorCall, OperatorError, OperatorMetrics, OperatorResult
-from .documents_common import extract_text_from_bytes, fetch_attachment_bytes, read_cached_bytes
+from .documents_common import extract_text_from_bytes, fetch_attachment_bytes, read_cached_bytes, remove_cached_file
 
 
 class DocumentsProcessOperator(Operator):
@@ -54,6 +54,7 @@ class DocumentsProcessOperator(Operator):
             }
         else:
             cached_bytes = read_cached_bytes(doc_row.get("storage_path"))
+            streamed_path: str | None = None
             if not isinstance(cached_bytes, (bytes, bytearray)):
                 fetched = fetch_attachment_bytes(
                     {
@@ -63,13 +64,17 @@ class DocumentsProcessOperator(Operator):
                         "mime": doc_row.get("mime"),
                     }
                 )
-                if isinstance(fetched.get("bytes"), bytes):
-                    cached_bytes = fetched["bytes"]
+                streamed_path = str(fetched.get("stream_path") or "") or None
+                if streamed_path:
+                    fetched_bytes = read_cached_bytes(streamed_path)
+                    if isinstance(fetched_bytes, (bytes, bytearray)):
+                        cached_bytes = bytes(fetched_bytes)
             text, page_count, strategy = extract_text_from_bytes(
                 cached_bytes,
                 mime=doc_row.get("mime"),
                 file_name=doc_row.get("source_path"),
             )
+            remove_cached_file(streamed_path)
             if not text:
                 text = _fallback_text_from_metadata(doc_row.get("source_metadata"))
             extracted_fields = _extract_fields(

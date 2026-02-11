@@ -50,6 +50,25 @@
     },
     {
       "step_id": "s3",
+      "kind": "policy_check",
+      "name": "Ensure.Attachment.Present",
+      "effects": ["read_only"],
+      "policy_tags": ["documents", "requires_input"],
+      "risk_level": "low",
+      "cache_policy": "never",
+      "check": {
+        "check_name": "EnsureAttachmentPresent",
+        "params": {
+          "attachment_ref": { "from": "context.documents.selected_attachment" },
+          "requested_document_type": { "from": "context.documents.requested_document_type" },
+          "requested_attachment_kinds": { "from": "context.documents.requested_attachment_kinds" },
+          "on_missing_action_type": "upload_required",
+          "on_missing_requires_user_input": false
+        }
+      }
+    },
+    {
+      "step_id": "s4",
       "kind": "operator",
       "name": "Documents.ImportFromPlatformAttachment",
       "operator_name": "Documents.ImportFromPlatformAttachment",
@@ -58,6 +77,7 @@
       "policy_tags": ["documents", "platform_read", "pii_allowed"],
       "risk_level": "low",
       "cache_policy": "never",
+      "depends_on": ["s3"],
       "idempotency_template": "doc_import:{tenant_id}:{intent.thread_id}:{context.documents.selected_attachment.attachment_id}:{context.documents.requested_document_type}",
       "payload": {
         "thread_id": { "from": "intent.thread_id" },
@@ -69,7 +89,7 @@
       "produces": ["outcome.document_uploaded"]
     },
     {
-      "step_id": "s4",
+      "step_id": "s5",
       "kind": "operator",
       "name": "Documents.Process",
       "operator_name": "Documents.Process",
@@ -86,7 +106,7 @@
       "produces": ["outcome.document_processed"]
     },
     {
-      "step_id": "s5",
+      "step_id": "s6",
       "kind": "operator",
       "name": "Documents.Review",
       "operator_name": "Documents.Review",
@@ -98,6 +118,7 @@
       "idempotency_template": "doc_review:{tenant_id}:{outcome.document_uploaded.payload.document_id}:{outcome.document_processed.hash.value}:{intent.inputs.review_goal}",
       "payload": {
         "document_id": { "from": "outcome.document_uploaded.payload.document_id" },
+        "document_type": { "from": "outcome.document_uploaded.payload.document_type" },
         "document_processed": { "from": "outcome.document_processed" },
         "review_goal": { "from": "intent.inputs.review_goal" },
         "custom_instructions": { "from": "intent.inputs.custom_instructions" }
@@ -105,7 +126,7 @@
       "produces": ["outcome.document_review"]
     },
     {
-      "step_id": "s6",
+      "step_id": "s7",
       "kind": "operator",
       "name": "Conversation.Suggestions.Generate",
       "operator_name": "Conversation.Suggestions.Generate",

@@ -326,40 +326,76 @@ class OperatorExecutor:
         manifest: dict[str, Any],
         payload: dict[str, Any],
     ) -> PromptRenderResult | None:
-        template_id = self._resolve_manifest_prompt_template(manifest)
+        template_id = self._resolve_manifest_prompt_template(manifest=manifest, payload=payload)
         if not template_id:
             return None
         if self._prompt_loader is None:
             raise ValueError("prompt loader is required for manifest-defined prompt templates")
         return self._prompt_loader.render(template_id, self._build_prompt_context(payload))
 
-    def _resolve_manifest_prompt_template(self, manifest: dict[str, Any]) -> str | None:
+    def _resolve_manifest_prompt_template(
+        self,
+        *,
+        manifest: dict[str, Any],
+        payload: dict[str, Any],
+    ) -> str | None:
         direct = manifest.get("prompt_template_id") or manifest.get("prompt_template")
-        if isinstance(direct, str) and direct.strip():
-            return direct.strip()
+        direct_template = _coerce_template_id(direct)
+        if direct_template:
+            return direct_template
 
         prompt_templates = manifest.get("prompt_templates")
         if isinstance(prompt_templates, str) and prompt_templates.strip():
             return prompt_templates.strip()
         if isinstance(prompt_templates, dict):
+            variant = str(payload.get("prompt_variant") or "").strip().lower()
+            document_type = _normalize_document_type_variant(payload.get("document_type"))
+            for key in (variant, document_type):
+                if not key:
+                    continue
+                candidate = _coerce_template_id(prompt_templates.get(key))
+                if candidate:
+                    return candidate
+                nested = prompt_templates.get(key)
+                if isinstance(nested, dict):
+                    candidate = _coerce_template_id(nested.get("primary") or nested.get("default"))
+                    if candidate:
+                        return candidate
+
+            by_document_type = prompt_templates.get("by_document_type")
+            if isinstance(by_document_type, dict):
+                if document_type:
+                    candidate = _coerce_template_id(by_document_type.get(document_type))
+                    if candidate:
+                        return candidate
+                candidate = _coerce_template_id(by_document_type.get("default") or by_document_type.get("primary"))
+                if candidate:
+                    return candidate
+
             primary = prompt_templates.get("primary")
-            if isinstance(primary, str) and primary.strip():
-                return primary.strip()
+            primary_template = _coerce_template_id(primary)
+            if primary_template:
+                return primary_template
+            fallback = _coerce_template_id(prompt_templates.get("default"))
+            if fallback:
+                return fallback
             for value in prompt_templates.values():
-                if isinstance(value, str) and value.strip():
-                    return value.strip()
+                template_id = _coerce_template_id(value)
+                if template_id:
+                    return template_id
                 if isinstance(value, dict):
-                    template_id = value.get("template_id") or value.get("id")
-                    if isinstance(template_id, str) and template_id.strip():
-                        return template_id.strip()
+                    nested_primary = _coerce_template_id(value.get("primary") or value.get("default"))
+                    if nested_primary:
+                        return nested_primary
+                    for nested_value in value.values():
+                        template_id = _coerce_template_id(nested_value)
+                        if template_id:
+                            return template_id
         if isinstance(prompt_templates, list):
             for item in prompt_templates:
-                if isinstance(item, str) and item.strip():
-                    return item.strip()
-                if isinstance(item, dict):
-                    template_id = item.get("template_id") or item.get("id")
-                    if isinstance(template_id, str) and template_id.strip():
-                        return template_id.strip()
+                template_id = _coerce_template_id(item)
+                if template_id:
+                    return template_id
         return None
 
     def _build_prompt_context(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -491,3 +527,21 @@ def _to_uuid_or_none(value: Any) -> uuid.UUID | None:
         return uuid.UUID(value)
     except ValueError:
         return None
+
+
+def _coerce_template_id(value: Any) -> str | None:
+    if isinstance(value, str):
+        stripped = value.strip()
+        return stripped or None
+    if isinstance(value, dict):
+        direct = value.get("template_id") or value.get("id")
+        if isinstance(direct, str):
+            stripped = direct.strip()
+            return stripped or None
+    return None
+
+
+def _normalize_document_type_variant(value: Any) -> str:
+    normalized = str(value or "").strip().lower().replace("-", "_").replace(" ", "_")
+    aliases = {"resume": "cv", "cover_letter": "letter", "coverletter": "letter", "motivation_letter": "letter"}
+    return aliases.get(normalized, normalized)

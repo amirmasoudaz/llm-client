@@ -13,7 +13,7 @@ Last audit: 2026-02-11
 - Phase F: Complete
 - Phase G: Complete
 - Phase H: Complete
-- Phase I: Partial
+- Phase I: Complete
 
 ## Definition of done
 - Every listed gap below is closed in code.
@@ -183,18 +183,15 @@ Last audit: 2026-02-11
 ## Phase I - CV/SOP/cover-letter review from attachments
 
 ### Remaining gaps
-- Missing attachment currently fails operator instead of yielding a user-action gate.
-- Attachment fetch pipeline still accumulates chunk list in memory before join.
-- `Documents.Review` is heuristic and not specialized via prompt templates and typed schemas per doc type.
-- End-to-end progress-stage and typed-report acceptance coverage is incomplete.
+- None.
 
 ### Plan of action
-- [ ] I1. Convert missing-attachment condition into `action_required` gate flow (upload required) rather than terminal operator failure.
-- [ ] I2. Refactor download path to true streaming-to-disk and hash-on-stream in `src/intelligence_layer_kernel/operators/implementations/documents_common.py`.
-- [ ] I3. Add document-type-specialized review prompts (`cv`, `sop`, `letter`) with typed output schemas and manifest bindings.
-- [ ] I4. Update `Documents.Review` to use prompt loader outputs and persist prompt hash metadata.
-- [ ] I5. Add tests for MIME allowlist, size limits, and parsing artifacts across PDF/DOCX/text.
-- [ ] I6. Add end-to-end test for "Review my CV" including progress events and structured report.
+- [x] I1. Convert missing-attachment condition into `action_required` gate flow (upload required) rather than terminal operator failure.
+- [x] I2. Refactor download path to true streaming-to-disk and hash-on-stream in `src/intelligence_layer_kernel/operators/implementations/documents_common.py`.
+- [x] I3. Add document-type-specialized review prompts (`cv`, `sop`, `letter`) with typed output schemas and manifest bindings.
+- [x] I4. Update `Documents.Review` to use prompt loader outputs and persist prompt hash metadata.
+- [x] I5. Add tests for MIME allowlist, size limits, and parsing artifacts across PDF/DOCX/text.
+- [x] I6. Add end-to-end test for "Review my CV" including progress events and structured report.
 
 ### Verification
 - New tests:
@@ -202,6 +199,8 @@ Last audit: 2026-02-11
 - `tests/intelligence_layer_kernel/test_documents_streaming_fetch.py`
 - `tests/intelligence_layer_kernel/test_documents_review_specialized_outputs.py`
 - `tests/intelligence_layer_kernel/test_documents_review_e2e_cv.py`
+- `PYTHONPATH=src:. .venv/bin/pytest -q tests/intelligence_layer_kernel/test_documents_missing_attachment_gate.py tests/intelligence_layer_kernel/test_documents_streaming_fetch.py tests/intelligence_layer_kernel/test_documents_review_specialized_outputs.py tests/intelligence_layer_kernel/test_documents_review_e2e_cv.py`
+- `PYTHONPATH=src:. .venv/bin/python -m intelligence_layer_kernel.contracts.validate`
 
 ## Cross-cutting execution order
 - [ ] X1. Finish contract and schema changes first (prompt bindings, replay modes, specialized review schemas).
