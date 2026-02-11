@@ -86,7 +86,7 @@ async def test_workflow_outcomes_reproduce_reads_stored_rows_without_recompute(m
 @pytest.mark.asyncio
 async def test_workflow_outcomes_reproduce_rejects_unsupported_mode() -> None:
     with pytest.raises(HTTPException) as exc_info:
-        await app_module.workflow_outcomes(workflow_id=str(uuid.uuid4()), mode="replay")
+        await app_module.workflow_outcomes(workflow_id=str(uuid.uuid4()), mode="invalid")
 
     assert exc_info.value.status_code == 400
 

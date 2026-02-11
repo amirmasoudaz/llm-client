@@ -12,7 +12,7 @@ from ..events import EventWriter, LedgerEvent
 from ..prompts import PromptTemplateLoader, PromptRenderResult
 from ..policy import PolicyEngine, PolicyDecisionStore, PolicyContext
 from .base import Operator
-from .registry import OperatorRegistry
+from .registry import OperatorRegistry, OperatorAccessDenied
 from .store import OperatorJobStore
 from .types import OperatorCall, OperatorResult, OperatorError, OperatorMetrics
 
@@ -54,15 +54,18 @@ class OperatorExecutor:
         workflow_id = trace.get("workflow_id")
         correlation_id = trace.get("correlation_id")
         step_id = trace.get("step_id")
+        plan_id = trace.get("plan_id")
+        thread_id = trace.get("thread_id")
+        intent_id = trace.get("intent_id")
 
         claim = await self._job_store.claim_job(
             operator_name=operator_name,
             operator_version=operator_version,
             idempotency_key=call.idempotency_key,
             workflow_id=workflow_id,
-            thread_id=None,
-            intent_id=None,
-            plan_id=trace.get("plan_id"),
+            thread_id=thread_id if isinstance(thread_id, int) else None,
+            intent_id=intent_id if isinstance(intent_id, str) else None,
+            plan_id=plan_id if isinstance(plan_id, str) else None,
             step_id=step_id,
             correlation_id=correlation_id,
             input_payload=call.payload,
@@ -94,6 +97,23 @@ class OperatorExecutor:
             self._validate_schema(output_ref, result.to_dict())
             return result
 
+        pre_invoke_denial = await self._pre_invoke_access_check(
+            manifest=manifest,
+            operator_name=operator_name,
+            operator_version=operator_version,
+            call=call,
+            workflow_id=workflow_id,
+            intent_id=intent_id,
+            plan_id=plan_id,
+            step_id=step_id,
+            correlation_id=correlation_id,
+            claim=claim,
+        )
+        if pre_invoke_denial is not None:
+            self._attach_prompt_metadata(pre_invoke_denial, prompt_render)
+            self._validate_schema(output_ref, pre_invoke_denial.to_dict())
+            return pre_invoke_denial
+
         # Policy: action stage
         policy_ctx = PolicyContext(
             stage="action",
@@ -108,17 +128,25 @@ class OperatorExecutor:
         )
         decision = self._policy_engine.evaluate(policy_ctx)
         decision.workflow_id = workflow_id
+        decision.intent_id = intent_id
+        decision.plan_id = plan_id
         decision.step_id = step_id
         decision.job_id = str(claim.job_id) if claim.job_id else None
         decision.correlation_id = correlation_id
         await self._policy_store.record(decision)
 
         if decision.decision != "ALLOW":
+            reason_message = "Operator invocation denied by policy"
+            error_code = "policy_denied"
+            if decision.decision == "REQUIRE_APPROVAL":
+                reason_message = "Operator invocation requires approval"
+                error_code = "policy_requires_approval"
             error = OperatorError(
-                code="policy_denied",
-                message="Operator invocation denied by policy",
+                code=error_code,
+                message=reason_message,
                 category="policy_denied",
                 retryable=False,
+                details={"reason_code": decision.reason_code, "requirements": decision.requirements},
             )
             result = OperatorResult(
                 status="failed",
@@ -145,6 +173,9 @@ class OperatorExecutor:
                 tenant_id=call.auth_context.tenant_id,
                 event_id=uuid.uuid4(),
                 workflow_id=uuid.UUID(workflow_id),
+                thread_id=thread_id if isinstance(thread_id, int) else None,
+                intent_id=_to_uuid_or_none(intent_id),
+                plan_id=_to_uuid_or_none(plan_id),
                 step_id=step_id,
                 job_id=claim.job_id,
                 event_type="job.started",
@@ -189,6 +220,9 @@ class OperatorExecutor:
                     tenant_id=call.auth_context.tenant_id,
                     event_id=uuid.uuid4(),
                     workflow_id=uuid.UUID(workflow_id),
+                    thread_id=thread_id if isinstance(thread_id, int) else None,
+                    intent_id=_to_uuid_or_none(intent_id),
+                    plan_id=_to_uuid_or_none(plan_id),
                     step_id=step_id,
                     job_id=claim.job_id,
                     event_type="job.failed",
@@ -239,6 +273,8 @@ class OperatorExecutor:
         )
         outcome_decision = self._policy_engine.evaluate(outcome_ctx)
         outcome_decision.workflow_id = workflow_id
+        outcome_decision.intent_id = intent_id
+        outcome_decision.plan_id = plan_id
         outcome_decision.step_id = step_id
         outcome_decision.job_id = str(claim.job_id) if claim.job_id else None
         outcome_decision.correlation_id = correlation_id
@@ -259,6 +295,9 @@ class OperatorExecutor:
                 tenant_id=call.auth_context.tenant_id,
                 event_id=uuid.uuid4(),
                 workflow_id=uuid.UUID(workflow_id),
+                thread_id=thread_id if isinstance(thread_id, int) else None,
+                intent_id=_to_uuid_or_none(intent_id),
+                plan_id=_to_uuid_or_none(plan_id),
                 step_id=step_id,
                 job_id=claim.job_id,
                 event_type="job.completed" if result.status == "succeeded" else "job.failed",
@@ -353,3 +392,102 @@ class OperatorExecutor:
             return
         result.prompt_template_id = prompt_render.template_id
         result.prompt_template_hash = prompt_render.template_hash
+
+    async def _pre_invoke_access_check(
+        self,
+        *,
+        manifest: dict[str, Any],
+        operator_name: str,
+        operator_version: str,
+        call: OperatorCall,
+        workflow_id: str | None,
+        intent_id: str | None,
+        plan_id: str | None,
+        step_id: str | None,
+        correlation_id: str | None,
+        claim,
+    ) -> OperatorResult | None:
+        try:
+            self._registry.enforce_invocation_policy(
+                name=operator_name,
+                version=operator_version,
+                auth_context=call.auth_context.to_dict(),
+                manifest=manifest,
+            )
+            return None
+        except OperatorAccessDenied as exc:
+            denial = PolicyContext(
+                stage="action",
+                operator_name=operator_name,
+                operator_version=operator_version,
+                effects=list(manifest.get("effects") or []),
+                policy_tags=list(manifest.get("policy_tags") or []),
+                data_classes=[],
+                auth_context=call.auth_context.to_dict(),
+                trace_context=call.trace_context.to_dict(),
+                input_payload=call.payload,
+            )
+            decision = self._policy_engine.evaluate(denial)
+            decision.decision = "DENY"
+            decision.reason_code = exc.reason_code
+            decision.reason = exc.reason
+            decision.requirements = dict(exc.requirements)
+            decision.workflow_id = workflow_id
+            decision.intent_id = intent_id
+            decision.plan_id = plan_id
+            decision.step_id = step_id
+            decision.job_id = str(claim.job_id) if claim.job_id else None
+            decision.correlation_id = correlation_id
+            await self._policy_store.record(decision)
+
+            if claim.job_id and claim.attempt_no:
+                await self._job_store.complete_job(
+                    job_id=claim.job_id,
+                    attempt_no=claim.attempt_no,
+                    status="failed",
+                    result_payload={
+                        "schema_version": "1.0",
+                        "status": "failed",
+                        "result": None,
+                        "artifacts": [],
+                        "metrics": {"latency_ms": 0},
+                        "error": {
+                            "code": "policy_denied",
+                            "message": exc.reason,
+                            "category": "policy_denied",
+                            "retryable": False,
+                            "details": {"reason_code": exc.reason_code, "requirements": exc.requirements},
+                        },
+                    },
+                    error={
+                        "code": "policy_denied",
+                        "message": exc.reason,
+                        "category": "policy_denied",
+                        "retryable": False,
+                        "details": {"reason_code": exc.reason_code, "requirements": exc.requirements},
+                    },
+                    metrics={"latency_ms": 0},
+                )
+
+            return OperatorResult(
+                status="failed",
+                result=None,
+                artifacts=[],
+                metrics=OperatorMetrics(latency_ms=0),
+                error=OperatorError(
+                    code="policy_denied",
+                    message=exc.reason,
+                    category="policy_denied",
+                    retryable=False,
+                    details={"reason_code": exc.reason_code, "requirements": exc.requirements},
+                ),
+            )
+
+
+def _to_uuid_or_none(value: Any) -> uuid.UUID | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        return uuid.UUID(value)
+    except ValueError:
+        return None

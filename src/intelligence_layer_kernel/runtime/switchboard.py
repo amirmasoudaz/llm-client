@@ -1,11 +1,28 @@
 from __future__ import annotations
 
-from typing import Any
+import json
 import re
+from typing import Any, Protocol
+
+
+class IntentJsonFallback(Protocol):
+    def __call__(
+        self,
+        *,
+        message: str,
+        allowed_intents: list[str],
+        attachment_ids: list[int],
+    ) -> Any:
+        ...
 
 
 class IntentSwitchboard:
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        llm_json_fallback: IntentJsonFallback | None = None,
+    ) -> None:
+        self._llm_json_fallback = llm_json_fallback
         self._rules: list[tuple[str, str]] = [
             ("complete my profile", "Student.Profile.Collect"),
             ("update my profile", "Student.Profile.Collect"),
@@ -38,8 +55,36 @@ class IntentSwitchboard:
         message: str,
         *,
         attachment_ids: list[int] | None = None,
+        allowed_intents: list[str] | None = None,
     ) -> tuple[str, dict[str, Any]]:
         text = message.strip()
+        attachment_ids = [int(item) for item in (attachment_ids or []) if int(item) > 0]
+        allowlist = self._normalize_allowed_intents(allowed_intents)
+
+        deterministic = self._classify_deterministic(text, attachment_ids=attachment_ids)
+        if deterministic is not None and self._is_allowed_intent(deterministic[0], allowlist):
+            return deterministic
+
+        llm_candidate = self._classify_with_llm_json(
+            text=text,
+            allowlist=allowlist,
+            attachment_ids=attachment_ids,
+        )
+        if llm_candidate is not None and self._is_allowed_intent(llm_candidate[0], allowlist):
+            return llm_candidate
+
+        return self._fallback_intent(
+            text=text,
+            allowlist=allowlist,
+            attachment_ids=attachment_ids,
+        )
+
+    def _classify_deterministic(
+        self,
+        text: str,
+        *,
+        attachment_ids: list[int],
+    ) -> tuple[str, dict[str, Any]] | None:
         lowered = text.lower()
         field_values = self._extract_funding_request_fields(text)
         if field_values:
@@ -70,8 +115,83 @@ class IntentSwitchboard:
                 if intent_type == "Documents.Review":
                     return intent_type, self._default_document_review_inputs(text, attachment_ids=attachment_ids)
                 return intent_type, {}
-        # Default to email review when unsure.
-        return "Funding.Outreach.Email.Review", {}
+        return None
+
+    def _classify_with_llm_json(
+        self,
+        *,
+        text: str,
+        allowlist: list[str],
+        attachment_ids: list[int],
+    ) -> tuple[str, dict[str, Any]] | None:
+        if self._llm_json_fallback is None:
+            return None
+        try:
+            raw = self._llm_json_fallback(
+                message=text,
+                allowed_intents=list(allowlist),
+                attachment_ids=list(attachment_ids),
+            )
+        except Exception:
+            return None
+        payload = self._coerce_fallback_payload(raw)
+        if payload is None:
+            return None
+        intent_type = str(payload.get("intent_type") or payload.get("intent") or "").strip()
+        if not intent_type:
+            return None
+        if allowlist and intent_type not in set(allowlist):
+            return None
+        inputs = payload.get("inputs")
+        resolved_inputs = inputs if isinstance(inputs, dict) else {}
+        if intent_type == "Documents.Review" and not resolved_inputs:
+            resolved_inputs = self._default_document_review_inputs(text, attachment_ids=attachment_ids)
+        return intent_type, resolved_inputs
+
+    def _coerce_fallback_payload(self, value: Any) -> dict[str, Any] | None:
+        if isinstance(value, dict):
+            return dict(value)
+        if isinstance(value, str):
+            text = value.strip()
+            if not text:
+                return None
+            try:
+                parsed = json.loads(text)
+            except json.JSONDecodeError:
+                return None
+            if isinstance(parsed, dict):
+                return parsed
+        return None
+
+    def _fallback_intent(
+        self,
+        *,
+        text: str,
+        allowlist: list[str],
+        attachment_ids: list[int],
+    ) -> tuple[str, dict[str, Any]]:
+        default_intent = "Funding.Outreach.Email.Review"
+        if allowlist and default_intent not in set(allowlist):
+            default_intent = allowlist[0]
+        if default_intent == "Documents.Review":
+            return default_intent, self._default_document_review_inputs(text, attachment_ids=attachment_ids)
+        return default_intent, {}
+
+    def _normalize_allowed_intents(self, allowed_intents: list[str] | None) -> list[str]:
+        if not isinstance(allowed_intents, list):
+            return []
+        out: list[str] = []
+        for item in allowed_intents:
+            value = str(item).strip()
+            if not value or value in out:
+                continue
+            out.append(value)
+        return out
+
+    def _is_allowed_intent(self, intent_type: str, allowlist: list[str]) -> bool:
+        if not allowlist:
+            return True
+        return intent_type in set(allowlist)
 
     def _extract_funding_request_fields(self, text: str) -> dict[str, Any]:
         field_labels = r"research interest|paper title|journal|year|research connection"

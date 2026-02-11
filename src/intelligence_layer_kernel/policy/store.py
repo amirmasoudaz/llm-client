@@ -15,6 +15,11 @@ class PolicyDecisionStore:
 
     async def record(self, decision: PolicyDecision) -> uuid.UUID:
         policy_decision_id = uuid.uuid4()
+        correlation_uuid = _coerce_uuid(decision.correlation_id) or _ZERO_UUID
+        workflow_uuid = _coerce_uuid(decision.workflow_id) or correlation_uuid
+        intent_uuid = _coerce_uuid(decision.intent_id)
+        plan_uuid = _coerce_uuid(decision.plan_id)
+        job_uuid = _coerce_uuid(decision.job_id)
         async with self._pool.acquire() as conn:
             await conn.execute(
                 """
@@ -50,19 +55,19 @@ class PolicyDecisionStore:
                 decision.plan_id,
                 decision.step_id,
                 decision.job_id,
-                decision.correlation_id,
+                str(correlation_uuid),
             )
 
         await self._events.append(
             LedgerEvent(
                 tenant_id=self._tenant_id,
                 event_id=uuid.uuid4(),
-                workflow_id=uuid.UUID(decision.workflow_id) if decision.workflow_id else uuid.uuid4(),
+                workflow_id=workflow_uuid,
                 thread_id=None,
-                intent_id=uuid.UUID(decision.intent_id) if decision.intent_id else None,
-                plan_id=uuid.UUID(decision.plan_id) if decision.plan_id else None,
+                intent_id=intent_uuid,
+                plan_id=plan_uuid,
                 step_id=decision.step_id,
-                job_id=uuid.UUID(decision.job_id) if decision.job_id else None,
+                job_id=job_uuid,
                 policy_decision_id=policy_decision_id,
                 event_type="policy.decision",
                 actor={"type": "system", "id": "policy_engine", "role": "system"},
@@ -72,10 +77,22 @@ class PolicyDecisionStore:
                     "reason_code": decision.reason_code,
                     "reason": decision.reason,
                 },
-                correlation_id=uuid.UUID(decision.correlation_id) if decision.correlation_id else uuid.uuid4(),
+                correlation_id=correlation_uuid,
                 producer_kind="kernel",
                 producer_name=decision.policy_engine_name,
                 producer_version=decision.policy_engine_version,
             )
         )
         return policy_decision_id
+
+
+_ZERO_UUID = uuid.UUID(int=0)
+
+
+def _coerce_uuid(value: str | None) -> uuid.UUID | None:
+    if not value:
+        return None
+    try:
+        return uuid.UUID(value)
+    except ValueError:
+        return None

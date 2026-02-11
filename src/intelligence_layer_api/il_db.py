@@ -348,7 +348,14 @@ class ILDB:
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow(
                 """
-                SELECT workflow_id::text AS workflow_id, thread_id, intent_id::text AS intent_id, plan_id::text AS plan_id, status
+                SELECT workflow_id::text AS workflow_id,
+                       thread_id,
+                       intent_id::text AS intent_id,
+                       plan_id::text AS plan_id,
+                       status,
+                       execution_mode,
+                       replay_mode,
+                       parent_workflow_id::text AS parent_workflow_id
                 FROM runtime.workflow_runs
                 WHERE tenant_id=$1 AND workflow_id=$2::uuid;
                 """,

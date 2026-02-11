@@ -1,0 +1,127 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/manifests/operator_manifest.v1.json",
+  "title": "Operator Manifest (v1)",
+  "type": "object",
+  "required": ["name", "type", "version", "schemas"],
+  "properties": {
+    "name": { "type": "string", "minLength": 1 },
+    "type": { "const": "operator" },
+    "version": { "type": "string", "minLength": 1 },
+    "owner": { "type": "string" },
+    "description": { "type": "string" },
+    "schemas": {
+      "type": "object",
+      "required": ["input", "output"],
+      "properties": {
+        "input": { "type": "string", "minLength": 1 },
+        "output": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": true
+    },
+    "requires": {
+      "type": "object",
+      "properties": {
+        "tools": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "capabilities": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "context_fields": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "scopes": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      },
+      "additionalProperties": true
+    },
+    "capabilities": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "policy_tags": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "effects": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "required_scopes": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "allow_principal_types": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "deny_principal_types": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "auth": {
+      "type": "object",
+      "properties": {
+        "required_scopes": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "allow_principal_types": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "deny_principal_types": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      },
+      "additionalProperties": true
+    },
+    "prompt_template_id": { "type": "string", "minLength": 1 },
+    "prompt_template": { "type": "string", "minLength": 1 },
+    "prompt_templates": {
+      "oneOf": [
+        { "type": "string", "minLength": 1 },
+        {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              { "type": "string", "minLength": 1 },
+              {
+                "type": "object",
+                "properties": {
+                  "template_id": { "type": "string", "minLength": 1 },
+                  "id": { "type": "string", "minLength": 1 }
+                },
+                "additionalProperties": true
+              }
+            ]
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": {
+            "oneOf": [
+              { "type": "string", "minLength": 1 },
+              {
+                "type": "object",
+                "properties": {
+                  "template_id": { "type": "string", "minLength": 1 },
+                  "id": { "type": "string", "minLength": 1 }
+                },
+                "additionalProperties": true
+              }
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "additionalProperties": true
+}

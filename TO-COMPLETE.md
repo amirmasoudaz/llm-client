@@ -6,8 +6,8 @@ Last audit: 2026-02-10
 
 ## Current status summary
 - Phase A: Complete
-- Phase B: Partial
-- Phase C: Partial
+- Phase B: Complete
+- Phase C: Complete
 - Phase D: Partial
 - Phase E: Mostly implemented, hardening and proof still needed
 - Phase F: Mostly implemented, hardening and proof still needed
@@ -45,18 +45,15 @@ Last audit: 2026-02-10
 ## Phase B - Plugin framework and operator core
 
 ### Remaining gaps
-- Policy engine is currently default-allow only.
-- Operator execution trace propagation is incomplete (missing thread/intent propagation into job claims).
-- Manifest-driven prompt bindings are not enforced in executor.
-- Capability/policy allow-deny enforcement is not fully implemented at registry/execution level.
+- None.
 
 ### Plan of action
-- [ ] B1. Replace default-allow skeleton in `src/intelligence_layer_kernel/policy/engine.py` with explicit rule evaluation and deny/requirement support.
-- [ ] B2. Wire `thread_id` and `intent_id` into operator job claims in `src/intelligence_layer_kernel/operators/executor.py` and `src/intelligence_layer_kernel/operators/store.py`.
-- [ ] B3. Add capability and policy allow/deny checks in `src/intelligence_layer_kernel/operators/registry.py` and pre-invoke checks in executor.
-- [ ] B4. Add manifest schema fields for prompt template IDs and enforce render/persist path in executor.
-- [ ] B5. Ensure policy decisions are emitted at all required stages (plan, action, outcome) with consistent trace IDs and references.
-- [ ] B6. Add regression tests for deny paths, idempotent replay, and manifest prompt binding failures.
+- [x] B1. Replace default-allow skeleton in `src/intelligence_layer_kernel/policy/engine.py` with explicit rule evaluation and deny/requirement support.
+- [x] B2. Wire `thread_id` and `intent_id` into operator job claims in `src/intelligence_layer_kernel/operators/executor.py` and `src/intelligence_layer_kernel/operators/store.py`.
+- [x] B3. Add capability and policy allow/deny checks in `src/intelligence_layer_kernel/operators/registry.py` and pre-invoke checks in executor.
+- [x] B4. Add manifest schema fields for prompt template IDs and enforce render/persist path in executor.
+- [x] B5. Ensure policy decisions are emitted at all required stages (plan, action, outcome) with consistent trace IDs and references.
+- [x] B6. Add regression tests for deny paths, idempotent replay, and manifest prompt binding failures.
 
 ### Verification
 - New tests:
@@ -67,17 +64,15 @@ Last audit: 2026-02-10
 ## Phase C - Kernel runtime, planner, and gates
 
 ### Remaining gaps
-- Intent switchboard has deterministic routing but no LLM JSON fallback constrained to registered intents.
-- Replay/reproduce/regenerate semantics are stored but not explicitly exposed and testable end-to-end.
-- Gate and resume paths exist, but acceptance-level tests for both gate types and replay modes are incomplete.
+- None.
 
 ### Plan of action
-- [ ] C1. Implement LLM JSON fallback classifier in `src/intelligence_layer_kernel/runtime/switchboard.py` with allowlisted intent validation.
-- [ ] C2. Add explicit API support for `mode=reproduce|replay|regenerate` for workflow outcome retrieval and execution behavior.
-- [ ] C3. Implement deterministic replay behavior and explicit regenerate lineage behavior in runtime kernel/store.
-- [ ] C4. Add full gate lifecycle tests for `collect_profile_fields` and `apply_platform_patch` including resume continuity of idempotency keys.
-- [ ] C5. Add data-model support for regenerate lineage reuse where needed (parent workflow/outcome lineage tracking).
-- [ ] C6. Add API and runtime tests proving pause/resume and replay-mode semantics.
+- [x] C1. Implement LLM JSON fallback classifier in `src/intelligence_layer_kernel/runtime/switchboard.py` with allowlisted intent validation.
+- [x] C2. Add explicit API support for `mode=reproduce|replay|regenerate` for workflow outcome retrieval and execution behavior.
+- [x] C3. Implement deterministic replay behavior and explicit regenerate lineage behavior in runtime kernel/store.
+- [x] C4. Add full gate lifecycle tests for `collect_profile_fields` and `apply_platform_patch` including resume continuity of idempotency keys.
+- [x] C5. Add data-model support for regenerate lineage reuse where needed (parent workflow/outcome lineage tracking).
+- [x] C6. Add API and runtime tests proving pause/resume and replay-mode semantics.
 
 ### Verification
 - New tests:

@@ -28,6 +28,7 @@ class WorkflowKernel:
     event_writer: EventWriter
     pool: Any
     tenant_id: int
+    switchboard: IntentSwitchboard | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "_intent_store", IntentStore(pool=self.pool, tenant_id=self.tenant_id))
@@ -35,7 +36,8 @@ class WorkflowKernel:
         object.__setattr__(self, "_workflow_store", WorkflowStore(pool=self.pool, tenant_id=self.tenant_id))
         object.__setattr__(self, "_outcome_store", OutcomeStore(pool=self.pool, tenant_id=self.tenant_id))
         object.__setattr__(self, "_gate_store", GateStore(pool=self.pool, tenant_id=self.tenant_id))
-        object.__setattr__(self, "_switchboard", IntentSwitchboard())
+        resolved_switchboard = self.switchboard or IntentSwitchboard()
+        object.__setattr__(self, "_switchboard", resolved_switchboard)
 
     async def handle_message(
         self,
@@ -49,7 +51,11 @@ class WorkflowKernel:
         source: str = "chat",
         workflow_id: uuid.UUID | None = None,
     ) -> WorkflowResult:
-        intent_type, inputs = self._switchboard.classify(message, attachment_ids=attachments or [])
+        intent_type, inputs = self._switchboard.classify(
+            message,
+            attachment_ids=attachments or [],
+            allowed_intents=self.contracts.list_intent_types(),
+        )
         return await self.start_intent(
             intent_type=intent_type,
             inputs=inputs,
@@ -190,6 +196,59 @@ class WorkflowKernel:
 
         return resolution
 
+    async def rerun_workflow(
+        self,
+        *,
+        workflow_id: uuid.UUID,
+        mode: str,
+        actor: dict[str, Any],
+        source: str = "api",
+    ) -> WorkflowResult:
+        replay_mode = mode.strip().lower()
+        if replay_mode not in {"replay", "regenerate"}:
+            raise ValueError("mode must be replay or regenerate")
+
+        loaded = await self._load_workflow_execution_inputs(workflow_id=workflow_id)
+        if loaded is None:
+            raise ValueError("workflow not found")
+        run, intent, plan = loaded
+
+        replay_workflow_id = uuid.uuid4()
+        await self._workflow_store.create_run(
+            workflow_id=replay_workflow_id,
+            correlation_id=run.correlation_id,
+            thread_id=run.thread_id,
+            scope_type=run.scope_type or intent.scope_type,
+            scope_id=run.scope_id or intent.scope_id,
+            intent_id=intent.intent_id,
+            plan_id=plan.plan_id,
+            status="running",
+            execution_mode=run.execution_mode,
+            replay_mode=replay_mode,
+            parent_workflow_id=workflow_id,
+        )
+        await self._workflow_store.create_steps(workflow_id=replay_workflow_id, steps=plan.steps)
+        await self._emit_progress(
+            workflow_id=replay_workflow_id,
+            intent_id=intent.intent_id,
+            plan_id=plan.plan_id,
+            thread_id=intent.thread_id,
+            correlation_id=intent.correlation_id,
+            actor=actor,
+            stage="workflow_restarted",
+            detail={
+                "mode": replay_mode,
+                "source_workflow_id": str(workflow_id),
+                "source": source,
+            },
+        )
+        return await self._execute_workflow(
+            workflow_id=replay_workflow_id,
+            intent=intent,
+            plan=plan,
+            actor=actor,
+        )
+
     def _build_intent(
         self,
         *,
@@ -244,13 +303,32 @@ class WorkflowKernel:
         workflow_id: uuid.UUID,
         actor: dict[str, Any],
     ) -> None:
+        loaded = await self._load_workflow_execution_inputs(workflow_id=workflow_id)
+        if loaded is None:
+            return
+        _run, intent, plan = loaded
+        await self._workflow_store.update_run_status(workflow_id=workflow_id, status="running")
+        await self._execute_workflow(
+            workflow_id=workflow_id,
+            intent=intent,
+            plan=plan,
+            actor=actor,
+            resume_only=True,
+        )
+
+    async def _load_workflow_execution_inputs(
+        self,
+        *,
+        workflow_id: uuid.UUID,
+    ) -> tuple[Any, IntentRecord, PlanRecord] | None:
         run = await self._workflow_store.get_run(workflow_id=workflow_id)
         if run is None or run.plan_id is None:
-            return
+            return None
         plan_row = await self._plan_store.fetch(run.plan_id)
         intent_row = await self._intent_store.fetch(run.intent_id)
         if not plan_row or not intent_row:
-            return
+            return None
+
         plan_dict = plan_row["plan"]
         plan = PlanRecord(
             plan_id=plan_row["plan_id"],
@@ -277,14 +355,7 @@ class WorkflowKernel:
             correlation_id=intent_row["correlation_id"],
             created_at=intent_row["created_at"],
         )
-        await self._workflow_store.update_run_status(workflow_id=workflow_id, status="running")
-        await self._execute_workflow(
-            workflow_id=workflow_id,
-            intent=intent,
-            plan=plan,
-            actor=actor,
-            resume_only=True,
-        )
+        return run, intent, plan
 
     async def _execute_workflow(
         self,
@@ -295,6 +366,9 @@ class WorkflowKernel:
         actor: dict[str, Any],
         resume_only: bool = False,
     ) -> WorkflowResult:
+        run = await self._workflow_store.get_run(workflow_id=workflow_id)
+        replay_mode = run.replay_mode if run is not None else "reproduce"
+        parent_workflow_id = run.parent_workflow_id if run is not None else None
         context = await self._build_context(intent=intent, plan=plan, workflow_id=workflow_id)
         ctx = BindingContext(context)
 
@@ -386,6 +460,8 @@ class WorkflowKernel:
                     step=step,
                     ctx=ctx,
                     actor=actor,
+                    replay_mode=replay_mode,
+                    parent_workflow_id=parent_workflow_id,
                 )
                 if result.status != "completed":
                     return result
@@ -462,6 +538,8 @@ class WorkflowKernel:
         step: dict[str, Any],
         ctx: BindingContext,
         actor: dict[str, Any],
+        replay_mode: str,
+        parent_workflow_id: uuid.UUID | None,
     ) -> WorkflowResult:
         step_id = step["step_id"]
         await self._workflow_store.mark_step_running(workflow_id=workflow_id, step_id=step_id)
@@ -487,6 +565,12 @@ class WorkflowKernel:
         )
         self._apply_operator_defaults(step.get("operator_name"), payload)
         idempotency_key = render_template(step.get("idempotency_template", ""), ctx)
+        idempotency_key = self._with_replay_mode_idempotency(
+            idempotency_key=idempotency_key,
+            step=step,
+            replay_mode=replay_mode,
+            workflow_id=workflow_id,
+        )
         await self._workflow_store.update_step_payload(
             workflow_id=workflow_id,
             step_id=step_id,
@@ -518,6 +602,8 @@ class WorkflowKernel:
                 correlation_id=str(intent.correlation_id),
                 workflow_id=str(workflow_id),
                 step_id=step_id,
+                thread_id=intent.thread_id,
+                intent_id=str(intent.intent_id),
                 plan_id=str(plan.plan_id),
             ),
         )
@@ -558,6 +644,8 @@ class WorkflowKernel:
             content=result.result,
             template_id=result.prompt_template_id,
             template_hash=result.prompt_template_hash,
+            replay_mode=replay_mode,
+            parent_workflow_id=parent_workflow_id,
         )
 
         self._apply_produces(ctx.data, step.get("produces") or [], result.result)
@@ -613,6 +701,24 @@ class WorkflowKernel:
             payload["profile_updates"] = {}
         if operator_name == "Memory.Upsert" and "entries" not in payload:
             payload["entries"] = []
+
+    def _with_replay_mode_idempotency(
+        self,
+        *,
+        idempotency_key: str,
+        step: dict[str, Any],
+        replay_mode: str,
+        workflow_id: uuid.UUID,
+    ) -> str:
+        if replay_mode != "regenerate":
+            return idempotency_key
+        effects = step.get("effects")
+        if _step_has_effectful_writes(effects):
+            return idempotency_key
+        suffix = f"regen:{workflow_id}"
+        if idempotency_key:
+            return f"{idempotency_key}:{suffix}"
+        return suffix
 
     async def _hydrate_operator_payload(
         self,
@@ -1155,6 +1261,16 @@ def _safe_uuid(value: Any) -> uuid.UUID | None:
 def _hash_json(payload: dict[str, Any]) -> Any:
     raw = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return blake3(raw)
+
+
+def _step_has_effectful_writes(value: Any) -> bool:
+    if not isinstance(value, list):
+        return False
+    effectful = {"db_write", "external_send", "s3_final_write", "webhook_emit"}
+    for item in value:
+        if isinstance(item, str) and item in effectful:
+            return True
+    return False
 
 
 def _has_value(value: Any) -> bool:

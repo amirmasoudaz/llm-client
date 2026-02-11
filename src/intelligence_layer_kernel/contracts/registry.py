@@ -109,6 +109,11 @@ class ContractRegistry:
             raise KeyError(f"No plan template for intent_type: {intent_type}")
         return plan
 
+    def list_intent_types(self) -> list[str]:
+        if not self._loaded:
+            self.load()
+        return sorted(self._intent_schema_by_type.keys())
+
     def get_operator_manifest(self, operator_name: str, version: str) -> dict[str, Any]:
         if not self._loaded:
             self.load()
@@ -266,7 +271,15 @@ class ContractRegistry:
                 )
 
     def _validate_operator_manifests(self, errors: list[str]) -> None:
+        manifest_schema = self._schemas_by_relpath.get("schemas/manifests/operator_manifest.v1.json")
         for (name, version), manifest in self._operator_manifests.items():
+            if manifest_schema is not None:
+                self._validate_against_schema(
+                    manifest_schema,
+                    manifest,
+                    f"operator-manifest:{name}@{version}",
+                    errors,
+                )
             if manifest.get("type") != "operator":
                 errors.append(f"operator manifest {name}@{version} has invalid type")
             schemas = manifest.get("schemas")

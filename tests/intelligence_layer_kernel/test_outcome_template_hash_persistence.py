@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from typing import Any
+from datetime import datetime, timezone
 
 import pytest
 
@@ -72,8 +73,8 @@ async def test_outcome_store_persists_template_metadata() -> None:
     query, args = conn.execute_calls[0]
     assert "template_id" in query
     assert "template_hash" in query
-    assert args[13] == template_id
-    assert args[14] == template_hash
+    assert args[15] == template_id
+    assert args[16] == template_hash
 
 
 @pytest.mark.asyncio
@@ -83,6 +84,9 @@ async def test_outcome_store_lists_template_metadata() -> None:
         rows=[
             {
                 "outcome_id": uuid.uuid4(),
+                "lineage_id": uuid.uuid4(),
+                "version": 1,
+                "parent_outcome_id": None,
                 "outcome_type": "Email.ReviewDraft",
                 "status": "succeeded",
                 "workflow_id": workflow_id,
@@ -90,6 +94,7 @@ async def test_outcome_store_lists_template_metadata() -> None:
                 "content": {"ok": True},
                 "template_id": "Email.ReviewDraft/1.0.0/review_draft.j2",
                 "template_hash": "hash-value",
+                "created_at": datetime.now(timezone.utc),
             }
         ]
     )

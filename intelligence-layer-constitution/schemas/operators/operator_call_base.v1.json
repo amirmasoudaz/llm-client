@@ -30,6 +30,8 @@
       "properties": {
         "correlation_id": { "$ref": "../common/defs.v1.json#/$defs/Uuid" },
         "workflow_id": { "$ref": "../common/defs.v1.json#/$defs/Uuid" },
+        "thread_id": { "$ref": "../common/defs.v1.json#/$defs/ThreadId" },
+        "intent_id": { "$ref": "../common/defs.v1.json#/$defs/Uuid" },
         "plan_id": { "$ref": "../common/defs.v1.json#/$defs/Uuid" },
         "step_id": { "type": "string", "minLength": 1 },
         "job_id": { "$ref": "../common/defs.v1.json#/$defs/Uuid" }
@@ -38,4 +40,3 @@
     "policy_snapshot": { "type": "object" }
   }
 }
-

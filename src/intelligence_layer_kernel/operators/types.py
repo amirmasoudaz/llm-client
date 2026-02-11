@@ -23,6 +23,8 @@ class TraceContext:
     correlation_id: str
     workflow_id: str
     step_id: str
+    thread_id: int | None = None
+    intent_id: str | None = None
     plan_id: str | None = None
     job_id: str | None = None
 
@@ -32,6 +34,10 @@ class TraceContext:
             "workflow_id": self.workflow_id,
             "step_id": self.step_id,
         }
+        if self.thread_id is not None:
+            data["thread_id"] = int(self.thread_id)
+        if self.intent_id:
+            data["intent_id"] = self.intent_id
         if self.plan_id:
             data["plan_id"] = self.plan_id
         if self.job_id:

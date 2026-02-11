@@ -1140,6 +1140,8 @@ async def workflow_events(workflow_id: str) -> StreamingResponse:
 
 class WorkflowOutcomesResponse(BaseModel):
     workflow_id: str
+    source_workflow_id: str | None = None
+    parent_workflow_id: str | None = None
     mode: str
     run_status: str
     recomputed: bool = False
@@ -1151,8 +1153,9 @@ async def workflow_outcomes(
     workflow_id: str,
     mode: str = Query(default="reproduce"),
 ) -> WorkflowOutcomesResponse:
-    if mode != "reproduce":
-        raise HTTPException(status_code=400, detail="unsupported mode; only reproduce is available")
+    normalized_mode = mode.strip().lower()
+    if normalized_mode not in {"reproduce", "replay", "regenerate"}:
+        raise HTTPException(status_code=400, detail="unsupported mode")
 
     try:
         workflow_uuid = uuid.UUID(workflow_id)
@@ -1166,7 +1169,35 @@ async def workflow_outcomes(
     if run is None:
         raise HTTPException(status_code=404, detail="workflow not found")
 
-    raw_outcomes = await outcome_store.list_by_workflow(workflow_id=workflow_uuid)
+    effective_workflow_uuid = workflow_uuid
+    recomputed = False
+    if normalized_mode in {"replay", "regenerate"}:
+        kernel: WorkflowKernel | None = getattr(app.state, "workflow_kernel", None)
+        if kernel is None:
+            raise HTTPException(status_code=400, detail="workflow kernel is unavailable")
+        actor = {
+            "tenant_id": ildb.tenant_id,
+            "principal": {"type": "system", "id": "workflow_outcomes"},
+            "role": "system",
+            "trust_level": 0,
+            "scopes": ["workflow:rerun"],
+        }
+        try:
+            rerun = await kernel.rerun_workflow(
+                workflow_id=workflow_uuid,
+                mode=normalized_mode,
+                actor=actor,
+                source="api.outcomes",
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        effective_workflow_uuid = rerun.workflow_id
+        recomputed = True
+        run = await ildb.get_workflow_run(workflow_id=str(effective_workflow_uuid))
+        if run is None:
+            raise HTTPException(status_code=404, detail="workflow not found")
+
+    raw_outcomes = await outcome_store.list_by_workflow(workflow_id=effective_workflow_uuid)
     outcomes: list[dict[str, Any]] = []
     for item in raw_outcomes:
         normalized = dict(item)
@@ -1176,13 +1207,24 @@ async def workflow_outcomes(
         outcome_id = normalized.get("outcome_id")
         if outcome_id is not None:
             normalized["outcome_id"] = str(outcome_id)
+        lineage_id = normalized.get("lineage_id")
+        if lineage_id is not None:
+            normalized["lineage_id"] = str(lineage_id)
+        parent_outcome_id = normalized.get("parent_outcome_id")
+        if parent_outcome_id is not None:
+            normalized["parent_outcome_id"] = str(parent_outcome_id)
+        created_at = normalized.get("created_at")
+        if isinstance(created_at, datetime):
+            normalized["created_at"] = created_at.isoformat()
         outcomes.append(normalized)
 
     return WorkflowOutcomesResponse(
-        workflow_id=workflow_id,
-        mode=mode,
+        workflow_id=str(effective_workflow_uuid),
+        source_workflow_id=workflow_id if recomputed else None,
+        parent_workflow_id=str(run.get("parent_workflow_id")) if run.get("parent_workflow_id") else None,
+        mode=normalized_mode,
         run_status=str(run.get("status") or "unknown"),
-        recomputed=False,
+        recomputed=recomputed,
         outcomes=outcomes,
     )
 

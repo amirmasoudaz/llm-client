@@ -22,6 +22,7 @@ class WorkflowRun:
     status: str
     execution_mode: str
     replay_mode: str
+    parent_workflow_id: uuid.UUID | None = None
 
 
 class IntentStore:
@@ -217,7 +218,7 @@ class WorkflowStore:
             row = await conn.fetchrow(
                 """
                 SELECT workflow_id, correlation_id, thread_id, scope_type, scope_id,
-                       intent_id, plan_id, status, execution_mode, replay_mode
+                       intent_id, plan_id, status, execution_mode, replay_mode, parent_workflow_id
                 FROM runtime.workflow_runs
                 WHERE tenant_id=$1 AND workflow_id=$2;
                 """,
@@ -237,6 +238,7 @@ class WorkflowStore:
                 status=row["status"],
                 execution_mode=row["execution_mode"],
                 replay_mode=row["replay_mode"],
+                parent_workflow_id=row["parent_workflow_id"],
             )
 
     async def create_steps(self, *, workflow_id: uuid.UUID, steps: list[dict[str, Any]]) -> None:
@@ -394,11 +396,30 @@ class OutcomeStore:
         content: dict[str, Any] | None,
         template_id: str | None = None,
         template_hash: str | None = None,
+        replay_mode: str = "reproduce",
+        parent_workflow_id: uuid.UUID | None = None,
     ) -> uuid.UUID | None:
         if content is None:
             return None
         outcome_id = uuid.uuid4()
         lineage_id = outcome_id
+        parent_outcome_id: uuid.UUID | None = None
+        version = 1
+        if replay_mode == "regenerate" and parent_workflow_id is not None:
+            parent = await self._find_parent_outcome(
+                parent_workflow_id=parent_workflow_id,
+                thread_id=thread_id,
+                step_id=step_id,
+                outcome_type=operator_name,
+            )
+            if parent is not None:
+                lineage_id = parent["lineage_id"]
+                parent_outcome_id = parent["outcome_id"]
+                prior_version = parent["version"]
+                if isinstance(prior_version, int) and prior_version > 0:
+                    version = prior_version + 1
+                else:
+                    version = 2
         payload_json = json.dumps(content, sort_keys=True, separators=(",", ":"))
         content_hash = blake3(payload_json.encode("utf-8")).digest()
         async with self._pool.acquire() as conn:
@@ -412,17 +433,19 @@ class OutcomeStore:
                   confidence, data_classes,
                   producer_kind, producer_name, producer_version, created_at
                 ) VALUES (
-                  $1,$2,$3,1,NULL,
-                  $4,'1.0',$5,'private',
-                  $6,$7,$8,$9,$10,$11,
-                  $12::jsonb,$13,$14,$15,
-                  NULL,$16,
-                  'operator',$17,$18,now()
+                  $1,$2,$3,$4,$5,
+                  $6,'1.0',$7,'private',
+                  $8,$9,$10,$11,$12,$13,
+                  $14::jsonb,$15,$16,$17,
+                  NULL,$18,
+                  'operator',$19,$20,now()
                 );
                 """,
                 self._tenant_id,
                 outcome_id,
                 lineage_id,
+                version,
+                parent_outcome_id,
                 operator_name,
                 status,
                 workflow_id,
@@ -445,7 +468,8 @@ class OutcomeStore:
         async with self._pool.acquire() as conn:
             rows = await conn.fetch(
                 """
-                SELECT outcome_id, outcome_type, status, workflow_id, step_id, content, template_id, template_hash
+                SELECT outcome_id, lineage_id, version, parent_outcome_id,
+                       outcome_type, status, workflow_id, step_id, content, template_id, template_hash, created_at
                 FROM ledger.outcomes
                 WHERE tenant_id=$1 AND workflow_id=$2
                 ORDER BY created_at ASC;
@@ -456,6 +480,9 @@ class OutcomeStore:
             return [
                 {
                     "outcome_id": row["outcome_id"],
+                    "lineage_id": row["lineage_id"],
+                    "version": row["version"],
+                    "parent_outcome_id": row["parent_outcome_id"],
                     "outcome_type": row["outcome_type"],
                     "status": row["status"],
                     "workflow_id": row["workflow_id"],
@@ -463,9 +490,47 @@ class OutcomeStore:
                     "content": _coerce_json(row["content"]),
                     "template_id": row["template_id"],
                     "template_hash": row["template_hash"],
+                    "created_at": row["created_at"],
                 }
                 for row in rows
             ]
+
+    async def _find_parent_outcome(
+        self,
+        *,
+        parent_workflow_id: uuid.UUID,
+        thread_id: int | None,
+        step_id: str | None,
+        outcome_type: str,
+    ) -> dict[str, Any] | None:
+        if thread_id is None or step_id is None:
+            return None
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                SELECT outcome_id, lineage_id, version
+                FROM ledger.outcomes
+                WHERE tenant_id=$1
+                  AND workflow_id=$2
+                  AND thread_id=$3
+                  AND step_id=$4
+                  AND outcome_type=$5
+                ORDER BY version DESC, created_at DESC
+                LIMIT 1;
+                """,
+                self._tenant_id,
+                parent_workflow_id,
+                thread_id,
+                step_id,
+                outcome_type,
+            )
+            if not row:
+                return None
+            return {
+                "outcome_id": row["outcome_id"],
+                "lineage_id": row["lineage_id"],
+                "version": row["version"],
+            }
 
 
 class GateStore:
