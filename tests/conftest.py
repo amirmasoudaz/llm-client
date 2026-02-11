@@ -11,12 +11,32 @@ This module provides:
 from __future__ import annotations
 
 import asyncio
+import importlib.util
+import sys
+import types
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
+if "aiomysql" not in sys.modules and importlib.util.find_spec("aiomysql") is None:
+    aiomysql_stub = types.ModuleType("aiomysql")
+
+    class _DictCursor:  # pragma: no cover - marker type for tests
+        pass
+
+    class _Pool:  # pragma: no cover - marker type for tests
+        pass
+
+    async def _create_pool(*_args, **_kwargs):
+        raise RuntimeError("aiomysql.create_pool is not available in test environment")
+
+    aiomysql_stub.DictCursor = _DictCursor
+    aiomysql_stub.Pool = _Pool
+    aiomysql_stub.create_pool = _create_pool
+    sys.modules["aiomysql"] = aiomysql_stub
 
 # Import project types
 from llm_client.providers.types import (

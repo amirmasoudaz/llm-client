@@ -2,17 +2,17 @@
 
 This document captures remaining gaps from `INTELLIGENCE_LAYER_IMPLEMENTATION_PLAN_V1.md` and a concrete action plan to fully complete Phases A, B, C, D, E, F, G, H, and I.
 
-Last audit: 2026-02-10
+Last audit: 2026-02-11
 
 ## Current status summary
 - Phase A: Complete
 - Phase B: Complete
 - Phase C: Complete
-- Phase D: Partial
-- Phase E: Mostly implemented, hardening and proof still needed
-- Phase F: Mostly implemented, hardening and proof still needed
-- Phase G: Mostly implemented, hardening and proof still needed
-- Phase H: Mostly implemented, hardening and proof still needed
+- Phase D: Complete
+- Phase E: Complete
+- Phase F: Complete
+- Phase G: Complete
+- Phase H: Complete
 - Phase I: Partial
 
 ## Definition of done
@@ -84,23 +84,17 @@ Last audit: 2026-02-10
 ## Phase D - Funding Outreach MVP slice
 
 ### Remaining gaps
-- Production auth/session validation is not implemented (dev bypass adapter only).
-- IDOR prevention is not production-hardened against real session principal ownership checks.
-- Credits reserve uses message-length heuristic rather than actual expected cost modeling.
-- Settlement can backfill estimated usage when real usage events are absent.
-- Budget enforcement from reserved credits is not fully tied to runtime execution budgets.
-- Workflow-kernel path does not currently emit model token events for LLM-backed steps.
-- Workflow-kernel feature flag is default off.
+- None.
 
 ### Plan of action
-- [ ] D1. Implement production `AuthAdapter` with cookie/session validation and principal propagation in `src/intelligence_layer_api/auth.py`.
-- [ ] D2. Enforce ownership checks for funding request scope pre-context-load in `src/intelligence_layer_api/app.py`.
-- [ ] D3. Replace reserve heuristic with provider/model-aware estimate from real pricing versions.
-- [ ] D4. Ensure usage events are written from actual LLM/tool runtime usage before settlement in `src/intelligence_layer_api/billing.py`.
-- [ ] D5. Enforce `BudgetSpec.max_cost` using reserved credits and fail-fast when projected spend exceeds hold.
-- [ ] D6. Emit `model_token` events in workflow-kernel execution path for LLM-backed operators.
-- [ ] D7. Add staged rollout config to move `IL_USE_WORKFLOW_KERNEL` toward default-on in production-like environments.
-- [ ] D8. Add tests for auth denied and insufficient credits paths verifying no model token leakage.
+- [x] D1. Implement production `AuthAdapter` with cookie/session validation and principal propagation in `src/intelligence_layer_api/auth.py`.
+- [x] D2. Enforce ownership checks for funding request scope pre-context-load in `src/intelligence_layer_api/app.py`.
+- [x] D3. Replace reserve heuristic with provider/model-aware estimate from real pricing versions.
+- [x] D4. Ensure usage events are written from actual LLM/tool runtime usage before settlement in `src/intelligence_layer_api/billing.py`.
+- [x] D5. Enforce `BudgetSpec.max_cost` using reserved credits and fail-fast when projected spend exceeds hold.
+- [x] D6. Emit `model_token` events in workflow-kernel execution path for LLM-backed operators.
+- [x] D7. Add staged rollout config to move `IL_USE_WORKFLOW_KERNEL` toward default-on in production-like environments.
+- [x] D8. Add tests for auth denied and insufficient credits paths verifying no model token leakage.
 
 ### Verification
 - New tests:
@@ -113,16 +107,14 @@ Last audit: 2026-02-10
 ## Phase E - Student profile onboarding and memory
 
 ### Remaining gaps
-- Core operators exist, but full acceptance-proof tests are missing.
-- Invalid profile updates need explicit user-facing explanation coverage at API/workflow response layer.
-- End-to-end gating and resume behavior for profile completion needs stronger coverage.
+- None.
 
 ### Plan of action
-- [ ] E1. Add end-to-end tests for `Student.Profile.Collect` from missing fields to satisfied requirements.
-- [ ] E2. Ensure invalid profile update errors are normalized into user-facing actionable messages in workflow responses.
-- [ ] E3. Add tests for prefill from platform fields and onboarding JSON (`funding_template_initial_data`).
-- [ ] E4. Add tests for memory type constraints and retrieval filtering.
-- [ ] E5. Add strict schema-validity test after every update path.
+- [x] E1. Add end-to-end tests for `Student.Profile.Collect` from missing fields to satisfied requirements.
+- [x] E2. Ensure invalid profile update errors are normalized into user-facing actionable messages in workflow responses.
+- [x] E3. Add tests for prefill from platform fields and onboarding JSON (`funding_template_initial_data`).
+- [x] E4. Add tests for memory type constraints and retrieval filtering.
+- [x] E5. Add strict schema-validity test after every update path.
 
 ### Verification
 - New tests:
@@ -133,57 +125,60 @@ Last audit: 2026-02-10
 ## Phase F - Funding request field completion and apply gate
 
 ### Remaining gaps
-- Core propose/apply flow exists, but acceptance-level idempotency and UX contract tests are incomplete.
-- Need robust test coverage for optimistic-lock conflict behavior and refresh signaling.
+- None.
 
 ### Plan of action
-- [ ] F1. Add end-to-end test: propose -> gate -> apply -> verify platform row updates.
-- [ ] F2. Add idempotency replay test ensuring repeated apply with same idempotency key cannot double-apply.
-- [ ] F3. Add stale `updated_at` conflict tests for optimistic locking.
-- [ ] F4. Add contract test for `action_required.apply_action_id` and `ui.refresh_required` payload shape.
-- [ ] F5. Add negative tests for unsupported fields and invalid data types/lengths.
+- [x] F1. Add end-to-end test: propose -> gate -> apply -> verify platform row updates.
+- [x] F2. Add idempotency replay test ensuring repeated apply with same idempotency key cannot double-apply.
+- [x] F3. Add stale `updated_at` conflict tests for optimistic locking.
+- [x] F4. Add contract test for `action_required.apply_action_id` and `ui.refresh_required` payload shape.
+- [x] F5. Add negative tests for unsupported fields and invalid data types/lengths.
 
 ### Verification
 - New tests:
 - `tests/intelligence_layer_kernel/test_funding_request_update_apply_flow.py`
 - `tests/intelligence_layer_kernel/test_funding_request_update_idempotency.py`
 - `tests/intelligence_layer_kernel/test_funding_request_update_conflicts.py`
+- `PYTHONPATH=src:. .venv/bin/pytest -q tests/intelligence_layer_kernel/test_funding_request_update_apply_flow.py tests/intelligence_layer_kernel/test_funding_request_update_idempotency.py tests/intelligence_layer_kernel/test_funding_request_update_conflicts.py`
 
 ## Phase G - Email optimize loop
 
 ### Remaining gaps
-- Loop flow exists, but ledger-native lineage/version semantics are still shallow (outcomes are not versioned as lineage chains).
-- Need stronger tests for multi-loop version references and sent-email block pivot behavior.
+- None.
 
 ### Plan of action
-- [ ] G1. Implement explicit outcome lineage/version increment behavior for optimized drafts in outcome storage.
-- [ ] G2. Bind source-draft selection to lineage/version fields rather than ad-hoc payload-only references.
-- [ ] G3. Add tests for iterative optimization across multiple versions in one thread.
-- [ ] G4. Add tests for blocking apply when `main_sent=1` and pivot guidance response.
-- [ ] G5. Add tests for missing-draft gate behavior and resume after draft appears.
+- [x] G1. Implement explicit outcome lineage/version increment behavior for optimized drafts in outcome storage.
+- [x] G2. Bind source-draft selection to lineage/version fields rather than ad-hoc payload-only references.
+- [x] G3. Add tests for iterative optimization across multiple versions in one thread.
+- [x] G4. Add tests for blocking apply when `main_sent=1` and pivot guidance response.
+- [x] G5. Add tests for missing-draft gate behavior and resume after draft appears.
 
 ### Verification
 - New tests:
 - `tests/intelligence_layer_kernel/test_email_optimize_lineage.py`
 - `tests/intelligence_layer_kernel/test_email_apply_block_when_sent.py`
 - `tests/intelligence_layer_kernel/test_email_optimize_missing_draft_gate.py`
+- Runtime updates:
+- `src/intelligence_layer_kernel/runtime/store.py`
+- `src/intelligence_layer_kernel/runtime/kernel.py`
+- `PYTHONPATH=src:. .venv/bin/pytest -q tests/intelligence_layer_kernel/test_email_optimize_lineage.py tests/intelligence_layer_kernel/test_email_apply_block_when_sent.py tests/intelligence_layer_kernel/test_email_optimize_missing_draft_gate.py`
 
 ## Phase H - Professor alignment
 
 ### Remaining gaps
-- Operators are implemented, but reproducibility and evidence-quality tests are not complete.
-- Need stronger schema compliance and deterministic output coverage.
+- None.
 
 ### Plan of action
-- [ ] H1. Add deterministic test fixtures for profile -> summarize -> alignment score chain.
-- [ ] H2. Add schema contract tests for `Professor.Profile`, `Professor.Summary`, and `Alignment.Score` outputs.
-- [ ] H3. Add evidence consistency checks (matched topics and rationale coherence).
-- [ ] H4. Add regression tests for edge-case sparse professor data.
+- [x] H1. Add deterministic test fixtures for profile -> summarize -> alignment score chain.
+- [x] H2. Add schema contract tests for `Professor.Profile`, `Professor.Summary`, and `Alignment.Score` outputs.
+- [x] H3. Add evidence consistency checks (matched topics and rationale coherence).
+- [x] H4. Add regression tests for edge-case sparse professor data.
 
 ### Verification
 - New tests:
 - `tests/intelligence_layer_kernel/test_professor_alignment_determinism.py`
 - `tests/intelligence_layer_kernel/test_professor_alignment_schema_contracts.py`
+- `PYTHONPATH=src:. .venv/bin/pytest -q tests/intelligence_layer_kernel/test_professor_alignment_determinism.py tests/intelligence_layer_kernel/test_professor_alignment_schema_contracts.py`
 
 ## Phase I - CV/SOP/cover-letter review from attachments
 

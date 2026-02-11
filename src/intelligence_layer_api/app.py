@@ -26,7 +26,7 @@ from .documents import (
 )
 from .runtime_kernel import KernelContainer, build_kernel
 from .settings import get_settings
-from .auth import DevBypassAuthAdapter
+from .auth import AuthAdapter, DevBypassAuthAdapter, PlatformSessionAuthAdapter
 from .billing import CreditManager, request_key_for_workflow
 from intelligence_layer_ops.platform_tools import platform_load_funding_thread_context
 from intelligence_layer_kernel.contracts import ContractRegistry
@@ -134,12 +134,35 @@ async def _emit_progress_event(
     payload = {"stage": stage}
     if detail:
         payload.update(detail)
+    await _emit_workflow_event(
+        event_writer=event_writer,
+        tenant_id=tenant_id,
+        workflow_id=workflow_id,
+        actor=actor,
+        event_type="progress",
+        payload=payload,
+        correlation_id=correlation_id,
+        thread_id=thread_id,
+    )
+
+
+async def _emit_workflow_event(
+    *,
+    event_writer: EventWriter,
+    tenant_id: int,
+    workflow_id: uuid.UUID,
+    actor: dict[str, Any],
+    event_type: str,
+    payload: dict[str, Any],
+    correlation_id: uuid.UUID,
+    thread_id: int | None = None,
+) -> None:
     await event_writer.append(
         LedgerEvent(
             tenant_id=tenant_id,
             event_id=uuid.uuid4(),
             workflow_id=workflow_id,
-            event_type="progress",
+            event_type=event_type,
             actor=actor,
             payload=payload,
             correlation_id=correlation_id,
@@ -161,21 +184,29 @@ async def _emit_final_error_event(
     correlation_id: uuid.UUID,
     thread_id: int | None = None,
 ) -> None:
-    await event_writer.append(
-        LedgerEvent(
-            tenant_id=tenant_id,
-            event_id=uuid.uuid4(),
-            workflow_id=workflow_id,
-            event_type="final_error",
-            actor=actor,
-            payload={"error": message},
-            correlation_id=correlation_id,
-            producer_kind="api",
-            producer_name="intelligence_layer_api",
-            producer_version="0.0.1",
-            thread_id=thread_id,
-        )
+    await _emit_workflow_event(
+        event_writer=event_writer,
+        tenant_id=tenant_id,
+        workflow_id=workflow_id,
+        actor=actor,
+        event_type="final_error",
+        payload={"error": message},
+        correlation_id=correlation_id,
+        thread_id=thread_id,
     )
+
+
+async def _enforce_funding_request_ownership(
+    *,
+    auth_adapter: AuthAdapter,
+    funding_request_id: int,
+    principal_id: int,
+) -> None:
+    owner_id = await auth_adapter.funding_request_owner_id(funding_request_id=funding_request_id)
+    if owner_id is None:
+        raise HTTPException(status_code=404, detail="funding_request_not_found")
+    if int(owner_id) != int(principal_id):
+        raise HTTPException(status_code=403, detail="forbidden")
 
 
 class ThreadInitRequest(BaseModel):
@@ -283,6 +314,15 @@ async def _startup() -> None:
     app.state.outcome_store = OutcomeStore(pool=pool, tenant_id=ildb.tenant_id)
     app.state.operator_executor = operator_executor
     app.state.event_writer = event_writer
+    credit_manager = CreditManager(
+        pool=pool,
+        tenant_id=ildb.tenant_id,
+        bootstrap_enabled=settings.credits_bootstrap,
+        bootstrap_credits=settings.credits_bootstrap_amount,
+        reservation_ttl_sec=settings.credits_reservation_ttl_sec,
+        min_reserve_credits=settings.credits_min_reserve,
+    )
+    app.state.credit_manager = credit_manager
     app.state.workflow_kernel = WorkflowKernel(
         contracts=contracts,
         operator_executor=operator_executor,
@@ -291,16 +331,12 @@ async def _startup() -> None:
         event_writer=event_writer,
         pool=pool,
         tenant_id=ildb.tenant_id,
+        usage_recorder=credit_manager,
     )
-    app.state.auth_adapter = DevBypassAuthAdapter(allow_bypass=settings.auth_bypass)
-    app.state.credit_manager = CreditManager(
-        pool=pool,
-        tenant_id=ildb.tenant_id,
-        bootstrap_enabled=settings.credits_bootstrap,
-        bootstrap_credits=settings.credits_bootstrap_amount,
-        reservation_ttl_sec=settings.credits_reservation_ttl_sec,
-        min_reserve_credits=settings.credits_min_reserve,
-    )
+    if settings.auth_mode == "platform_session":
+        app.state.auth_adapter = PlatformSessionAuthAdapter.from_settings(settings)
+    else:
+        app.state.auth_adapter = DevBypassAuthAdapter(allow_bypass=settings.auth_bypass)
     storage_health = upload_storage_health()
     app.state.upload_storage_health = storage_health
     if storage_health.get("ready"):
@@ -332,7 +368,7 @@ async def _shutdown() -> None:
 @app.post("/v1/threads/init", response_model=ThreadInitResponse)
 async def init_thread(req: ThreadInitRequest, response: Response, request: Request) -> ThreadInitResponse:
     ildb: ILDB = app.state.ildb
-    auth_adapter: DevBypassAuthAdapter = app.state.auth_adapter
+    auth_adapter: AuthAdapter = app.state.auth_adapter
     operator_registry: OperatorRegistry = app.state.operator_registry
     auth = await auth_adapter.authenticate(
         request=request,
@@ -344,6 +380,11 @@ async def init_thread(req: ThreadInitRequest, response: Response, request: Reque
     student_id = int(auth.principal_id or 0)
     if student_id <= 0:
         raise HTTPException(status_code=401, detail="unauthorized")
+    await _enforce_funding_request_ownership(
+        auth_adapter=auth_adapter,
+        funding_request_id=req.funding_request_id,
+        principal_id=student_id,
+    )
 
     thread_id, status, is_new = await ildb.get_or_create_thread(
         student_id=student_id,
@@ -553,7 +594,7 @@ async def upload_thread_attachment(
     file_name: str | None = Query(default=None),
 ) -> ThreadAttachmentUploadResponse:
     ildb: ILDB = app.state.ildb
-    auth_adapter: DevBypassAuthAdapter = app.state.auth_adapter
+    auth_adapter: AuthAdapter = app.state.auth_adapter
     settings = get_settings()
 
     try:
@@ -575,6 +616,16 @@ async def upload_thread_attachment(
     principal_id = int(auth.principal_id or 0)
     if principal_id != int(thread["student_id"]):
         raise HTTPException(status_code=403, detail="forbidden")
+    await _enforce_funding_request_ownership(
+        auth_adapter=auth_adapter,
+        funding_request_id=int(thread["funding_request_id"]),
+        principal_id=principal_id,
+    )
+    await _enforce_funding_request_ownership(
+        auth_adapter=auth_adapter,
+        funding_request_id=int(thread["funding_request_id"]),
+        principal_id=principal_id,
+    )
 
     try:
         data = await request.body()
@@ -706,7 +757,7 @@ def _extract_uploaded_document_id(outcomes: list[dict[str, Any]]) -> str | None:
 @app.get("/v1/documents/{document_id}", response_model=DocumentMetadataResponse)
 async def get_document_metadata(document_id: str, request: Request) -> DocumentMetadataResponse:
     ildb: ILDB = app.state.ildb
-    auth_adapter: DevBypassAuthAdapter = app.state.auth_adapter
+    auth_adapter: AuthAdapter = app.state.auth_adapter
 
     metadata = await fetch_document_metadata(pool=ildb.pool, tenant_id=ildb.tenant_id, document_id=document_id)
     if metadata is None:
@@ -721,6 +772,11 @@ async def get_document_metadata(document_id: str, request: Request) -> DocumentM
         raise HTTPException(status_code=auth.status_code, detail=auth.reason or "unauthorized")
     if int(auth.principal_id or 0) != int(metadata["student_id"]):
         raise HTTPException(status_code=403, detail="forbidden")
+    await _enforce_funding_request_ownership(
+        auth_adapter=auth_adapter,
+        funding_request_id=int(metadata["funding_request_id"]),
+        principal_id=int(auth.principal_id or 0),
+    )
 
     revisions = await fetch_document_revisions(
         pool=ildb.pool,
@@ -769,7 +825,7 @@ async def get_document_download_url(
     expires_sec: int = Query(default=900, ge=60, le=86400),
 ) -> dict[str, Any]:
     ildb: ILDB = app.state.ildb
-    auth_adapter: DevBypassAuthAdapter = app.state.auth_adapter
+    auth_adapter: AuthAdapter = app.state.auth_adapter
 
     metadata = await fetch_document_metadata(pool=ildb.pool, tenant_id=ildb.tenant_id, document_id=document_id)
     if metadata is None:
@@ -784,6 +840,11 @@ async def get_document_download_url(
         raise HTTPException(status_code=auth.status_code, detail=auth.reason or "unauthorized")
     if int(auth.principal_id or 0) != int(metadata["student_id"]):
         raise HTTPException(status_code=403, detail="forbidden")
+    await _enforce_funding_request_ownership(
+        auth_adapter=auth_adapter,
+        funding_request_id=int(metadata["funding_request_id"]),
+        principal_id=int(auth.principal_id or 0),
+    )
 
     object_uri = str(metadata["source_object_uri"] or "")
     resolved_revision_id: str | None = None
@@ -826,7 +887,7 @@ async def submit_query(thread_id: str, req: SubmitQueryRequest, request: Request
     if not thread:
         raise HTTPException(status_code=404, detail="thread not found")
 
-    auth_adapter: DevBypassAuthAdapter = app.state.auth_adapter
+    auth_adapter: AuthAdapter = app.state.auth_adapter
 
     if settings.use_workflow_kernel:
         kernel: WorkflowKernel = app.state.workflow_kernel
@@ -900,6 +961,26 @@ async def submit_query(thread_id: str, req: SubmitQueryRequest, request: Request
                 query_id=str(workflow_id),
                 sse_url=f"/v1/workflows/{workflow_id}/events",
             )
+        try:
+            await _enforce_funding_request_ownership(
+                auth_adapter=auth_adapter,
+                funding_request_id=int(thread["funding_request_id"]),
+                principal_id=principal_id,
+            )
+        except HTTPException as exc:
+            await _emit_final_error_event(
+                event_writer=event_writer,
+                tenant_id=ildb.tenant_id,
+                workflow_id=workflow_id,
+                actor={"role": "system", "type": "system", "id": "auth"},
+                message=str(exc.detail),
+                correlation_id=preflight_correlation_id,
+                thread_id=thread_id_int,
+            )
+            return SubmitQueryResponse(
+                query_id=str(workflow_id),
+                sse_url=f"/v1/workflows/{workflow_id}/events",
+            )
 
         actor = {
             "tenant_id": ildb.tenant_id,
@@ -908,12 +989,34 @@ async def submit_query(thread_id: str, req: SubmitQueryRequest, request: Request
             "trust_level": auth.trust_level,
             "scopes": list(auth.scopes),
         }
+        credit_manager: CreditManager = app.state.credit_manager
 
         pending_gate = await ildb.get_latest_waiting_profile_gate(thread_id=thread_id_int)
         if pending_gate is not None:
             gate_id = str(pending_gate["gate_id"])
             gate_workflow_id = str(pending_gate["workflow_id"])
             gate_preview = pending_gate.get("preview")
+            try:
+                gate_workflow_uuid = uuid.UUID(gate_workflow_id)
+            except (TypeError, ValueError):
+                gate_workflow_uuid = None
+            if gate_workflow_uuid is not None:
+                gate_request_key = request_key_for_workflow(gate_workflow_uuid)
+                reservation = await credit_manager.reservation_snapshot(request_key=gate_request_key)
+                if reservation is not None and reservation.get("status") == "reserved":
+                    reserved_credits = int(reservation.get("reserved_credits") or 0)
+                    used_credits = await credit_manager.usage_credits_for_workflow(workflow_id=gate_workflow_uuid)
+                    max_cost_usd = await credit_manager.credits_to_usd(credits=reserved_credits)
+                    actor["budget"] = {"max_cost": max_cost_usd}
+                    actor["billing"] = {
+                        "principal_id": principal_id,
+                        "request_key": gate_request_key.hex(),
+                        "reserved_credits": reserved_credits,
+                        "used_credits": used_credits,
+                        "max_cost_usd": max_cost_usd,
+                        "provider": "openai",
+                        "model": "gpt-5-nano",
+                    }
             profile_payload = _extract_profile_gate_payload(req.message, gate_preview if isinstance(gate_preview, dict) else None)
             await kernel.resolve_action(
                 action_id=gate_id,
@@ -927,9 +1030,13 @@ async def submit_query(thread_id: str, req: SubmitQueryRequest, request: Request
                 sse_url=f"/v1/workflows/{gate_workflow_id}/events",
             )
 
-        credit_manager: CreditManager = app.state.credit_manager
         request_key = request_key_for_workflow(workflow_id)
-        reserve_amount = await credit_manager.estimate_reserve_credits(req.message)
+        reserve_amount = await credit_manager.estimate_reserve_credits(
+            req.message,
+            provider="openai",
+            model="gpt-5-nano",
+        )
+        remaining_credits = await credit_manager.remaining_credits(principal_id=principal_id)
         await _emit_progress_event(
             event_writer=event_writer,
             tenant_id=ildb.tenant_id,
@@ -958,6 +1065,20 @@ async def submit_query(thread_id: str, req: SubmitQueryRequest, request: Request
             thread_id=thread_id_int,
             detail={"reserve_credits": reserve_amount},
         )
+        await _emit_workflow_event(
+            event_writer=event_writer,
+            tenant_id=ildb.tenant_id,
+            workflow_id=workflow_id,
+            actor=actor,
+            event_type="credits_preflight",
+            payload={
+                "estimate": int(reserve_amount),
+                "remaining": int(remaining_credits),
+                "decision": "proceed" if int(remaining_credits) >= int(reserve_amount) else "deny",
+            },
+            correlation_id=preflight_correlation_id,
+            thread_id=thread_id_int,
+        )
         reservation = await credit_manager.reserve(
             principal_id=principal_id,
             workflow_id=workflow_id,
@@ -978,6 +1099,29 @@ async def submit_query(thread_id: str, req: SubmitQueryRequest, request: Request
                 query_id=str(workflow_id),
                 sse_url=f"/v1/workflows/{workflow_id}/events",
             )
+        max_cost_usd = await credit_manager.credits_to_usd(credits=reservation.reserved_credits)
+        actor["budget"] = {"max_cost": max_cost_usd}
+        actor["billing"] = {
+            "principal_id": principal_id,
+            "request_key": request_key.hex(),
+            "reserved_credits": int(reservation.reserved_credits),
+            "used_credits": 0,
+            "max_cost_usd": max_cost_usd,
+        }
+        await _emit_workflow_event(
+            event_writer=event_writer,
+            tenant_id=ildb.tenant_id,
+            workflow_id=workflow_id,
+            actor=actor,
+            event_type="credits_reserved",
+            payload={
+                "reservation_id": str(reservation.reservation_id) if reservation.reservation_id else None,
+                "reserved_credits": int(reservation.reserved_credits),
+                "expires_at": reservation.expires_at.isoformat() if reservation.expires_at else None,
+            },
+            correlation_id=preflight_correlation_id,
+            thread_id=thread_id_int,
+        )
         try:
             result = await kernel.handle_message(
                 thread_id=thread_id_int,
@@ -993,11 +1137,27 @@ async def submit_query(thread_id: str, req: SubmitQueryRequest, request: Request
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
         if result.status != "waiting":
-            await credit_manager.settle(
+            settlement = await credit_manager.settle(
                 principal_id=principal_id,
                 workflow_id=workflow_id,
                 request_key=request_key,
             )
+            if settlement.ok:
+                await _emit_workflow_event(
+                    event_writer=event_writer,
+                    tenant_id=ildb.tenant_id,
+                    workflow_id=workflow_id,
+                    actor=actor,
+                    event_type="credits_settled",
+                    payload={
+                        "credits_used": int(settlement.debited_credits),
+                        "credit_ledger_id": str(settlement.ledger_id) if settlement.ledger_id else None,
+                        "balance_after": settlement.balance_after,
+                        "status": "settled",
+                    },
+                    correlation_id=preflight_correlation_id,
+                    thread_id=thread_id_int,
+                )
 
         return SubmitQueryResponse(
             query_id=str(result.workflow_id),
@@ -1014,6 +1174,11 @@ async def submit_query(thread_id: str, req: SubmitQueryRequest, request: Request
     principal_id = int(auth.principal_id or 0)
     if principal_id != int(thread["student_id"]):
         raise HTTPException(status_code=403, detail="forbidden")
+    await _enforce_funding_request_ownership(
+        auth_adapter=auth_adapter,
+        funding_request_id=int(thread["funding_request_id"]),
+        principal_id=principal_id,
+    )
 
     # Query idempotency: allow client to supply query_id (UUID). If it already exists for
     # this thread, return the existing mapping; if it exists for a different thread, 409.
@@ -1523,13 +1688,47 @@ async def resolve_action(action_id: str, req: ResolveActionRequest) -> dict[str,
     if kernel is not None:
         ildb: ILDB = app.state.ildb
         credit_manager: CreditManager = app.state.credit_manager
+        gate = await ildb.get_gate(gate_id=action_id)
+        workflow_uuid: uuid.UUID | None = None
+        thread: dict[str, Any] | None = None
+        if gate and gate.get("workflow_id"):
+            try:
+                workflow_uuid = uuid.UUID(str(gate["workflow_id"]))
+            except (TypeError, ValueError):
+                workflow_uuid = None
+            if workflow_uuid is not None:
+                run = await ildb.get_workflow_run(workflow_id=str(workflow_uuid))
+                if run and run.get("thread_id") is not None:
+                    thread = await ildb.get_thread(thread_id=int(run["thread_id"]))
+        principal_id = int(thread["student_id"]) if thread and thread.get("student_id") is not None else None
         actor = {
             "tenant_id": getattr(app.state, "ildb").tenant_id,
-            "principal": {"type": "system", "id": "action_resolver"},
-            "role": "system",
+            "principal": (
+                {"type": "student", "id": principal_id}
+                if principal_id is not None
+                else {"type": "system", "id": "action_resolver"}
+            ),
+            "role": "student" if principal_id is not None else "system",
             "trust_level": 0,
             "scopes": ["resolve_action"],
         }
+        if workflow_uuid is not None and principal_id is not None:
+            request_key = request_key_for_workflow(workflow_uuid)
+            reservation = await credit_manager.reservation_snapshot(request_key=request_key)
+            if reservation is not None and reservation.get("status") == "reserved":
+                used_credits = await credit_manager.usage_credits_for_workflow(workflow_id=workflow_uuid)
+                reserved_credits = int(reservation.get("reserved_credits") or 0)
+                max_cost_usd = await credit_manager.credits_to_usd(credits=reserved_credits)
+                actor["budget"] = {"max_cost": max_cost_usd}
+                actor["billing"] = {
+                    "principal_id": principal_id,
+                    "request_key": request_key.hex(),
+                    "reserved_credits": reserved_credits,
+                    "used_credits": used_credits,
+                    "max_cost_usd": max_cost_usd,
+                    "provider": "openai",
+                    "model": "gpt-5-nano",
+                }
         await kernel.resolve_action(
             action_id=action_id,
             status=req.status,
@@ -1537,7 +1736,6 @@ async def resolve_action(action_id: str, req: ResolveActionRequest) -> dict[str,
             actor=actor,
             source="api",
         )
-        gate = await ildb.get_gate(gate_id=action_id)
         if gate and gate.get("workflow_id"):
             run = await ildb.get_workflow_run(workflow_id=str(gate["workflow_id"]))
             if run and str(run.get("status")) in {"completed", "failed", "cancelled"}:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 import uuid
 from dataclasses import dataclass
@@ -401,6 +402,7 @@ class OutcomeStore:
     ) -> uuid.UUID | None:
         if content is None:
             return None
+        content_to_store = copy.deepcopy(content)
         outcome_id = uuid.uuid4()
         lineage_id = outcome_id
         parent_outcome_id: uuid.UUID | None = None
@@ -420,7 +422,28 @@ class OutcomeStore:
                     version = prior_version + 1
                 else:
                     version = 2
-        payload_json = json.dumps(content, sort_keys=True, separators=(",", ":"))
+        elif operator_name == "Email.OptimizeDraft":
+            draft_parent = await self._resolve_email_draft_parent(
+                thread_id=thread_id,
+                content=content_to_store,
+            )
+            if draft_parent is not None:
+                lineage_id = draft_parent["lineage_id"]
+                parent_outcome_id = draft_parent["outcome_id"]
+                prior_version = draft_parent["version"]
+                if isinstance(prior_version, int) and prior_version > 0:
+                    version = prior_version + 1
+                else:
+                    version = 2
+
+        if operator_name == "Email.OptimizeDraft":
+            _sync_email_draft_lineage_payload(
+                content=content_to_store,
+                version=version,
+                parent_outcome_id=parent_outcome_id,
+            )
+
+        payload_json = json.dumps(content_to_store, sort_keys=True, separators=(",", ":"))
         content_hash = blake3(payload_json.encode("utf-8")).digest()
         async with self._pool.acquire() as conn:
             await conn.execute(
@@ -454,7 +477,7 @@ class OutcomeStore:
                 plan_id,
                 step_id,
                 job_id,
-                json.dumps(content),
+                json.dumps(content_to_store),
                 content_hash,
                 template_id,
                 template_hash,
@@ -463,6 +486,61 @@ class OutcomeStore:
                 operator_version,
             )
         return outcome_id
+
+    async def _resolve_email_draft_parent(
+        self,
+        *,
+        thread_id: int | None,
+        content: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        if thread_id is None:
+            return None
+        source_outcome_id = _extract_email_draft_source_outcome_id(content)
+        async with self._pool.acquire() as conn:
+            if source_outcome_id is not None:
+                row = await conn.fetchrow(
+                    """
+                    SELECT outcome_id, lineage_id, version
+                    FROM ledger.outcomes
+                    WHERE tenant_id=$1
+                      AND thread_id=$2
+                      AND outcome_id=$3
+                      AND status='succeeded'
+                      AND content->'outcome'->>'outcome_type'='Email.Draft'
+                    LIMIT 1;
+                    """,
+                    self._tenant_id,
+                    thread_id,
+                    source_outcome_id,
+                )
+                if row:
+                    return {
+                        "outcome_id": row["outcome_id"],
+                        "lineage_id": row["lineage_id"],
+                        "version": row["version"],
+                    }
+
+            row = await conn.fetchrow(
+                """
+                SELECT outcome_id, lineage_id, version
+                FROM ledger.outcomes
+                WHERE tenant_id=$1
+                  AND thread_id=$2
+                  AND status='succeeded'
+                  AND content->'outcome'->>'outcome_type'='Email.Draft'
+                ORDER BY created_at DESC
+                LIMIT 1;
+                """,
+                self._tenant_id,
+                thread_id,
+            )
+            if not row:
+                return None
+            return {
+                "outcome_id": row["outcome_id"],
+                "lineage_id": row["lineage_id"],
+                "version": row["version"],
+            }
 
     async def list_by_workflow(self, *, workflow_id: uuid.UUID) -> list[dict[str, Any]]:
         async with self._pool.acquire() as conn:
@@ -672,3 +750,48 @@ def _coerce_json(value: Any) -> Any:
         except Exception:
             return value
     return value
+
+
+def _extract_email_draft_source_outcome_id(content: dict[str, Any]) -> uuid.UUID | None:
+    outcome = content.get("outcome")
+    if not isinstance(outcome, dict):
+        return None
+    if str(outcome.get("outcome_type") or "") != "Email.Draft":
+        return None
+    payload = outcome.get("payload")
+    if not isinstance(payload, dict):
+        return None
+    source_version_id = payload.get("source_version_id")
+    if source_version_id is None:
+        return None
+    try:
+        return uuid.UUID(str(source_version_id))
+    except Exception:
+        return None
+
+
+def _sync_email_draft_lineage_payload(
+    *,
+    content: dict[str, Any],
+    version: int,
+    parent_outcome_id: uuid.UUID | None,
+) -> None:
+    outcome = content.get("outcome")
+    if not isinstance(outcome, dict):
+        return
+    if str(outcome.get("outcome_type") or "") != "Email.Draft":
+        return
+    payload = outcome.get("payload")
+    if not isinstance(payload, dict):
+        return
+
+    if version > 0:
+        payload["version_number"] = version
+
+    if parent_outcome_id is None:
+        return
+    source_version_id = payload.get("source_version_id")
+    try:
+        uuid.UUID(str(source_version_id))
+    except Exception:
+        payload["source_version_id"] = str(parent_outcome_id)

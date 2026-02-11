@@ -72,6 +72,12 @@ def normalize_profile(profile: dict[str, Any], *, student_id: int) -> dict[str, 
 def prefill_profile_from_platform(row: dict[str, Any], *, student_id: int) -> dict[str, Any]:
     onboarding = _coerce_json(row.get("user_onboarding_data"))
     if not isinstance(onboarding, dict):
+        onboarding = _coerce_json(row.get("funding_template_initial_data"))
+    if not isinstance(onboarding, dict):
+        metas = row.get("metas")
+        if isinstance(metas, dict):
+            onboarding = _coerce_json(metas.get("funding_template_initial_data"))
+    if not isinstance(onboarding, dict):
         onboarding = {}
 
     first_name = _as_non_empty_string(row.get("user_first_name"))

@@ -164,6 +164,9 @@ class ILDB:
                   principal_id BIGINT NULL,
                   workflow_id UUID NULL,
                   job_id UUID NULL,
+                  step_id TEXT NULL,
+                  operator_name TEXT NULL,
+                  operator_version TEXT NULL,
                   operation_type TEXT NOT NULL,
                   provider TEXT NOT NULL,
                   model TEXT NOT NULL,
@@ -193,6 +196,22 @@ class ILDB:
             )
             await conn.execute(
                 "ALTER TABLE billing.usage_events ADD COLUMN IF NOT EXISTS template_hash TEXT NULL;"
+            )
+            await conn.execute(
+                "ALTER TABLE billing.usage_events ADD COLUMN IF NOT EXISTS step_id TEXT NULL;"
+            )
+            await conn.execute(
+                "ALTER TABLE billing.usage_events ADD COLUMN IF NOT EXISTS operator_name TEXT NULL;"
+            )
+            await conn.execute(
+                "ALTER TABLE billing.usage_events ADD COLUMN IF NOT EXISTS operator_version TEXT NULL;"
+            )
+            await conn.execute(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS usage_events_workflow_step_uq
+                  ON billing.usage_events (tenant_id, workflow_id, step_id)
+                  WHERE step_id IS NOT NULL;
+                """
             )
             await conn.execute(
                 """

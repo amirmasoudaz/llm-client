@@ -4,7 +4,7 @@ import json
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Protocol
 
 from blake3 import blake3
 from jsonschema import Draft202012Validator
@@ -19,6 +19,37 @@ from .switchboard import IntentSwitchboard
 from .types import IntentRecord, PlanRecord, WorkflowResult
 
 
+class UsageRecorder(Protocol):
+    async def quote_usage(
+        self,
+        *,
+        provider: str,
+        model: str,
+        tokens_in: int,
+        tokens_out: int,
+    ) -> dict[str, Any]:
+        ...
+
+    async def record_operator_usage(
+        self,
+        *,
+        principal_id: int,
+        workflow_id: uuid.UUID,
+        request_key: bytes,
+        step_id: str,
+        operator_name: str,
+        operator_version: str,
+        provider: str,
+        model: str,
+        tokens_in: int,
+        tokens_out: int,
+        template_id: str | None = None,
+        template_hash: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> Any:
+        ...
+
+
 @dataclass(frozen=True)
 class WorkflowKernel:
     contracts: ContractRegistry
@@ -29,6 +60,7 @@ class WorkflowKernel:
     pool: Any
     tenant_id: int
     switchboard: IntentSwitchboard | None = None
+    usage_recorder: UsageRecorder | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "_intent_store", IntentStore(pool=self.pool, tenant_id=self.tenant_id))
@@ -438,6 +470,12 @@ class WorkflowKernel:
                         message="gate declined",
                     )
                     return WorkflowResult(workflow_id, intent.intent_id, plan.plan_id, "cancelled", gate_id=gate_id)
+                if step["kind"] == "policy_check":
+                    # Policy-check gates are data collection pauses; once accepted,
+                    # proceed to downstream steps and rely on explicit re-check steps for revalidation.
+                    await self._workflow_store.mark_step_succeeded(workflow_id=workflow_id, step_id=step_id)
+                    state["status"] = "SUCCEEDED"
+                    continue
                 await self._workflow_store.mark_step_ready(workflow_id=workflow_id, step_id=step_id)
                 state["status"] = "READY"
                 status = "READY"
@@ -452,6 +490,25 @@ class WorkflowKernel:
                     await self._workflow_store.mark_step_succeeded(workflow_id=workflow_id, step_id=step_id)
                     state["status"] = "SUCCEEDED"
                     continue
+            if kind == "policy_check" and state.get("gate_id"):
+                decision = await self._gate_store.latest_decision(gate_id=state["gate_id"])
+                if decision and decision["decision"] == "accepted":
+                    await self._workflow_store.mark_step_succeeded(workflow_id=workflow_id, step_id=step_id)
+                    state["status"] = "SUCCEEDED"
+                    continue
+                if decision and decision["decision"] == "declined":
+                    await self._workflow_store.mark_step_cancelled(workflow_id=workflow_id, step_id=step_id)
+                    await self._workflow_store.finish_run(workflow_id=workflow_id, status="cancelled")
+                    await self._emit_final_error(
+                        workflow_id=workflow_id,
+                        intent_id=intent.intent_id,
+                        plan_id=plan.plan_id,
+                        thread_id=intent.thread_id,
+                        correlation_id=intent.correlation_id,
+                        actor=actor,
+                        message="gate declined",
+                    )
+                    return WorkflowResult(workflow_id, intent.intent_id, plan.plan_id, "cancelled", gate_id=state["gate_id"])
             if kind == "operator":
                 result = await self._run_operator_step(
                     workflow_id=workflow_id,
@@ -593,6 +650,32 @@ class WorkflowKernel:
                 message="operator metadata missing",
             )
             return WorkflowResult(workflow_id, intent.intent_id, plan.plan_id, "failed")
+        try:
+            manifest = self.contracts.get_operator_manifest(op_name, op_version)
+        except Exception:
+            manifest = {}
+        llm_backed = _manifest_has_prompt_template(manifest)
+
+        if llm_backed:
+            budget_reason = await self._ensure_budget_allows_llm_step(
+                actor=actor,
+                payload=payload,
+                operator_name=op_name,
+                operator_version=op_version,
+            )
+            if budget_reason is not None:
+                await self._workflow_store.mark_step_failed(workflow_id=workflow_id, step_id=step_id, status="FAILED_FINAL")
+                await self._workflow_store.finish_run(workflow_id=workflow_id, status="failed")
+                await self._emit_final_error(
+                    workflow_id=workflow_id,
+                    intent_id=intent.intent_id,
+                    plan_id=plan.plan_id,
+                    thread_id=intent.thread_id,
+                    correlation_id=intent.correlation_id,
+                    actor=actor,
+                    message=budget_reason,
+                )
+                return WorkflowResult(workflow_id, intent.intent_id, plan.plan_id, "failed")
 
         call = OperatorCall(
             payload=payload,
@@ -616,6 +699,10 @@ class WorkflowKernel:
 
         if result.status != "succeeded":
             status = "FAILED_RETRYABLE" if result.error and result.error.retryable else "FAILED_FINAL"
+            normalized_error = self._normalize_operator_failure_message(
+                operator_name=op_name,
+                error=result.error,
+            )
             await self._workflow_store.mark_step_failed(workflow_id=workflow_id, step_id=step_id, status=status)
             await self._workflow_store.finish_run(workflow_id=workflow_id, status="failed")
             await self._emit_final_error(
@@ -625,9 +712,46 @@ class WorkflowKernel:
                 thread_id=intent.thread_id,
                 correlation_id=intent.correlation_id,
                 actor=actor,
-                message=result.error.message if result.error else "operator failed",
+                message=normalized_error,
             )
             return WorkflowResult(workflow_id, intent.intent_id, plan.plan_id, "failed")
+
+        if llm_backed:
+            usage_error = await self._record_llm_usage(
+                actor=actor,
+                workflow_id=workflow_id,
+                step_id=step_id,
+                operator_name=op_name,
+                operator_version=op_version,
+                payload=payload,
+                result=result.result,
+                template_id=result.prompt_template_id,
+                template_hash=result.prompt_template_hash,
+            )
+            if usage_error is not None:
+                await self._workflow_store.mark_step_failed(workflow_id=workflow_id, step_id=step_id, status="FAILED_FINAL")
+                await self._workflow_store.finish_run(workflow_id=workflow_id, status="failed")
+                await self._emit_final_error(
+                    workflow_id=workflow_id,
+                    intent_id=intent.intent_id,
+                    plan_id=plan.plan_id,
+                    thread_id=intent.thread_id,
+                    correlation_id=intent.correlation_id,
+                    actor=actor,
+                    message=usage_error,
+                )
+                return WorkflowResult(workflow_id, intent.intent_id, plan.plan_id, "failed")
+
+            await self._emit_model_tokens(
+                workflow_id=workflow_id,
+                intent_id=intent.intent_id,
+                plan_id=plan.plan_id,
+                thread_id=intent.thread_id,
+                correlation_id=intent.correlation_id,
+                actor=actor,
+                step_id=step_id,
+                payload=result.result,
+            )
 
         await self._workflow_store.mark_step_succeeded(workflow_id=workflow_id, step_id=step_id)
 
@@ -684,6 +808,154 @@ class WorkflowKernel:
             detail={"step_id": step_id, "name": step.get("name")},
         )
         return WorkflowResult(workflow_id, intent.intent_id, plan.plan_id, "completed")
+
+    async def _ensure_budget_allows_llm_step(
+        self,
+        *,
+        actor: dict[str, Any],
+        payload: dict[str, Any],
+        operator_name: str,
+        operator_version: str,
+    ) -> str | None:
+        if self.usage_recorder is None:
+            return None
+        billing = actor.get("billing")
+        if not isinstance(billing, dict):
+            return None
+        reserved = _coerce_positive_int(billing.get("reserved_credits"))
+        used = _coerce_non_negative_int(billing.get("used_credits"))
+        if reserved is None:
+            return None
+        provider = str(billing.get("provider") or "openai")
+        model = str(billing.get("model") or "gpt-5-nano")
+        tokens_in = _estimate_token_count(payload)
+        tokens_out = _estimate_output_tokens(operator_name)
+        quote = await self.usage_recorder.quote_usage(
+            provider=provider,
+            model=model,
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
+        )
+        projected_credits = used + int(quote.get("credits_charged") or 0)
+        if projected_credits > reserved:
+            return (
+                "budget exceeded: projected credits "
+                f"{projected_credits} would exceed reserved credits {reserved} for {operator_name}@{operator_version}"
+            )
+        return None
+
+    async def _record_llm_usage(
+        self,
+        *,
+        actor: dict[str, Any],
+        workflow_id: uuid.UUID,
+        step_id: str,
+        operator_name: str,
+        operator_version: str,
+        payload: dict[str, Any],
+        result: dict[str, Any] | None,
+        template_id: str | None,
+        template_hash: str | None,
+    ) -> str | None:
+        if self.usage_recorder is None:
+            return None
+        billing = actor.get("billing")
+        if not isinstance(billing, dict):
+            return None
+        request_key_hex = billing.get("request_key")
+        if not isinstance(request_key_hex, str) or not request_key_hex:
+            return "missing billing request key"
+        try:
+            request_key = bytes.fromhex(request_key_hex)
+        except ValueError:
+            return "invalid billing request key"
+        principal_id = _coerce_positive_int(billing.get("principal_id"))
+        if principal_id is None:
+            principal_id = _coerce_positive_int((actor.get("principal") or {}).get("id"))
+        if principal_id is None:
+            return "missing principal for usage recording"
+
+        provider = str(billing.get("provider") or "openai")
+        model = str(billing.get("model") or "gpt-5-nano")
+        tokens_in = _estimate_token_count(payload)
+        tokens_out = _estimate_token_count(result)
+        usage = await self.usage_recorder.record_operator_usage(
+            principal_id=principal_id,
+            workflow_id=workflow_id,
+            request_key=request_key,
+            step_id=step_id,
+            operator_name=operator_name,
+            operator_version=operator_version,
+            provider=provider,
+            model=model,
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
+            template_id=template_id,
+            template_hash=template_hash,
+            metadata={"workflow_kernel": True},
+        )
+        if hasattr(usage, "ok"):
+            if not bool(getattr(usage, "ok")):
+                reason = getattr(usage, "reason", None) or "usage_record_failed"
+                if reason == "budget_exceeded":
+                    return "budget exceeded while recording usage"
+                return f"usage recording failed: {reason}"
+            total = getattr(usage, "total_credits_charged", None)
+            if total is not None:
+                billing["used_credits"] = int(total)
+            return None
+        if isinstance(usage, dict):
+            if not bool(usage.get("ok", True)):
+                reason = usage.get("reason") or "usage_record_failed"
+                if reason == "budget_exceeded":
+                    return "budget exceeded while recording usage"
+                return f"usage recording failed: {reason}"
+            if usage.get("total_credits_charged") is not None:
+                billing["used_credits"] = int(usage["total_credits_charged"])
+        return None
+
+    async def _emit_model_tokens(
+        self,
+        *,
+        workflow_id: uuid.UUID,
+        intent_id: uuid.UUID,
+        plan_id: uuid.UUID,
+        thread_id: int,
+        correlation_id: uuid.UUID,
+        actor: dict[str, Any],
+        step_id: str,
+        payload: dict[str, Any] | None,
+    ) -> None:
+        chunks = _split_model_tokens(payload, limit=64)
+        for index, token in enumerate(chunks):
+            await self._emit_event(
+                workflow_id=workflow_id,
+                intent_id=intent_id,
+                plan_id=plan_id,
+                thread_id=thread_id,
+                correlation_id=correlation_id,
+                actor=actor,
+                event_type="model_token",
+                payload={"token": token, "index": index},
+                step_id=step_id,
+            )
+
+    def _normalize_operator_failure_message(
+        self,
+        *,
+        operator_name: str,
+        error: Any | None,
+    ) -> str:
+        if error is None:
+            return "operator failed"
+        message = str(getattr(error, "message", "") or "operator failed")
+        code = str(getattr(error, "code", "") or "")
+        details = getattr(error, "details", None)
+        if operator_name == "StudentProfile.Update" and code == "invalid_profile_update":
+            normalized = _format_profile_update_validation_message(details)
+            if normalized is not None:
+                return normalized
+        return message
 
     def _apply_operator_defaults(self, operator_name: str | None, payload: dict[str, Any]) -> None:
         if operator_name == "FundingRequest.Fields.Update.Propose":
@@ -755,7 +1027,9 @@ class WorkflowKernel:
         resolved_outcome_id = source.get("outcome_id")
         if resolved_outcome_id is not None:
             payload["source_draft_outcome_id"] = str(resolved_outcome_id)
-        resolved_version = source.get("version_number")
+        resolved_version = source.get("version")
+        if not (isinstance(resolved_version, int) and resolved_version > 0):
+            resolved_version = source.get("version_number")
         if isinstance(resolved_version, int) and resolved_version > 0:
             payload["source_draft_version"] = resolved_version
 
@@ -769,7 +1043,7 @@ class WorkflowKernel:
         async with self.pool.acquire() as conn:
             rows = await conn.fetch(
                 """
-                SELECT outcome_id, content, created_at
+                SELECT outcome_id, lineage_id, version, content, created_at
                 FROM ledger.outcomes
                 WHERE tenant_id=$1
                   AND thread_id=$2
@@ -797,14 +1071,27 @@ class WorkflowKernel:
             body = payload.get("body")
             if not isinstance(subject, str) or not isinstance(body, str):
                 continue
-            version = payload.get("version_number")
-            version_number = version if isinstance(version, int) and version > 0 else None
-            outcome_id = _safe_uuid(outcome.get("outcome_id")) or row["outcome_id"]
+            row_version_raw = row.get("version") if hasattr(row, "get") else row["version"]
+            row_version = row_version_raw if isinstance(row_version_raw, int) and row_version_raw > 0 else None
+            payload_version = payload.get("version_number")
+            version_number = payload_version if isinstance(payload_version, int) and payload_version > 0 else None
+            content_outcome_id = _safe_uuid(outcome.get("outcome_id"))
+            row_outcome_id = row.get("outcome_id") if hasattr(row, "get") else row["outcome_id"]
+            outcome_id = row_outcome_id if isinstance(row_outcome_id, uuid.UUID) else _safe_uuid(row_outcome_id)
+            if outcome_id is None:
+                outcome_id = content_outcome_id
             if outcome_id is None:
                 continue
+            row_lineage_raw = row.get("lineage_id") if hasattr(row, "get") else row["lineage_id"]
+            lineage_id = row_lineage_raw if isinstance(row_lineage_raw, uuid.UUID) else _safe_uuid(row_lineage_raw)
+            if lineage_id is None:
+                lineage_id = outcome_id
             drafts.append(
                 {
                     "outcome_id": outcome_id,
+                    "content_outcome_id": content_outcome_id,
+                    "lineage_id": lineage_id,
+                    "version": row_version,
                     "version_number": version_number,
                     "subject": subject,
                     "body": body,
@@ -813,11 +1100,22 @@ class WorkflowKernel:
 
         if source_outcome_id is not None:
             for draft in drafts:
-                if draft["outcome_id"] == source_outcome_id:
+                if draft["outcome_id"] == source_outcome_id or draft.get("content_outcome_id") == source_outcome_id:
                     return draft
 
         if source_version is not None:
+            if drafts:
+                latest_lineage_id = drafts[0].get("lineage_id")
+                for draft in drafts:
+                    if draft.get("lineage_id") != latest_lineage_id:
+                        continue
+                    draft_version = draft.get("version")
+                    if isinstance(draft_version, int) and draft_version == source_version:
+                        return draft
             for draft in drafts:
+                draft_version = draft.get("version")
+                if isinstance(draft_version, int) and draft_version == source_version:
+                    return draft
                 if draft.get("version_number") == source_version:
                     return draft
 
@@ -1116,7 +1414,7 @@ class WorkflowKernel:
                 if decision and decision["decision"] == "accepted":
                     payload = decision.get("payload") or {}
                     if isinstance(payload, dict):
-                        ctx["intent"]["inputs"].update(payload)
+                        _merge_gate_payload_into_intent_inputs(ctx["intent"]["inputs"], payload)
 
         return ctx
 
@@ -1281,3 +1579,156 @@ def _has_value(value: Any) -> bool:
     if isinstance(value, (list, dict)):
         return len(value) > 0
     return True
+
+
+def _manifest_has_prompt_template(manifest: dict[str, Any]) -> bool:
+    if not isinstance(manifest, dict):
+        return False
+    if isinstance(manifest.get("prompt_template_id"), str) and manifest["prompt_template_id"].strip():
+        return True
+    if isinstance(manifest.get("prompt_template"), str) and manifest["prompt_template"].strip():
+        return True
+    prompt_templates = manifest.get("prompt_templates")
+    if isinstance(prompt_templates, str):
+        return bool(prompt_templates.strip())
+    if isinstance(prompt_templates, list):
+        for item in prompt_templates:
+            if isinstance(item, str) and item.strip():
+                return True
+            if isinstance(item, dict):
+                template_id = item.get("template_id") or item.get("id")
+                if isinstance(template_id, str) and template_id.strip():
+                    return True
+    if isinstance(prompt_templates, dict):
+        for value in prompt_templates.values():
+            if isinstance(value, str) and value.strip():
+                return True
+            if isinstance(value, dict):
+                template_id = value.get("template_id") or value.get("id")
+                if isinstance(template_id, str) and template_id.strip():
+                    return True
+    return False
+
+
+def _coerce_positive_int(value: Any) -> int | None:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
+
+
+def _coerce_non_negative_int(value: Any) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return 0
+    return parsed if parsed >= 0 else 0
+
+
+def _estimate_output_tokens(operator_name: str) -> int:
+    if operator_name.startswith("Email."):
+        return 512
+    if operator_name.startswith("Documents."):
+        return 768
+    return 384
+
+
+def _estimate_token_count(value: Any) -> int:
+    if value is None:
+        return 0
+    if isinstance(value, str):
+        text = value.strip()
+    else:
+        try:
+            text = json.dumps(value, sort_keys=True, separators=(",", ":"))
+        except TypeError:
+            text = str(value)
+    if not text:
+        return 0
+    return max(1, int(len(text) / 4))
+
+
+def _split_model_tokens(payload: dict[str, Any] | None, *, limit: int) -> list[str]:
+    if payload is None:
+        return []
+    try:
+        text = json.dumps(payload, ensure_ascii=False)
+    except TypeError:
+        text = str(payload)
+    text = text.strip()
+    if not text:
+        return []
+    chunks = text.split()
+    if len(chunks) > limit:
+        chunks = chunks[:limit]
+    return chunks
+
+
+def _format_profile_update_validation_message(details: Any) -> str | None:
+    errors = details.get("errors") if isinstance(details, dict) else None
+    if not isinstance(errors, list) or not errors:
+        return (
+            "I couldn't save those profile updates yet. Please check the values and try again."
+        )
+
+    hints = {
+        "general.first_name": "enter your first name",
+        "general.last_name": "enter your last name",
+        "general.email": "use a valid email address like name@example.com",
+        "context.background.research_interests": "add at least one research interest topic",
+        "inference.sop_intelligence.research_direction.content": "describe your research direction",
+        "inference.sop_intelligence.career_trajectory.long_term_goal.content": (
+            "describe your long-term academic or career goal"
+        ),
+    }
+    normalized_fields: list[str] = []
+    for item in errors:
+        text = str(item).strip()
+        field = text.split(":", 1)[0].strip() if ":" in text else ""
+        if not field:
+            continue
+        hint = hints.get(field)
+        if hint:
+            rendered = f"{field} ({hint})"
+        else:
+            rendered = field
+        if rendered not in normalized_fields:
+            normalized_fields.append(rendered)
+        if len(normalized_fields) >= 3:
+            break
+    if normalized_fields:
+        return (
+            "I couldn't save those profile updates yet. Please fix: "
+            + ", ".join(normalized_fields)
+            + "."
+        )
+    return (
+        "I couldn't save those profile updates yet. Please check the values and try again."
+    )
+
+
+def _merge_gate_payload_into_intent_inputs(target: dict[str, Any], payload: dict[str, Any]) -> None:
+    for key, value in payload.items():
+        if key == "profile_updates":
+            existing = target.get("profile_updates")
+            if isinstance(existing, dict) and isinstance(value, dict):
+                target["profile_updates"] = _deep_merge_dict(existing, value)
+                continue
+        if key == "memory_updates":
+            existing = target.get("memory_updates")
+            if isinstance(existing, list) and isinstance(value, list):
+                target["memory_updates"] = [*existing, *value]
+                continue
+        target[key] = value
+
+
+def _deep_merge_dict(base: dict[str, Any], updates: dict[str, Any]) -> dict[str, Any]:
+    merged = dict(base)
+    for key, value in updates.items():
+        existing = merged.get(key)
+        if isinstance(existing, dict) and isinstance(value, dict):
+            merged[key] = _deep_merge_dict(existing, value)
+        else:
+            merged[key] = value
+    return merged
