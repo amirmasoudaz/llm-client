@@ -1,0 +1,68 @@
+services:
+  llm_client_postgres:
+    image: postgres:16-alpine
+    container_name: llm_client_postgres
+    environment:
+      POSTGRES_DB: llm_client
+      POSTGRES_USER: llm_client
+      POSTGRES_PASSWORD: llm_client
+    ports:
+      - "${LLM_CLIENT_PG_PORT:-5434}:5432"
+    volumes:
+      - llm_client_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U llm_client -d llm_client"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  llm_client_redis:
+    image: redis:7-alpine
+    container_name: llm_client_redis
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "${LLM_CLIENT_REDIS_PORT:-6381}:6379"
+    volumes:
+      - llm_client_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  llm_client_qdrant:
+    image: qdrant/qdrant:latest
+    container_name: llm_client_qdrant
+    ports:
+      - "${LLM_CLIENT_QDRANT_PORT:-6334}:6333"
+    volumes:
+      - llm_client_qdrant_data:/qdrant/storage
+
+  llm_client_mysql:
+    image: mysql:8.4
+    container_name: llm_client_mysql
+    environment:
+      MYSQL_DATABASE: llm_client
+      MYSQL_USER: llm_client
+      MYSQL_PASSWORD: llm_client
+      MYSQL_ROOT_PASSWORD: llm_client_root
+    ports:
+      - "${LLM_CLIENT_MYSQL_PORT:-3307}:3306"
+    command:
+      [
+        "--default-authentication-plugin=mysql_native_password",
+        "--sql-mode=STRICT_TRANS_TABLES,NO_ENGINE_SUBSTITUTION",
+      ]
+    volumes:
+      - llm_client_mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -pllm_client_root >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+volumes:
+  llm_client_postgres_data:
+  llm_client_redis_data:
+  llm_client_qdrant_data:
+  llm_client_mysql_data:

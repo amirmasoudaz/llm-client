@@ -1,0 +1,156 @@
+{
+  "avg_case_latency_ms": 7.65,
+  "failed_count": 0,
+  "metadata": {
+    "label": "phase14-deterministic-baseline",
+    "mode": "deterministic_local",
+    "run_id": "phase14-baseline-v1",
+    "started_at": 1762905600.0,
+    "tags": {
+      "kind": "baseline",
+      "phase": "14"
+    }
+  },
+  "records": [
+    {
+      "case_latency_ms": 4.5,
+      "category": "completion",
+      "error": null,
+      "labels": {},
+      "metrics": {
+        "avg_completion_latency_ms": 4.0,
+        "avg_total_tokens": 2.0,
+        "iterations": 2,
+        "max_completion_latency_ms": 4.2,
+        "min_completion_latency_ms": 3.8,
+        "p50_completion_latency_ms": 4.0,
+        "success_rate": 1.0
+      },
+      "name": "completion_smoke",
+      "status": "ok"
+    },
+    {
+      "case_latency_ms": 6.1,
+      "category": "stream",
+      "error": null,
+      "labels": {},
+      "metrics": {
+        "avg_first_token_latency_ms": 2.0,
+        "avg_full_stream_latency_ms": 4.0,
+        "avg_stream_token_events": 1.0,
+        "iterations": 2,
+        "p50_first_token_latency_ms": 2.0,
+        "p50_full_stream_latency_ms": 4.0,
+        "success_rate": 1.0
+      },
+      "name": "stream_smoke",
+      "status": "ok"
+    },
+    {
+      "case_latency_ms": 5.2,
+      "category": "embeddings",
+      "error": null,
+      "labels": {},
+      "metrics": {
+        "avg_embedding_count": 2.0,
+        "avg_embedding_latency_ms": 2.5,
+        "iterations": 2,
+        "p50_embedding_latency_ms": 2.5,
+        "throughput_items_per_second": 800.0
+      },
+      "name": "embeddings_smoke",
+      "status": "ok"
+    },
+    {
+      "case_latency_ms": 2.4,
+      "category": "tools",
+      "error": null,
+      "labels": {},
+      "metrics": {
+        "avg_tool_duration_ms": 1.1,
+        "error_count": 0,
+        "execution_mode": "single",
+        "max_tool_duration_ms": 1.2,
+        "success_count": 1,
+        "tool_call_count": 1
+      },
+      "name": "tool_smoke",
+      "status": "ok"
+    },
+    {
+      "case_latency_ms": 6.4,
+      "category": "cache",
+      "error": null,
+      "labels": {},
+      "metrics": {
+        "cache_hits": 1,
+        "cache_misses": 1,
+        "cache_speedup_ratio": 2.0,
+        "cold_latency_ms": 4.0,
+        "first_status": 200,
+        "hit_rate": 0.5,
+        "second_status": 200,
+        "warm_latency_ms": 2.0
+      },
+      "name": "cache_smoke",
+      "status": "ok"
+    },
+    {
+      "case_latency_ms": 7.0,
+      "category": "failover",
+      "error": null,
+      "labels": {},
+      "metrics": {
+        "attempt_deltas": {
+          "first": 1,
+          "second": 1
+        },
+        "failover_latency_ms": 6.5,
+        "fallback_count": 1,
+        "ok": true,
+        "providers_attempted": 2,
+        "status": 200
+      },
+      "name": "failover_smoke",
+      "status": "ok"
+    },
+    {
+      "case_latency_ms": 1.8,
+      "category": "context",
+      "error": null,
+      "labels": {},
+      "metrics": {
+        "context_latency_ms": 1.5,
+        "has_persistent_summary": false,
+        "has_summary": false,
+        "memory_entries": 1,
+        "selected_entries": 1
+      },
+      "name": "context_smoke",
+      "status": "ok"
+    },
+    {
+      "case_latency_ms": 7.8,
+      "category": "structured",
+      "error": null,
+      "labels": {},
+      "metrics": {
+        "avg_latency_ms": 3.0,
+        "avg_repair_attempts": 0.5,
+        "max_repair_attempts": 1,
+        "repaired_share_of_successes": 0.5,
+        "repaired_success_rate": 0.5,
+        "repair_attempt_histogram": {
+          "0": 1,
+          "1": 1
+        },
+        "success_rate": 1.0,
+        "total_cases": 2
+      },
+      "name": "structured_smoke",
+      "status": "ok"
+    }
+  ],
+  "success_count": 8,
+  "total_cases": 8
+}

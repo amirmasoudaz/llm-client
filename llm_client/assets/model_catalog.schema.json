@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["version", "defaults", "models"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "defaults": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "models": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "key",
+          "provider",
+          "model_name",
+          "category",
+          "context_window",
+          "encoding",
+          "reasoning",
+          "reasoning_efforts",
+          "tool_calling",
+          "streaming",
+          "structured_outputs",
+          "vision_input",
+          "audio_input",
+          "file_input",
+          "deprecated",
+          "rate_limits",
+          "usage_costs"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "key": {"type": "string", "minLength": 1},
+          "provider": {"type": "string", "minLength": 1},
+          "model_name": {"type": "string", "minLength": 1},
+          "category": {"type": "string", "enum": ["completions", "embeddings"]},
+          "context_window": {"type": "integer", "minimum": 1},
+          "max_output": {"type": ["integer", "null"], "minimum": 1},
+          "output_dimensions": {"type": ["integer", "null"], "minimum": 1},
+          "encoding": {"type": "string", "minLength": 1},
+          "reasoning": {"type": "boolean"},
+          "reasoning_efforts": {
+            "type": "array",
+            "items": {"type": "string", "minLength": 1}
+          },
+          "default_reasoning_effort": {"type": ["string", "null"]},
+          "tool_calling": {"type": "boolean"},
+          "streaming": {"type": "boolean"},
+          "structured_outputs": {"type": "boolean"},
+          "vision_input": {"type": "boolean"},
+          "audio_input": {"type": "boolean"},
+          "file_input": {"type": "boolean"},
+          "deprecated": {"type": "boolean"},
+          "replacement": {"type": ["string", "null"]},
+          "rate_limits": {
+            "type": "object",
+            "additionalProperties": {"type": "integer", "minimum": 0}
+          },
+          "usage_costs": {
+            "type": "object",
+            "additionalProperties": {"type": "number", "minimum": 0}
+          }
+        }
+      }
+    }
+  }
+}
