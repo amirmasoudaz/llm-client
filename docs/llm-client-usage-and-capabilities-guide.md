@@ -5,10 +5,10 @@ inventory.
 
 See also:
 
-- [llm-client-package-api-guide.md](/home/namiral/Projects/Packages/intelligence-layer-bif/docs/llm-client-package-api-guide.md)
-- [llm-client-build-and-recipes-guide.md](/home/namiral/Projects/Packages/intelligence-layer-bif/docs/llm-client-build-and-recipes-guide.md)
-- [llm_client/README.md](/home/namiral/Projects/Packages/intelligence-layer-bif/llm_client/README.md)
-- [llm-client-guides-index.md](/home/namiral/Projects/Packages/intelligence-layer-bif/docs/llm-client-guides-index.md)
+- [llm-client-package-api-guide.md](/home/namiral/Projects/Packages/llm-client-v1/docs/llm-client-package-api-guide.md)
+- [llm-client-build-and-recipes-guide.md](/home/namiral/Projects/Packages/llm-client-v1/docs/llm-client-build-and-recipes-guide.md)
+- [llm_client/README.md](/home/namiral/Projects/Packages/llm-client-v1/llm_client/README.md)
+- [llm-client-guides-index.md](/home/namiral/Projects/Packages/llm-client-v1/docs/llm-client-guides-index.md)
 
 ## Installation and Configuration
 
@@ -20,7 +20,7 @@ pip install -e .
 
 Optional providers and integrations are installed by extras. The exact matrix
 is documented in
-[llm-client-installation-matrix.md](/home/namiral/Projects/Packages/intelligence-layer-bif/docs/llm-client-installation-matrix.md).
+[llm-client-installation-matrix.md](/home/namiral/Projects/Packages/llm-client-v1/docs/llm-client-installation-matrix.md).
 
 Environment loading is explicit:
 
@@ -47,6 +47,16 @@ Best for:
 Avoid when:
 
 - you want retry, cache, failover, or hooks across providers
+
+Special note:
+
+- OpenAI Responses background workflows now live at the provider layer via `retrieve_background_response`, `cancel_background_response`, `wait_background_response`, and `stream_background_response`.
+- OpenAI Responses conversation-state workflows now also live at the provider layer via `create_conversation`, `retrieve_conversation`, `update_conversation`, `delete_conversation`, `create_conversation_items`, `list_conversation_items`, `retrieve_conversation_item`, `delete_conversation_item`, and `compact_response_context`.
+- MCP approval workflows can now continue through `submit_mcp_approval_response(...)` without raw provider-shaped request payloads.
+- OpenAI request controls `include`, `prompt_cache_key`, and `prompt_cache_retention` are first-class parameters on the OpenAI provider.
+- Stored OpenAI Responses can now be deleted through `delete_response(...)` without dropping to the raw SDK.
+- OpenAI moderation, direct image generation/editing, speech-to-text, text-to-speech, generic file upload/retrieve/content helpers, hosted vector-store CRUD/search, and fine-tuning job workflows are now available through first-class provider and engine methods instead of raw SDK escape hatches.
+- OpenAI realtime connection plus client-secret/call-control/transcription helpers, webhook verification/unwrapping, vector-store file CRUD/content/polling and file-batch helpers, hosted Responses tool workflows, and staged deep-research orchestration are also available through first-class provider and engine methods.
 
 ### Engine-managed execution
 
@@ -156,6 +166,60 @@ Best for:
 - hooks
 - replay
 - telemetry
+
+### Background Responses and long-running jobs
+
+Use:
+
+- `llm_client.providers`
+- specifically `OpenAIProvider(..., use_responses_api=True)`
+
+Best for:
+
+- long-running GPT-5.x / reasoning tasks that should continue after the initial request returns
+- polling for terminal completion state
+- canceling background work
+- resuming a background stream with provider-emitted sequence cursors
+
+Current package boundary:
+
+- available both at the provider layer and through `ExecutionEngine`
+- the remaining gap is broader platform breadth, not Responses lifecycle/state handling itself
+
+### OpenAI Responses-native tools
+
+Use:
+
+- `llm_client.tools`
+- specifically `ResponsesBuiltinTool`, `ResponsesCustomTool`, and `ResponsesGrammar`
+
+Best for:
+
+- OpenAI Responses built-in hosted tools without raw provider dict payloads
+- typed MCP and connector descriptors with `allowed_tools` and approval-policy shaping
+- grammar-backed custom tools on `OpenAIProvider(..., use_responses_api=True)`
+- request-time tool descriptors that should stay in the stable package surface
+
+Current package boundary:
+
+- provider-level and engine request-envelope compatible in `1.1.0`
+- richer MCP/connector descriptors are available through `ResponsesMCPTool`
+- `ResponsesConnectorId` provides docs-aligned connector ids for typed connector requests
+- `ToolRegistry` and the agent tool runtime remain function-tool execution layers
+- the package now exposes a normalized subset of rich Responses output items and retains raw `provider_items` for exact replay
+
+### Rich Responses output items
+
+Use:
+
+- `CompletionResult.output_items`
+- `CompletionResult.refusal`
+
+Best for:
+
+- normalized refusal handling without parsing provider-native payloads
+- inspecting hosted-tool outputs like web/file search, code interpreter, and image generation
+- preserving a stable subset of rich Responses output while still keeping raw `provider_items` for exact replay
 
 ### Caching
 

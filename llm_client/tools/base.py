@@ -14,8 +14,10 @@ import inspect
 import json
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import (
     Any,
+    TypeAlias,
     Union,
     cast,
     get_type_hints,
@@ -34,6 +36,287 @@ class ToolExecutionMetadata:
     concurrency_limit: int | None = None
     safety_tags: tuple[str, ...] = ()
     trust_level: str | None = None
+
+
+@dataclass(frozen=True)
+class ResponsesGrammar:
+    """Grammar descriptor for OpenAI Responses custom tools."""
+
+    syntax: str
+    definition: str
+    type: str = "grammar"
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "type": self.type,
+            "syntax": self.syntax,
+            "definition": self.definition,
+        }
+
+
+@dataclass(frozen=True)
+class ResponsesBuiltinTool:
+    """Provider-native OpenAI Responses built-in tool descriptor."""
+
+    type: str
+    config: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "type": self.type,
+            **dict(self.config),
+        }
+
+    def to_openai_format(self) -> dict[str, Any]:
+        return self.to_dict()
+
+    @classmethod
+    def of(cls, tool_type: str, **config: Any) -> ResponsesBuiltinTool:
+        return cls(type=tool_type, config=dict(config))
+
+    @classmethod
+    def web_search(cls, **config: Any) -> ResponsesBuiltinTool:
+        return cls.of("web_search", **config)
+
+    @classmethod
+    def web_search_preview(cls, **config: Any) -> ResponsesBuiltinTool:
+        return cls.of("web_search_preview", **config)
+
+    @classmethod
+    def file_search(cls, **config: Any) -> ResponsesBuiltinTool:
+        return cls.of("file_search", **config)
+
+    @classmethod
+    def computer_use(cls, **config: Any) -> ResponsesBuiltinTool:
+        return cls.of("computer_use", **config)
+
+    @classmethod
+    def code_interpreter(cls, **config: Any) -> ResponsesBuiltinTool:
+        return cls.of("code_interpreter", **config)
+
+    @classmethod
+    def image_generation(cls, **config: Any) -> ResponsesBuiltinTool:
+        return cls.of("image_generation", **config)
+
+    @classmethod
+    def mcp(cls, **config: Any) -> ResponsesBuiltinTool:
+        return cls.of("mcp", **config)
+
+    @classmethod
+    def remote_mcp(cls, **config: Any) -> ResponsesBuiltinTool:
+        return cls.of("mcp", **config)
+
+    @classmethod
+    def connector(cls, **config: Any) -> ResponsesBuiltinTool:
+        return cls.of("mcp", **config)
+
+    @classmethod
+    def shell(cls, **config: Any) -> ResponsesBuiltinTool:
+        return cls.of("shell", **config)
+
+    @classmethod
+    def apply_patch(cls, **config: Any) -> ResponsesBuiltinTool:
+        return cls.of("apply_patch", **config)
+
+
+class ResponsesConnectorId(str, Enum):
+    """Documented OpenAI connector ids for MCP-backed connectors."""
+
+    DROPBOX = "connector_dropbox"
+    GMAIL = "connector_gmail"
+    GOOGLE_CALENDAR = "connector_googlecalendar"
+    GOOGLE_DRIVE = "connector_googledrive"
+    MICROSOFT_TEAMS = "connector_microsoftteams"
+    OUTLOOK_CALENDAR = "connector_outlookcalendar"
+    OUTLOOK_EMAIL = "connector_outlookemail"
+    SHAREPOINT = "connector_sharepoint"
+
+
+@dataclass(frozen=True)
+class ResponsesMCPToolFilter:
+    """Allowed-tool filter for OpenAI MCP and connector tools."""
+
+    tool_names: tuple[str, ...]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "tool_names": [name for name in self.tool_names if str(name).strip()],
+        }
+
+
+@dataclass(frozen=True)
+class ResponsesMCPApprovalPolicy:
+    """Approval policy object for OpenAI MCP and connector tools."""
+
+    never: ResponsesMCPToolFilter | None = None
+    always: ResponsesMCPToolFilter | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {}
+        if self.never is not None:
+            payload["never"] = self.never.to_dict()
+        if self.always is not None:
+            payload["always"] = self.always.to_dict()
+        return payload
+
+
+@dataclass(frozen=True)
+class ResponsesMCPTool:
+    """Typed OpenAI Responses MCP/connector descriptor."""
+
+    server_label: str | None = None
+    server_url: str | None = None
+    connector_id: str | None = None
+    server_description: str | None = None
+    authorization: str | None = None
+    headers: dict[str, str] | None = None
+    allowed_tools: tuple[str, ...] | None = None
+    require_approval: str | ResponsesMCPApprovalPolicy | dict[str, Any] | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {"type": "mcp"}
+        if self.server_label:
+            payload["server_label"] = self.server_label
+        if self.server_url:
+            payload["server_url"] = self.server_url
+        if self.connector_id:
+            payload["connector_id"] = self.connector_id
+        if self.server_description:
+            payload["server_description"] = self.server_description
+        if self.authorization:
+            payload["authorization"] = self.authorization
+        if self.headers:
+            payload["headers"] = dict(self.headers)
+        if self.allowed_tools:
+            payload["allowed_tools"] = [name for name in self.allowed_tools if str(name).strip()]
+        if self.require_approval is not None:
+            if isinstance(self.require_approval, ResponsesMCPApprovalPolicy):
+                payload["require_approval"] = self.require_approval.to_dict()
+            elif isinstance(self.require_approval, dict):
+                payload["require_approval"] = dict(self.require_approval)
+            else:
+                payload["require_approval"] = self.require_approval
+        payload.update(dict(self.metadata))
+        return payload
+
+    def to_openai_format(self) -> dict[str, Any]:
+        return self.to_dict()
+
+    @classmethod
+    def remote_server(
+        cls,
+        server_url: str,
+        *,
+        server_label: str | None = None,
+        server_description: str | None = None,
+        authorization: str | None = None,
+        headers: dict[str, str] | None = None,
+        allowed_tools: list[str] | tuple[str, ...] | None = None,
+        require_approval: str | ResponsesMCPApprovalPolicy | dict[str, Any] | None = None,
+        **metadata: Any,
+    ) -> ResponsesMCPTool:
+        return cls(
+            server_label=server_label,
+            server_url=server_url,
+            server_description=server_description,
+            authorization=authorization,
+            headers=dict(headers or {}) or None,
+            allowed_tools=tuple(allowed_tools or ()) or None,
+            require_approval=require_approval,
+            metadata=dict(metadata),
+        )
+
+    @classmethod
+    def connector(
+        cls,
+        connector_id: str | ResponsesConnectorId,
+        *,
+        server_label: str | None = None,
+        authorization: str | None = None,
+        allowed_tools: list[str] | tuple[str, ...] | None = None,
+        require_approval: str | ResponsesMCPApprovalPolicy | dict[str, Any] | None = None,
+        **metadata: Any,
+    ) -> ResponsesMCPTool:
+        resolved_connector_id = (
+            connector_id.value if isinstance(connector_id, ResponsesConnectorId) else str(connector_id)
+        )
+        return cls(
+            connector_id=resolved_connector_id,
+            server_label=server_label,
+            authorization=authorization,
+            allowed_tools=tuple(allowed_tools or ()) or None,
+            require_approval=require_approval,
+            metadata=dict(metadata),
+        )
+
+    @classmethod
+    def deep_research_remote_server(
+        cls,
+        server_url: str,
+        *,
+        server_label: str | None = None,
+        server_description: str | None = None,
+        authorization: str | None = None,
+        headers: dict[str, str] | None = None,
+        allowed_tools: list[str] | tuple[str, ...] | None = None,
+        **metadata: Any,
+    ) -> ResponsesMCPTool:
+        return cls.remote_server(
+            server_url,
+            server_label=server_label,
+            server_description=server_description,
+            authorization=authorization,
+            headers=headers,
+            allowed_tools=allowed_tools,
+            require_approval="never",
+            **metadata,
+        )
+
+    @classmethod
+    def deep_research_connector(
+        cls,
+        connector_id: str | ResponsesConnectorId,
+        *,
+        server_label: str | None = None,
+        authorization: str | None = None,
+        allowed_tools: list[str] | tuple[str, ...] | None = None,
+        **metadata: Any,
+    ) -> ResponsesMCPTool:
+        return cls.connector(
+            connector_id,
+            server_label=server_label,
+            authorization=authorization,
+            allowed_tools=allowed_tools,
+            require_approval="never",
+            **metadata,
+        )
+
+
+@dataclass(frozen=True)
+class ResponsesCustomTool:
+    """Grammar-backed OpenAI Responses custom tool descriptor."""
+
+    name: str
+    description: str
+    grammar: ResponsesGrammar
+    strict: bool | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "type": "custom",
+            "name": self.name,
+            "description": self.description,
+            "format": self.grammar.to_dict(),
+        }
+        if self.strict is not None:
+            payload["strict"] = self.strict
+        payload.update(dict(self.metadata))
+        return payload
+
+    def to_openai_format(self) -> dict[str, Any]:
+        return self.to_dict()
 
 
 @dataclass
@@ -70,7 +353,6 @@ class ToolResult:
     def error_result(cls, error: str) -> ToolResult:
         """Create an error result."""
         return cls(success=False, error=error)
-
 
 @dataclass
 class Tool:
@@ -176,6 +458,41 @@ class Tool:
             return await self.execute(**args)
         except json.JSONDecodeError as e:
             return ToolResult.error_result(f"Invalid JSON arguments: {e}")
+
+
+ToolDefinition: TypeAlias = Tool | ResponsesBuiltinTool | ResponsesMCPTool | ResponsesCustomTool | dict[str, Any]
+
+
+def is_provider_native_tool(tool: Any) -> bool:
+    """Return True for package-native provider tool descriptors."""
+    return isinstance(tool, (ResponsesBuiltinTool, ResponsesMCPTool, ResponsesCustomTool))
+
+
+def ensure_function_tools_only(
+    tools: list[ToolDefinition] | None,
+    *,
+    provider: str,
+) -> list[Any] | None:
+    """Validate that a provider only receives executable function tools."""
+    if not tools:
+        return None
+    invalid: list[str] = []
+    for tool in tools:
+        if isinstance(tool, Tool):
+            continue
+        if is_provider_native_tool(tool) or isinstance(tool, dict):
+            invalid.append(type(tool).__name__)
+            continue
+        if all(hasattr(tool, attr) for attr in ("name", "description", "parameters")):
+            continue
+        invalid.append(type(tool).__name__)
+    if invalid:
+        unique = ", ".join(sorted(set(invalid)))
+        raise ValueError(
+            f"{provider} only supports executable Tool definitions; "
+            f"provider-native or raw tool descriptors are not supported: {unique}"
+        )
+    return list(tools)
 
 
 class ToolRegistry:
@@ -548,5 +865,15 @@ __all__ = [
     "ToolExecutionMetadata",
     "ToolResult",
     "ToolRegistry",
+    "ResponsesBuiltinTool",
+    "ResponsesConnectorId",
+    "ResponsesMCPToolFilter",
+    "ResponsesMCPApprovalPolicy",
+    "ResponsesMCPTool",
+    "ResponsesCustomTool",
+    "ResponsesGrammar",
+    "ToolDefinition",
+    "is_provider_native_tool",
+    "ensure_function_tools_only",
     "tool_from_function",
 ]

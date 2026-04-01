@@ -41,6 +41,7 @@ from ..errors import (
 )
 from ..hashing import cache_key as compute_cache_key
 from ..rate_limit import Limiter
+from ..tools.base import ToolDefinition, ensure_function_tools_only
 from .base import BaseProvider
 from .types import (
     CompletionResult,
@@ -57,7 +58,6 @@ from .types import (
 
 if TYPE_CHECKING:
     from ..models import ModelProfile
-    from ..tools.base import Tool
 
 try:
     import anthropic
@@ -315,10 +315,11 @@ class AnthropicProvider(BaseProvider):
 
     @staticmethod
     def _convert_tools_for_anthropic(
-        tools: list[Tool] | None,
+        tools: list[ToolDefinition] | None,
     ) -> list[dict[str, Any]] | None:
         """Convert our Tool format to Anthropic's format."""
-        if not tools:
+        function_tools = ensure_function_tools_only(tools, provider="anthropic")
+        if not function_tools:
             return None
 
         return [
@@ -327,7 +328,7 @@ class AnthropicProvider(BaseProvider):
                 "description": tool.description,
                 "input_schema": tool.parameters,
             }
-            for tool in tools
+            for tool in function_tools
         ]
 
     @staticmethod
@@ -394,7 +395,7 @@ class AnthropicProvider(BaseProvider):
         self,
         messages: MessageInput,
         *,
-        tools: list[Tool] | None = None,
+        tools: list[ToolDefinition] | None = None,
         tool_choice: str | None = None,
         temperature: float | None = None,
         max_tokens: int | None = None,
@@ -557,7 +558,7 @@ class AnthropicProvider(BaseProvider):
         self,
         messages: MessageInput,
         *,
-        tools: list[Tool] | None = None,
+        tools: list[ToolDefinition] | None = None,
         tool_choice: str | None = None,
         temperature: float | None = None,
         max_tokens: int | None = None,
@@ -814,7 +815,7 @@ class AnthropicProvider(BaseProvider):
         self,
         messages: MessageInput,
         *,
-        tools: list[Tool] | None = None,
+        tools: list[ToolDefinition] | None = None,
     ) -> int:
         """
         Count tokens using Anthropic's token counting API.

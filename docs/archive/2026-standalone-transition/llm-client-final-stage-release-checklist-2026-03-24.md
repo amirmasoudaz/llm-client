@@ -149,10 +149,10 @@ Implication:
 - [x] Complete the remaining unchecked items in
   [llm-client-modernization-roadmap-2026-03-09.md](./llm-client-modernization-roadmap-2026-03-09.md)
 - [x] Resolve current cookbook drift between:
-  - [examples/README.md](/home/namiral/Projects/Packages/intelligence-layer-bif/examples/README.md)
-  - [scripts/ci/run_llm_client_examples.py](/home/namiral/Projects/Packages/intelligence-layer-bif/scripts/ci/run_llm_client_examples.py)
-  - the actual files under [examples/llm_client](/home/namiral/Projects/Packages/intelligence-layer-bif/examples/llm_client)
-- [x] Decide whether [34_end_to_end_mission_control.py](/home/namiral/Projects/Packages/intelligence-layer-bif/examples/34_end_to_end_mission_control.py)
+  - [examples/README.md](/home/namiral/Projects/Packages/llm-client-v1/examples/README.md)
+  - [scripts/ci/run_llm_client_examples.py](/home/namiral/Projects/Packages/llm-client-v1/scripts/ci/run_llm_client_examples.py)
+  - the actual files under [examples/llm_client](/home/namiral/Projects/Packages/llm-client-v1/examples/llm_client)
+- [x] Decide whether [34_end_to_end_mission_control.py](/home/namiral/Projects/Packages/llm-client-v1/examples/34_end_to_end_mission_control.py)
   is:
   - part of the canonical cookbook
   - intentionally excluded
@@ -217,7 +217,7 @@ Reasoning:
 
 ### D. Open-Source and Packaging Hygiene
 
-- [x] Add package metadata fields to [pyproject.toml](/home/namiral/Projects/Packages/intelligence-layer-bif/pyproject.toml):
+- [x] Add package metadata fields to [pyproject.toml](/home/namiral/Projects/Packages/llm-client-v1/pyproject.toml):
   - `license`
   - `authors`
   - `maintainers`
@@ -247,7 +247,7 @@ Reasoning:
   [llm-client-public-api-v1.md](./llm-client-public-api-v1.md)
 - [x] Confirm which modules are stable, compatibility, advanced, provisional,
   and internal
-- [x] Update [llm_client/README.md](/home/namiral/Projects/Packages/intelligence-layer-bif/llm_client/README.md)
+- [x] Update [llm_client/README.md](/home/namiral/Projects/Packages/llm-client-v1/llm_client/README.md)
   to match the final stable package story exactly
 - [x] Add a "what this package is not" section to the package docs
 - [x] Add explicit "do use / do not use" guidance for:

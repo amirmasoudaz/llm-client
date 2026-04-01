@@ -5,11 +5,11 @@ move onto `llm_client` without losing control of low-level behavior.
 
 Relevant cookbook scripts:
 
-- [01_one_shot_completion.py](/home/namiral/Projects/Packages/intelligence-layer-bif/examples/01_one_shot_completion.py)
-- [02_streaming.py](/home/namiral/Projects/Packages/intelligence-layer-bif/examples/02_streaming.py)
-- [05_structured_extraction.py](/home/namiral/Projects/Packages/intelligence-layer-bif/examples/05_structured_extraction.py)
-- [06_provider_registry_and_routing.py](/home/namiral/Projects/Packages/intelligence-layer-bif/examples/06_provider_registry_and_routing.py)
-- [07_engine_cache_retry_idempotency.py](/home/namiral/Projects/Packages/intelligence-layer-bif/examples/07_engine_cache_retry_idempotency.py)
+- [01_one_shot_completion.py](/home/namiral/Projects/Packages/llm-client-v1/examples/01_one_shot_completion.py)
+- [02_streaming.py](/home/namiral/Projects/Packages/llm-client-v1/examples/02_streaming.py)
+- [05_structured_extraction.py](/home/namiral/Projects/Packages/llm-client-v1/examples/05_structured_extraction.py)
+- [06_provider_registry_and_routing.py](/home/namiral/Projects/Packages/llm-client-v1/examples/06_provider_registry_and_routing.py)
+- [07_engine_cache_retry_idempotency.py](/home/namiral/Projects/Packages/llm-client-v1/examples/07_engine_cache_retry_idempotency.py)
 
 ## Why migrate
 

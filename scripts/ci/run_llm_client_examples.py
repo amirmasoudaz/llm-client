@@ -8,7 +8,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-EXAMPLES_DIR = ROOT / "examples" / "llm_client"
+EXAMPLES_DIR = ROOT / "examples"
 
 CORE_EXAMPLES = [
     "01_one_shot_completion.py",
@@ -27,6 +27,19 @@ CORE_EXAMPLES = [
     "14_sync_wrappers.py",
     "15_rate_limiting.py",
     "35_file_block_transport.py",
+    "38_openai_background_responses.py",
+    "39_openai_conversation_state_workflow.py",
+    "40_openai_normalized_output_items.py",
+    "41_openai_background_resume_stream.py",
+    "42_openai_prompt_cache_and_encrypted_reasoning.py",
+    "43_openai_long_running_compaction.py",
+    "46_openai_realtime_connection_wrapper.py",
+    "47_openai_vector_store_file_batches.py",
+    "48_openai_deep_research_clarify_rewrite.py",
+    "49_openai_realtime_transcription_session.py",
+    "50_openai_mcp_and_connector_workflows.py",
+    "51_openai_run_deep_research_staged.py",
+    "52_openai_files_api.py",
 ]
 
 APPLICATION_EXAMPLES = [
@@ -51,9 +64,29 @@ APPLICATION_EXAMPLES = [
     "34_end_to_end_mission_control.py",
     "36_sql_adaptor_direct.py",
     "37_sql_adaptor_tools.py",
+    "44_engine_orchestrated_openai_workflow.py",
+    "45_openai_mcp_approval_continuation.py",
 ]
 
 ALL_EXAMPLES = [*CORE_EXAMPLES, *APPLICATION_EXAMPLES]
+
+TIMEOUT_OVERRIDES = {
+    "27_sql_analytics_assistant.py": 240,
+    "34_end_to_end_mission_control.py": 300,
+    "39_openai_conversation_state_workflow.py": 240,
+    "38_openai_background_responses.py": 120,
+    "41_openai_background_resume_stream.py": 120,
+    "43_openai_long_running_compaction.py": 120,
+    "44_engine_orchestrated_openai_workflow.py": 180,
+    "45_openai_mcp_approval_continuation.py": 120,
+    "46_openai_realtime_connection_wrapper.py": 60,
+    "47_openai_vector_store_file_batches.py": 180,
+    "48_openai_deep_research_clarify_rewrite.py": 120,
+    "49_openai_realtime_transcription_session.py": 60,
+    "50_openai_mcp_and_connector_workflows.py": 120,
+    "51_openai_run_deep_research_staged.py": 180,
+    "52_openai_files_api.py": 120,
+}
 
 
 def parse_args() -> argparse.Namespace:
@@ -75,6 +108,11 @@ def parse_args() -> argparse.Namespace:
         default=90,
         help="Per-example timeout.",
     )
+    parser.add_argument(
+        "--from-example",
+        default=None,
+        help="Optional script name to start from within the selected subset.",
+    )
     return parser.parse_args()
 
 
@@ -83,16 +121,24 @@ def run_example(script_name: str, timeout_seconds: int) -> None:
     env = os.environ.copy()
     env["PYTHONPATH"] = str(ROOT) + os.pathsep + env.get("PYTHONPATH", "")
     command = [sys.executable, str(script_path)]
-    print(f"[llm_client examples] running {script_name}")
-    completed = subprocess.run(
-        command,
-        cwd=ROOT,
-        env=env,
-        text=True,
-        capture_output=True,
-        timeout=timeout_seconds,
-        check=False,
-    )
+    effective_timeout = max(timeout_seconds, TIMEOUT_OVERRIDES.get(script_name, timeout_seconds))
+    print(f"[llm_client examples] running {script_name} timeout={effective_timeout}s", flush=True)
+    try:
+        completed = subprocess.run(
+            command,
+            cwd=ROOT,
+            env=env,
+            text=True,
+            capture_output=True,
+            timeout=effective_timeout,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        if exc.stdout:
+            print(exc.stdout)
+        if exc.stderr:
+            print(exc.stderr, file=sys.stderr)
+        raise SystemExit(f"example timed out: {script_name} ({effective_timeout}s)") from exc
     if completed.returncode != 0:
         print(completed.stdout)
         print(completed.stderr, file=sys.stderr)
@@ -117,6 +163,11 @@ def main() -> int:
         example_names = APPLICATION_EXAMPLES
     else:
         example_names = ALL_EXAMPLES
+
+    if args.from_example:
+        if args.from_example not in example_names:
+            raise SystemExit(f"--from-example not found in subset {subset}: {args.from_example}")
+        example_names = example_names[example_names.index(args.from_example) :]
 
     for script_name in example_names:
         run_example(script_name, timeout_seconds=args.timeout_seconds)

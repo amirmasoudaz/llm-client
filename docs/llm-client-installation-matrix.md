@@ -126,5 +126,5 @@ The release/readiness workflows validate these shapes:
 - Observability integrations such as OpenTelemetry and Prometheus remain
   optional extras.
 - A reusable local service stack is available at
-  [docker-compose.llm-client-services.yml](/home/namiral/Projects/Packages/intelligence-layer-bif/docker-compose.llm-client-services.yml)
+  [docker-compose.llm-client-services.yml](/home/namiral/Projects/Packages/llm-client-v1/docker-compose.llm-client-services.yml)
   for PostgreSQL, Redis, Qdrant, and MySQL-backed package development.

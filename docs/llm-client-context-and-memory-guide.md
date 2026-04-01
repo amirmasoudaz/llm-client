@@ -5,9 +5,9 @@ stores, and multi-source context assembly.
 
 Runnable examples:
 
-- [10_context_memory_planning.py](/home/namiral/Projects/Packages/intelligence-layer-bif/examples/10_context_memory_planning.py)
-- [14_sync_wrappers.py](/home/namiral/Projects/Packages/intelligence-layer-bif/examples/14_sync_wrappers.py)
-- [18_memory_backed_assistant.py](/home/namiral/Projects/Packages/intelligence-layer-bif/examples/18_memory_backed_assistant.py)
+- [10_context_memory_planning.py](/home/namiral/Projects/Packages/llm-client-v1/examples/10_context_memory_planning.py)
+- [14_sync_wrappers.py](/home/namiral/Projects/Packages/llm-client-v1/examples/14_sync_wrappers.py)
+- [18_memory_backed_assistant.py](/home/namiral/Projects/Packages/llm-client-v1/examples/18_memory_backed_assistant.py)
 
 ## The layers
 
@@ -48,7 +48,7 @@ It can combine:
 - persistent summaries
 
 The runnable reference is
-[10_context_memory_planning.py](/home/namiral/Projects/Packages/intelligence-layer-bif/examples/10_context_memory_planning.py).
+[10_context_memory_planning.py](/home/namiral/Projects/Packages/llm-client-v1/examples/10_context_memory_planning.py).
 
 ## Memory
 
@@ -76,7 +76,7 @@ The memory-backed assistant example shows the intended composition:
 5. execute through the engine
 
 Reference:
-[18_memory_backed_assistant.py](/home/namiral/Projects/Packages/intelligence-layer-bif/examples/18_memory_backed_assistant.py)
+[18_memory_backed_assistant.py](/home/namiral/Projects/Packages/llm-client-v1/examples/18_memory_backed_assistant.py)
 
 ## Practical recommendation
 

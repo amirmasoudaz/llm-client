@@ -58,6 +58,32 @@ python scripts/ci/run_llm_client_examples.py --subset application
 - `15_rate_limiting.py`: token/request limiter usage
 - `35_file_block_transport.py`: canonical file preparation, native OpenAI
   responses transport, and explicit fallback behavior for non-native providers
+- `38_openai_background_responses.py`: engine-managed OpenAI background
+  response lifecycle with polling and deletion
+- `39_openai_conversation_state_workflow.py`: engine-managed OpenAI
+  conversation creation, item listing, and context compaction
+- `40_openai_normalized_output_items.py`: normalized `output_items` versus
+  low-level provider replay items across a Responses tool loop
+- `41_openai_background_resume_stream.py`: background stream attach/reconnect
+  with `sequence_number` resume support
+- `42_openai_prompt_cache_and_encrypted_reasoning.py`: first-class prompt
+  caching controls and encrypted reasoning continuity inspection
+- `43_openai_long_running_compaction.py`: longer conversation threads,
+  compaction, and item retrieval against stored OpenAI state
+- `46_openai_realtime_connection_wrapper.py`: realtime client-secret creation
+  and websocket connection wrapper usage
+- `47_openai_vector_store_file_batches.py`: vector-store file batches, polling,
+  and batch file listing
+- `48_openai_deep_research_clarify_rewrite.py`: deep-research clarification,
+  prompt rewrite, and kickoff flow
+- `49_openai_realtime_transcription_session.py`: realtime transcription
+  session creation and transcription websocket connection wrapper usage
+- `50_openai_mcp_and_connector_workflows.py`: hosted web-search plus typed
+  remote MCP / connector workflow helpers
+- `51_openai_run_deep_research_staged.py`: staged deep-research orchestration
+  with clarification, rewrite, kickoff, and optional wait-for-completion
+- `52_openai_files_api.py`: generic OpenAI Files API upload, retrieval,
+  listing, content fetch, and optional cleanup
 
 ## Combined / Application-Shaped Examples
 
@@ -99,12 +125,45 @@ python scripts/ci/run_llm_client_examples.py --subset application
   table
 - `37_sql_adaptor_tools.py`: live tool-calling agent using a read-only SQL
   adaptor tool against temporary incident data in PostgreSQL
+- `44_engine_orchestrated_openai_workflow.py`: engine-level orchestration
+  across conversation state, background responses, follow-up turns, and
+  compaction
+- `45_openai_mcp_approval_continuation.py`: continue a stored MCP approval
+  loop with a first-class approval-response helper
 
 ## Notes
 
 - The examples now use real provider calls through
-  [cookbook_support.py](/home/namiral/Projects/Packages/intelligence-layer-bif/examples/cookbook_support.py).
+  [cookbook_support.py](/home/namiral/Projects/Packages/llm-client-v1/examples/cookbook_support.py).
 - By default, the cookbook expects `OPENAI_API_KEY` and uses OpenAI models.
+- The OpenAI Responses lifecycle/state examples (`38`-`45`) expect
+  `LLM_CLIENT_EXAMPLE_PROVIDER=openai`.
+- Additional OpenAI capability examples use:
+  - `LLM_CLIENT_EXAMPLE_REALTIME_MODEL` for example `46`
+  - `LLM_CLIENT_EXAMPLE_REALTIME_TRANSCRIPTION_MODEL` for example `49`
+  - `LLM_CLIENT_EXAMPLE_VECTOR_STORE_ID`,
+    `LLM_CLIENT_EXAMPLE_VECTOR_STORE_FILE_IDS`, and/or
+    `LLM_CLIENT_EXAMPLE_VECTOR_STORE_UPLOAD_PATHS` for example `47`
+  - `LLM_CLIENT_EXAMPLE_DEEP_RESEARCH_MODEL` and
+    `LLM_CLIENT_EXAMPLE_DEEP_RESEARCH_PROMPT` for examples `48` and `51`
+  - `LLM_CLIENT_EXAMPLE_DEEP_RESEARCH_CLARIFICATIONS` and optionally
+    `LLM_CLIENT_EXAMPLE_DEEP_RESEARCH_WAIT=0|1` for example `51`
+  - `LLM_CLIENT_EXAMPLE_OPENAI_TOOLS_MODEL` for example `50`
+  - `LLM_CLIENT_EXAMPLE_MCP_SERVER_URL`,
+    `LLM_CLIENT_EXAMPLE_MCP_SERVER_LABEL`,
+    `LLM_CLIENT_EXAMPLE_MCP_AUTHORIZATION`,
+    `LLM_CLIENT_EXAMPLE_MCP_REQUIRE_APPROVAL`,
+    `LLM_CLIENT_EXAMPLE_CONNECTOR_ID`,
+    `LLM_CLIENT_EXAMPLE_CONNECTOR_LABEL`,
+    `LLM_CLIENT_EXAMPLE_CONNECTOR_AUTHORIZATION`, and
+    `LLM_CLIENT_EXAMPLE_CONNECTOR_REQUIRE_APPROVAL` for example `50`
+  - `LLM_CLIENT_EXAMPLE_UPLOAD_FILE_PATH` for example `52`
+  - optionally `LLM_CLIENT_EXAMPLE_FILE_PURPOSE` and
+    `LLM_CLIENT_EXAMPLE_KEEP_UPLOADED_FILE=0|1` for example `52`
+- The MCP approval continuation example also expects:
+  - `LLM_CLIENT_EXAMPLE_MCP_PREVIOUS_RESPONSE_ID`
+  - `LLM_CLIENT_EXAMPLE_MCP_APPROVAL_REQUEST_ID`
+  - optionally `LLM_CLIENT_EXAMPLE_MCP_APPROVE=0|1`
 - You can switch providers with:
   - `LLM_CLIENT_EXAMPLE_PROVIDER=openai|anthropic|google`
   - `LLM_CLIENT_EXAMPLE_MODEL=...`

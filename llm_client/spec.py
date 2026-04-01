@@ -28,7 +28,7 @@ from typing import Any, TYPE_CHECKING
 
 from .cache_keys import request_cache_key
 from .providers.types import Message
-from .tools.base import Tool
+from .tools.base import ResponsesBuiltinTool, ResponsesCustomTool, ResponsesMCPTool, Tool, ToolDefinition
 
 if TYPE_CHECKING:
     from .cancellation import CancellationToken
@@ -251,6 +251,12 @@ class RequestContext:
 def _tool_name_for_sorting(tool: Any) -> str:
     if isinstance(tool, Tool):
         return str(tool.name or "")
+    if isinstance(tool, ResponsesCustomTool):
+        return str(tool.name or "")
+    if isinstance(tool, ResponsesMCPTool):
+        return str(tool.server_label or tool.connector_id or tool.server_url or "mcp")
+    if isinstance(tool, ResponsesBuiltinTool):
+        return str(tool.config.get("name") or tool.type or "")
     if isinstance(tool, dict):
         direct_name = str(tool.get("name") or "").strip()
         if direct_name:
@@ -268,6 +274,24 @@ def _serialize_tool_for_request_spec(tool: Any) -> dict[str, Any]:
             "description": tool.description,
             "parameters": tool.parameters,
             "strict": tool.strict,
+        }
+    if isinstance(tool, ResponsesCustomTool):
+        return {
+            "name": tool.name,
+            "description": tool.description,
+            "provider_definition": tool.to_dict(),
+        }
+    if isinstance(tool, ResponsesMCPTool):
+        return {
+            "name": str(tool.server_label or tool.connector_id or tool.server_url or "mcp"),
+            "description": tool.server_description,
+            "provider_definition": tool.to_dict(),
+        }
+    if isinstance(tool, ResponsesBuiltinTool):
+        return {
+            "name": str(tool.config.get("name") or tool.type or "tool"),
+            "description": tool.config.get("description"),
+            "provider_definition": tool.to_dict(),
         }
     if isinstance(tool, dict):
         payload = dict(tool)
@@ -299,16 +323,19 @@ class RequestSpec:
     provider: str
     model: str
     messages: list[Message]
-    tools: list[Tool | dict[str, Any]] | None = None
-    tool_choice: str | None = None
+    tools: list[ToolDefinition] | None = None
+    tool_choice: str | dict[str, Any] | None = None
     temperature: float | None = None
     max_tokens: int | None = None
     response_format: str | dict[str, Any] | type | None = None
     reasoning_effort: str | None = None
     reasoning: dict[str, Any] | None = None
+    include: list[str] | None = None
+    prompt_cache_key: str | None = None
+    prompt_cache_retention: str | None = None
     extra: dict[str, Any] = field(default_factory=dict)
     stream: bool = False
-    schema_version: int = 1
+    schema_version: int = 2
 
     def to_dict(self) -> dict[str, Any]:
         tools_payload = None
@@ -331,6 +358,9 @@ class RequestSpec:
             "response_format": self.response_format,
             "reasoning_effort": self.reasoning_effort,
             "reasoning": self.reasoning,
+            "include": list(self.include) if self.include is not None else None,
+            "prompt_cache_key": self.prompt_cache_key,
+            "prompt_cache_retention": self.prompt_cache_retention,
             "extra": dict(self.extra),
             "stream": self.stream,
         }

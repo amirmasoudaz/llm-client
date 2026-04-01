@@ -17,7 +17,16 @@ class FakeModel:
 
     @staticmethod
     def parse_usage(raw_usage: dict[str, Any]) -> dict[str, Any]:
-        return dict(raw_usage)
+        parsed = dict(raw_usage)
+        if "input_tokens_cached" not in parsed:
+            details = parsed.get("prompt_tokens_details") or parsed.get("input_tokens_details") or {}
+            if isinstance(details, dict) and "cached_tokens" in details:
+                parsed["input_tokens_cached"] = int(details.get("cached_tokens", 0) or 0)
+        if "output_tokens_reasoning" not in parsed:
+            details = parsed.get("output_tokens_details") or {}
+            if isinstance(details, dict) and "reasoning_tokens" in details:
+                parsed["output_tokens_reasoning"] = int(details.get("reasoning_tokens", 0) or 0)
+        return parsed
 
 
 class ScriptedProvider:

@@ -47,6 +47,10 @@ class ModelMetadata:
     tool_calling: bool
     streaming: bool
     structured_outputs: bool
+    responses_api: bool
+    background_responses: bool
+    responses_native_tools: bool
+    normalized_output_items: bool
     vision_input: bool
     audio_input: bool
     file_input: bool
@@ -71,6 +75,10 @@ class ModelMetadata:
             "tool_calling": self.tool_calling,
             "streaming": self.streaming,
             "structured_outputs": self.structured_outputs,
+            "responses_api": self.responses_api,
+            "background_responses": self.background_responses,
+            "responses_native_tools": self.responses_native_tools,
+            "normalized_output_items": self.normalized_output_items,
             "vision_input": self.vision_input,
             "audio_input": self.audio_input,
             "file_input": self.file_input,
@@ -115,6 +123,10 @@ class ModelCatalog:
         tool_calling: bool | None = None,
         streaming: bool | None = None,
         structured_outputs: bool | None = None,
+        responses_api: bool | None = None,
+        background_responses: bool | None = None,
+        responses_native_tools: bool | None = None,
+        normalized_output_items: bool | None = None,
     ) -> list[ModelMetadata]:
         provider_norm = str(provider or "").strip().lower() or None
         category_norm = str(category or "").strip().lower() or None
@@ -131,6 +143,14 @@ class ModelCatalog:
             if streaming is not None and item.streaming != streaming:
                 continue
             if structured_outputs is not None and item.structured_outputs != structured_outputs:
+                continue
+            if responses_api is not None and item.responses_api != responses_api:
+                continue
+            if background_responses is not None and item.background_responses != background_responses:
+                continue
+            if responses_native_tools is not None and item.responses_native_tools != responses_native_tools:
+                continue
+            if normalized_output_items is not None and item.normalized_output_items != normalized_output_items:
                 continue
             results.append(item)
         return results
@@ -168,7 +188,29 @@ class ModelCatalog:
 
 def infer_provider_for_model(model_key: str) -> str:
     key = str(model_key or "").strip().lower()
-    if key.startswith(("gpt-", "text-embedding-")):
+    if key in {"o1", "o3", "o4-mini"}:
+        return "openai"
+    if key.startswith(
+        (
+            "gpt-",
+            "chatgpt-",
+            "text-embedding-",
+            "omni-moderation-",
+            "text-moderation-",
+            "whisper-",
+            "tts-",
+            "o1-",
+            "o3-",
+            "o4-",
+            "dall-e-",
+            "davinci-",
+            "babbage-",
+            "computer-use-",
+            "codex-",
+            "ft:",
+            "ft-",
+        )
+    ):
         return "openai"
     if key.startswith("gemini-"):
         return "google"
@@ -181,15 +223,72 @@ def _default_capability_flags(profile: type[ModelProfile]) -> dict[str, bool]:
     provider = infer_provider_for_model(profile.key)
     is_completion = profile.category == "completions"
     if provider == "openai":
+        is_image = profile.category == "images"
+        is_audio = profile.category == "audio"
+        is_moderation = profile.category == "moderations"
+        is_realtime = profile.category == "realtime"
+        is_completion_like = is_completion or is_realtime
+        supports_image_input = is_completion or is_image or profile.key == "omni-moderation-latest"
+        supports_audio_input = is_completion_like or is_audio
+        supports_file_input = is_completion_like or is_audio or is_image
+        if is_moderation and profile.key.startswith("text-moderation-"):
+            supports_image_input = False
+            supports_audio_input = False
+            supports_file_input = False
+        structured_outputs = is_completion
+        responses_api = is_completion
+        background_responses = is_completion
+        responses_native_tools = is_completion
+        normalized_output_items = is_completion
+        vision_input = supports_image_input
+        audio_input = supports_audio_input
+        file_input = supports_file_input
+        for attribute_name, current_key in (
+            ("structured_outputs_support", "structured_outputs"),
+            ("responses_api_support", "responses_api"),
+            ("background_responses_support", "background_responses"),
+            ("responses_native_tools_support", "responses_native_tools"),
+            ("normalized_output_items_support", "normalized_output_items"),
+            ("vision_input_support", "vision_input"),
+            ("audio_input_support", "audio_input"),
+            ("file_input_support", "file_input"),
+        ):
+            override = getattr(profile, attribute_name, None)
+            if override is None:
+                continue
+            if current_key == "structured_outputs":
+                structured_outputs = bool(override)
+            elif current_key == "responses_api":
+                responses_api = bool(override)
+            elif current_key == "background_responses":
+                background_responses = bool(override)
+            elif current_key == "responses_native_tools":
+                responses_native_tools = bool(override)
+            elif current_key == "normalized_output_items":
+                normalized_output_items = bool(override)
+            elif current_key == "vision_input":
+                vision_input = bool(override)
+            elif current_key == "audio_input":
+                audio_input = bool(override)
+            elif current_key == "file_input":
+                file_input = bool(override)
         return {
-            "structured_outputs": is_completion,
-            "vision_input": is_completion,
-            "audio_input": is_completion,
-            "file_input": is_completion,
+            "structured_outputs": structured_outputs,
+            "responses_api": responses_api,
+            "background_responses": background_responses,
+            "responses_native_tools": responses_native_tools,
+            "normalized_output_items": normalized_output_items,
+            "vision_input": vision_input,
+            "audio_input": audio_input,
+            "file_input": file_input,
         }
     if provider == "google":
         return {
             "structured_outputs": is_completion,
+            "responses_api": False,
+            "background_responses": False,
+            "responses_native_tools": False,
+            "normalized_output_items": False,
             "vision_input": is_completion,
             "audio_input": is_completion,
             "file_input": is_completion,
@@ -197,12 +296,20 @@ def _default_capability_flags(profile: type[ModelProfile]) -> dict[str, bool]:
     if provider == "anthropic":
         return {
             "structured_outputs": False,
+            "responses_api": False,
+            "background_responses": False,
+            "responses_native_tools": False,
+            "normalized_output_items": False,
             "vision_input": is_completion,
             "audio_input": False,
             "file_input": is_completion,
         }
     return {
         "structured_outputs": False,
+        "responses_api": False,
+        "background_responses": False,
+        "responses_native_tools": False,
+        "normalized_output_items": False,
         "vision_input": False,
         "audio_input": False,
         "file_input": False,
@@ -231,11 +338,15 @@ def metadata_from_profile(profile: type[ModelProfile]) -> ModelMetadata:
         tool_calling=bool(getattr(profile, "function_calling_support", False)),
         streaming=bool(getattr(profile, "token_streaming_support", False)),
         structured_outputs=defaults["structured_outputs"],
+        responses_api=defaults["responses_api"],
+        background_responses=defaults["background_responses"],
+        responses_native_tools=defaults["responses_native_tools"],
+        normalized_output_items=defaults["normalized_output_items"],
         vision_input=defaults["vision_input"],
         audio_input=defaults["audio_input"],
         file_input=defaults["file_input"],
-        deprecated=False,
-        replacement=None,
+        deprecated=bool(getattr(profile, "deprecated", False)),
+        replacement=getattr(profile, "replacement", None),
         rate_limits=rate_limits,
         usage_costs=usage_costs,
     )
@@ -341,6 +452,10 @@ def _catalog_from_document(document: dict[str, Any], *, source: str | None = Non
             tool_calling=bool(raw.get("tool_calling", False)),
             streaming=bool(raw.get("streaming", False)),
             structured_outputs=bool(raw.get("structured_outputs", False)),
+            responses_api=bool(raw.get("responses_api", False)),
+            background_responses=bool(raw.get("background_responses", False)),
+            responses_native_tools=bool(raw.get("responses_native_tools", False)),
+            normalized_output_items=bool(raw.get("normalized_output_items", False)),
             vision_input=bool(raw.get("vision_input", False)),
             audio_input=bool(raw.get("audio_input", False)),
             file_input=bool(raw.get("file_input", False)),

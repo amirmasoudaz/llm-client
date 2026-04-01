@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
@@ -133,6 +133,8 @@ def resolve_model_name(
 def build_provider_handle(
     provider_name: str,
     model_name: str,
+    *,
+    use_responses_api: bool = False,
 ) -> LiveProviderHandle:
     provider_name = provider_name.strip().lower()
     if provider_name == "openai":
@@ -141,7 +143,7 @@ def build_provider_handle(
         return LiveProviderHandle(
             name="openai",
             model=model_name,
-            provider=OpenAIProvider(model=model_name),
+            provider=OpenAIProvider(model=model_name, use_responses_api=use_responses_api),
         )
     if provider_name == "anthropic":
         if not example_env("ANTHROPIC_API_KEY"):
@@ -167,12 +169,13 @@ def build_live_provider(
     *,
     capability: str = "chat",
     secondary: bool = False,
+    use_responses_api: bool = False,
 ) -> LiveProviderHandle:
     provider_name = resolve_provider_name(capability=capability, secondary=secondary)
     model_name = resolve_model_name(provider_name, capability=capability, secondary=secondary)
     if provider_name == "anthropic" and capability == "embeddings":
         fail_or_skip("Anthropic does not provide embeddings in llm_client. Use OpenAI or Google.")
-    return build_provider_handle(provider_name, model_name)
+    return build_provider_handle(provider_name, model_name, use_responses_api=use_responses_api)
 
 
 async def close_provider(provider: Any) -> None:

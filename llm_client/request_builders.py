@@ -23,6 +23,9 @@ _REQUEST_SPEC_RESERVED_KEYS = {
     "response_format",
     "reasoning_effort",
     "reasoning",
+    "include",
+    "prompt_cache_key",
+    "prompt_cache_retention",
 }
 
 
@@ -93,6 +96,9 @@ def build_request_spec(
         response_format=request_kwargs.get("response_format"),
         reasoning_effort=request_kwargs.get("reasoning_effort"),
         reasoning=request_kwargs.get("reasoning"),
+        include=list(request_kwargs.get("include")) if request_kwargs.get("include") is not None else None,
+        prompt_cache_key=request_kwargs.get("prompt_cache_key"),
+        prompt_cache_retention=request_kwargs.get("prompt_cache_retention"),
         extra=extra,
         stream=stream,
     )
@@ -128,6 +134,9 @@ def build_content_request_envelope(
             response_format=request_kwargs.get("response_format"),
             reasoning_effort=request_kwargs.get("reasoning_effort"),
             reasoning=request_kwargs.get("reasoning"),
+            include=tuple(request_kwargs.get("include")) if request_kwargs.get("include") is not None else None,
+            prompt_cache_key=request_kwargs.get("prompt_cache_key"),
+            prompt_cache_retention=request_kwargs.get("prompt_cache_retention"),
             extra=extra,
             stream=stream,
         )

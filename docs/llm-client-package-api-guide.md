@@ -12,10 +12,10 @@ Use this document when you need to answer:
 
 See also:
 
-- [llm-client-public-api-v1.md](/home/namiral/Projects/Packages/intelligence-layer-bif/docs/llm-client-public-api-v1.md)
-- [llm_client/README.md](/home/namiral/Projects/Packages/intelligence-layer-bif/llm_client/README.md)
-- [llm-client-build-and-recipes-guide.md](/home/namiral/Projects/Packages/intelligence-layer-bif/docs/llm-client-build-and-recipes-guide.md)
-- [llm-client-usage-and-capabilities-guide.md](/home/namiral/Projects/Packages/intelligence-layer-bif/docs/llm-client-usage-and-capabilities-guide.md)
+- [llm-client-public-api-v1.md](/home/namiral/Projects/Packages/llm-client-v1/docs/llm-client-public-api-v1.md)
+- [llm_client/README.md](/home/namiral/Projects/Packages/llm-client-v1/llm_client/README.md)
+- [llm-client-build-and-recipes-guide.md](/home/namiral/Projects/Packages/llm-client-v1/docs/llm-client-build-and-recipes-guide.md)
+- [llm-client-usage-and-capabilities-guide.md](/home/namiral/Projects/Packages/llm-client-v1/docs/llm-client-usage-and-capabilities-guide.md)
 
 ## Stable Module Map
 
@@ -64,7 +64,35 @@ Use provider modules when you need to execute a direct provider call:
 Provider-level outputs are:
 
 - `CompletionResult`
+- `NormalizedOutputItem`
+- `BackgroundResponseResult`
+- `ConversationResource`
+- `CompactionResult`
+- `DeletionResult`
+- `ConversationItemResource`
+- `ConversationItemsPage`
 - `EmbeddingResult`
+- `ModerationResult`
+- `ImageGenerationResult`
+- `GeneratedImage`
+- `AudioTranscriptionResult`
+- `AudioSpeechResult`
+- `FileResource`
+- `FilesPage`
+- `FileContentResult`
+- `VectorStoreResource`
+- `VectorStoresPage`
+- `VectorStoreSearchResult`
+- `VectorStoreFileResource`
+- `VectorStoreFilesPage`
+- `VectorStoreFileContentResult`
+- `FineTuningJobResult`
+- `FineTuningJobsPage`
+- `FineTuningJobEventsPage`
+- `RealtimeClientSecretResult`
+- `RealtimeCallResult`
+- `RealtimeConnection`
+- `WebhookEventResult`
 - `StreamEvent`
 - `Usage`
 
@@ -77,6 +105,7 @@ Use `llm_client.engine` when you want:
 - cache handling
 - idempotency-aware execution
 - lifecycle hooks and diagnostics
+- provider-native workflow orchestration around background/conversation/state APIs
 
 Canonical execution context above request correlation lives in
 `llm_client.context`:
@@ -110,6 +139,12 @@ Use them when:
 - you want direct control over one provider
 - you do not need engine-level retry/cache/failover behavior
 - you are building a lower-level integration
+- you need provider-native workflows such as OpenAI Responses background retrieval or resumed streaming
+- you need OpenAI-first product surfaces such as moderation, image generation/editing, speech APIs, generic file uploads/content retrieval, hosted vector stores, vector-store files and file batches, fine-tuning jobs, realtime connection/call/transcription helpers, hosted Responses tool workflows, webhook verification, or staged deep-research orchestration
+
+Use `llm_client.engine` instead of direct provider calls when you want those
+provider-native workflows but still need a shared engine surface for hook
+correlation, timeout handling, or provider selection.
 
 ### Engine
 
@@ -120,6 +155,7 @@ Use it when:
 - you want stable request execution behavior
 - you want caching, retry, failover, hooks, or idempotency
 - you want higher-level flows to be provider-agnostic
+- you want one orchestration surface for provider-native workflows beyond `complete(...)`, including moderation, media APIs, generic file APIs, vector stores, vector-store files and file batches, fine-tuning, realtime connection/call/transcription helpers, hosted Responses tool workflows, webhook verification, and staged deep-research orchestration
 
 ### Agent
 
@@ -137,11 +173,29 @@ The tool layer defines callable runtime capabilities:
 
 - `Tool`
 - `ToolRegistry`
+- `ResponsesBuiltinTool`
+- `ResponsesConnectorId`
+- `ResponsesMCPTool`
+- `ResponsesMCPApprovalPolicy`
+- `ResponsesMCPToolFilter`
+- `ResponsesCustomTool`
+- `ResponsesGrammar`
 - `tool`
 - `ToolExecutionEngine`
 
 The package owns the generic tool runtime. Domain-specific tools still belong
 outside the package.
+
+For OpenAI Responses-native hosted tools, prefer the typed descriptors instead
+of raw dicts. That includes convenience aliases such as
+`ResponsesBuiltinTool.web_search_preview(...)`,
+`ResponsesBuiltinTool.remote_mcp(...)`, and
+`ResponsesBuiltinTool.connector(...)`, plus the richer MCP/connector-specific
+descriptor `ResponsesMCPTool`. When you want docs-aligned connector ids without
+hand-typed strings, use `ResponsesConnectorId`.
+
+Provider-native Responses tools are request-side descriptors, not executable
+runtime tools. Keep using `ToolRegistry` for locally executed function tools.
 
 ### Service Adaptors
 

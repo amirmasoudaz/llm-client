@@ -9,6 +9,7 @@ from llm_client.providers.anthropic import AnthropicProvider
 from llm_client.providers.base import BaseProvider
 from llm_client.providers.google import GoogleProvider
 from llm_client.providers.openai import OpenAIProvider
+from llm_client.tools import ResponsesBuiltinTool
 
 from tests.llm_client.provider_contracts import (
     ProviderContractSpec,
@@ -206,6 +207,16 @@ def _build_google_provider(monkeypatch: pytest.MonkeyPatch) -> GoogleProvider:
         )
     )
     return provider
+
+
+def test_non_openai_providers_reject_responses_native_tool_descriptors(monkeypatch: pytest.MonkeyPatch) -> None:
+    google_provider = _build_google_provider(monkeypatch)
+
+    with pytest.raises(ValueError, match="provider-native or raw tool descriptors"):
+        google_provider._convert_tools([ResponsesBuiltinTool.file_search(vector_store_ids=["vs_123"])])
+
+    with pytest.raises(ValueError, match="provider-native or raw tool descriptors"):
+        AnthropicProvider._convert_tools_for_anthropic([ResponsesBuiltinTool.web_search()])
 
 
 class _AnthropicStreamManager:

@@ -14,6 +14,73 @@
   },
   "models": [
     {
+      "key": "chatgpt-4o-latest",
+      "provider": "openai",
+      "model_name": "chatgpt-4o-latest",
+      "category": "completions",
+      "context_window": 128000,
+      "max_output": 16384,
+      "output_dimensions": null,
+      "encoding": "o200k_base",
+      "reasoning": false,
+      "reasoning_efforts": [],
+      "default_reasoning_effort": null,
+      "tool_calling": true,
+      "streaming": true,
+      "structured_outputs": true,
+      "responses_api": true,
+      "background_responses": true,
+      "responses_native_tools": true,
+      "normalized_output_items": true,
+      "vision_input": true,
+      "audio_input": true,
+      "file_input": true,
+      "deprecated": false,
+      "replacement": null,
+      "rate_limits": {
+        "tkn_per_min": 2000000,
+        "req_per_min": 10000
+      },
+      "usage_costs": {
+        "input": 2.5e-06,
+        "output": 1e-05,
+        "cached_input": 1.25e-06
+      }
+    },
+    {
+      "key": "chatgpt-image-latest",
+      "provider": "openai",
+      "model_name": "chatgpt-image-latest",
+      "category": "images",
+      "context_window": 32768,
+      "max_output": null,
+      "output_dimensions": null,
+      "encoding": "o200k_base",
+      "reasoning": false,
+      "reasoning_efforts": [],
+      "default_reasoning_effort": null,
+      "tool_calling": false,
+      "streaming": false,
+      "structured_outputs": false,
+      "responses_api": false,
+      "background_responses": false,
+      "responses_native_tools": false,
+      "normalized_output_items": false,
+      "vision_input": true,
+      "audio_input": false,
+      "file_input": true,
+      "deprecated": false,
+      "replacement": null,
+      "rate_limits": {
+        "req_per_min": 500
+      },
+      "usage_costs": {
+        "input": 0.0,
+        "output": 0.0,
+        "cached_input": 0.0
+      }
+    },
+    {
       "key": "claude-3-5-haiku",
       "provider": "anthropic",
       "model_name": "claude-3-5-haiku-20241022",
@@ -28,13 +95,24 @@
       "tool_calling": true,
       "streaming": true,
       "structured_outputs": false,
+      "responses_api": false,
+      "background_responses": false,
+      "responses_native_tools": false,
+      "normalized_output_items": false,
       "vision_input": true,
       "audio_input": false,
       "file_input": true,
       "deprecated": false,
       "replacement": null,
-      "rate_limits": {"req_per_min": 5000, "tkn_per_min": 100000},
-      "usage_costs": {"cached_input": 0.0000001, "input": 0.000001, "output": 0.000005}
+      "rate_limits": {
+        "tkn_per_min": 100000,
+        "req_per_min": 5000
+      },
+      "usage_costs": {
+        "input": 1e-06,
+        "output": 5e-06,
+        "cached_input": 1e-07
+      }
     },
     {
       "key": "claude-3-5-sonnet",
@@ -51,13 +129,24 @@
       "tool_calling": true,
       "streaming": true,
       "structured_outputs": false,
+      "responses_api": false,
+      "background_responses": false,
+      "responses_native_tools": false,
+      "normalized_output_items": false,
       "vision_input": true,
       "audio_input": false,
       "file_input": true,
       "deprecated": false,
       "replacement": null,
-      "rate_limits": {"req_per_min": 4000, "tkn_per_min": 80000},
-      "usage_costs": {"cached_input": 0.0000003, "input": 0.000003, "output": 0.000015}
+      "rate_limits": {
+        "tkn_per_min": 80000,
+        "req_per_min": 4000
+      },
+      "usage_costs": {
+        "input": 3e-06,
+        "output": 1.5e-05,
+        "cached_input": 3e-07
+      }
     },
     {
       "key": "claude-3-opus",
@@ -74,36 +163,23 @@
       "tool_calling": true,
       "streaming": true,
       "structured_outputs": false,
+      "responses_api": false,
+      "background_responses": false,
+      "responses_native_tools": false,
+      "normalized_output_items": false,
       "vision_input": true,
       "audio_input": false,
       "file_input": true,
       "deprecated": false,
       "replacement": null,
-      "rate_limits": {"req_per_min": 2000, "tkn_per_min": 40000},
-      "usage_costs": {"input": 0.000015, "output": 0.000075}
-    },
-    {
-      "key": "claude-opus-4",
-      "provider": "anthropic",
-      "model_name": "claude-opus-4-20250514",
-      "category": "completions",
-      "context_window": 200000,
-      "max_output": 8192,
-      "output_dimensions": null,
-      "encoding": "cl100k_base",
-      "reasoning": true,
-      "reasoning_efforts": ["low", "medium", "high"],
-      "default_reasoning_effort": "medium",
-      "tool_calling": true,
-      "streaming": true,
-      "structured_outputs": false,
-      "vision_input": true,
-      "audio_input": false,
-      "file_input": true,
-      "deprecated": false,
-      "replacement": null,
-      "rate_limits": {"req_per_min": 3000, "tkn_per_min": 60000},
-      "usage_costs": {"cached_input": 0.0000005, "input": 0.000005, "output": 0.000025}
+      "rate_limits": {
+        "tkn_per_min": 40000,
+        "req_per_min": 2000
+      },
+      "usage_costs": {
+        "input": 1.5e-05,
+        "output": 7.5e-05
+      }
     },
     {
       "key": "claude-4-5-haiku",
@@ -120,13 +196,24 @@
       "tool_calling": true,
       "streaming": true,
       "structured_outputs": false,
+      "responses_api": false,
+      "background_responses": false,
+      "responses_native_tools": false,
+      "normalized_output_items": false,
       "vision_input": true,
       "audio_input": false,
       "file_input": true,
       "deprecated": false,
       "replacement": null,
-      "rate_limits": {"req_per_min": 6000, "tkn_per_min": 120000},
-      "usage_costs": {"cached_input": 0.0000001, "input": 0.000001, "output": 0.000005}
+      "rate_limits": {
+        "tkn_per_min": 120000,
+        "req_per_min": 6000
+      },
+      "usage_costs": {
+        "input": 1e-06,
+        "output": 5e-06,
+        "cached_input": 1e-07
+      }
     },
     {
       "key": "claude-4-5-opus",
@@ -138,18 +225,33 @@
       "output_dimensions": null,
       "encoding": "cl100k_base",
       "reasoning": true,
-      "reasoning_efforts": ["low", "medium", "high"],
+      "reasoning_efforts": [
+        "low",
+        "medium",
+        "high"
+      ],
       "default_reasoning_effort": "medium",
       "tool_calling": true,
       "streaming": true,
       "structured_outputs": false,
+      "responses_api": false,
+      "background_responses": false,
+      "responses_native_tools": false,
+      "normalized_output_items": false,
       "vision_input": true,
       "audio_input": false,
       "file_input": true,
       "deprecated": false,
       "replacement": null,
-      "rate_limits": {"req_per_min": 3000, "tkn_per_min": 60000},
-      "usage_costs": {"cached_input": 0.0000005, "input": 0.000005, "output": 0.000025}
+      "rate_limits": {
+        "tkn_per_min": 60000,
+        "req_per_min": 3000
+      },
+      "usage_costs": {
+        "input": 5e-06,
+        "output": 2.5e-05,
+        "cached_input": 5e-07
+      }
     },
     {
       "key": "claude-4-5-sonnet",
@@ -166,13 +268,62 @@
       "tool_calling": true,
       "streaming": true,
       "structured_outputs": false,
+      "responses_api": false,
+      "background_responses": false,
+      "responses_native_tools": false,
+      "normalized_output_items": false,
       "vision_input": true,
       "audio_input": false,
       "file_input": true,
       "deprecated": false,
       "replacement": null,
-      "rate_limits": {"req_per_min": 5000, "tkn_per_min": 100000},
-      "usage_costs": {"cached_input": 0.0000003, "input": 0.000003, "output": 0.000015}
+      "rate_limits": {
+        "tkn_per_min": 100000,
+        "req_per_min": 5000
+      },
+      "usage_costs": {
+        "input": 3e-06,
+        "output": 1.5e-05,
+        "cached_input": 3e-07
+      }
+    },
+    {
+      "key": "claude-opus-4",
+      "provider": "anthropic",
+      "model_name": "claude-opus-4-20250514",
+      "category": "completions",
+      "context_window": 200000,
+      "max_output": 8192,
+      "output_dimensions": null,
+      "encoding": "cl100k_base",
+      "reasoning": true,
+      "reasoning_efforts": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "default_reasoning_effort": "medium",
+      "tool_calling": true,
+      "streaming": true,
+      "structured_outputs": false,
+      "responses_api": false,
+      "background_responses": false,
+      "responses_native_tools": false,
+      "normalized_output_items": false,
+      "vision_input": true,
+      "audio_input": false,
+      "file_input": true,
+      "deprecated": false,
+      "replacement": null,
+      "rate_limits": {
+        "tkn_per_min": 60000,
+        "req_per_min": 3000
+      },
+      "usage_costs": {
+        "input": 5e-06,
+        "output": 2.5e-05,
+        "cached_input": 5e-07
+      }
     },
     {
       "key": "claude-sonnet-4",
@@ -189,13 +340,124 @@
       "tool_calling": true,
       "streaming": true,
       "structured_outputs": false,
+      "responses_api": false,
+      "background_responses": false,
+      "responses_native_tools": false,
+      "normalized_output_items": false,
       "vision_input": true,
       "audio_input": false,
       "file_input": true,
       "deprecated": false,
       "replacement": null,
-      "rate_limits": {"req_per_min": 5000, "tkn_per_min": 100000},
-      "usage_costs": {"cached_input": 0.0000003, "input": 0.000003, "output": 0.000015}
+      "rate_limits": {
+        "tkn_per_min": 100000,
+        "req_per_min": 5000
+      },
+      "usage_costs": {
+        "input": 3e-06,
+        "output": 1.5e-05,
+        "cached_input": 3e-07
+      }
+    },
+    {
+      "key": "computer-use-preview",
+      "provider": "openai",
+      "model_name": "computer-use-preview",
+      "category": "completions",
+      "context_window": 128000,
+      "max_output": 16384,
+      "output_dimensions": null,
+      "encoding": "o200k_base",
+      "reasoning": false,
+      "reasoning_efforts": [],
+      "default_reasoning_effort": null,
+      "tool_calling": false,
+      "streaming": true,
+      "structured_outputs": false,
+      "responses_api": true,
+      "background_responses": true,
+      "responses_native_tools": true,
+      "normalized_output_items": true,
+      "vision_input": true,
+      "audio_input": true,
+      "file_input": true,
+      "deprecated": false,
+      "replacement": null,
+      "rate_limits": {
+        "tkn_per_min": 500000,
+        "req_per_min": 2000
+      },
+      "usage_costs": {
+        "input": 2.5e-06,
+        "output": 1e-05,
+        "cached_input": 1.25e-06
+      }
+    },
+    {
+      "key": "dall-e-2",
+      "provider": "openai",
+      "model_name": "dall-e-2",
+      "category": "images",
+      "context_window": 8192,
+      "max_output": null,
+      "output_dimensions": null,
+      "encoding": "cl100k_base",
+      "reasoning": false,
+      "reasoning_efforts": [],
+      "default_reasoning_effort": null,
+      "tool_calling": false,
+      "streaming": false,
+      "structured_outputs": false,
+      "responses_api": false,
+      "background_responses": false,
+      "responses_native_tools": false,
+      "normalized_output_items": false,
+      "vision_input": false,
+      "audio_input": false,
+      "file_input": false,
+      "deprecated": true,
+      "replacement": "gpt-image-1",
+      "rate_limits": {
+        "req_per_min": 200
+      },
+      "usage_costs": {
+        "input": 0.0,
+        "output": 0.0,
+        "cached_input": 0.0
+      }
+    },
+    {
+      "key": "dall-e-3",
+      "provider": "openai",
+      "model_name": "dall-e-3",
+      "category": "images",
+      "context_window": 8192,
+      "max_output": null,
+      "output_dimensions": null,
+      "encoding": "cl100k_base",
+      "reasoning": false,
+      "reasoning_efforts": [],
+      "default_reasoning_effort": null,
+      "tool_calling": false,
+      "streaming": false,
+      "structured_outputs": false,
+      "responses_api": false,
+      "background_responses": false,
+      "responses_native_tools": false,
+      "normalized_output_items": false,
+      "vision_input": false,
+      "audio_input": false,
+      "file_input": false,
+      "deprecated": true,
+      "replacement": "gpt-image-1",
+      "rate_limits": {
+        "req_per_min": 200
+      },
+      "usage_costs": {
+        "input": 0.0,
+        "output": 0.0,
+        "cached_input": 0.0
+      }
     },
     {
       "key": "gemini-1.5-pro",
@@ -212,13 +474,24 @@
       "tool_calling": true,
       "streaming": true,
       "structured_outputs": true,
+      "responses_api": false,
+      "background_responses": false,
+      "responses_native_tools": false,
+      "normalized_output_items": false,
       "vision_input": true,
       "audio_input": true,
       "file_input": true,
       "deprecated": false,
       "replacement": null,
-      "rate_limits": {"req_per_min": 15, "tkn_per_min": 2000000},
-      "usage_costs": {"cached_input": 0.0000003125, "input": 0.00000125, "output": 0.000005}
+      "rate_limits": {
+        "tkn_per_min": 2000000,
+        "req_per_min": 15
+      },
+      "usage_costs": {
+        "input": 1.25e-06,
+        "output": 5e-06,
+        "cached_input": 3.125e-07
+      }
     },
     {
       "key": "gemini-2.0-flash",
@@ -235,13 +508,24 @@
       "tool_calling": true,
       "streaming": true,
       "structured_outputs": true,
+      "responses_api": false,
+      "background_responses": false,
+      "responses_native_tools": false,
+      "normalized_output_items": false,
       "vision_input": true,
       "audio_input": true,
       "file_input": true,
       "deprecated": false,
       "replacement": null,
-      "rate_limits": {"req_per_min": 15, "tkn_per_min": 4000000},
-      "usage_costs": {"cached_input": 0.000000025, "input": 0.0000001, "output": 0.0000004}
+      "rate_limits": {
+        "tkn_per_min": 4000000,
+        "req_per_min": 15
+      },
+      "usage_costs": {
+        "input": 1e-07,
+        "output": 4e-07,
+        "cached_input": 2.5e-08
+      }
     },
     {
       "key": "gemini-3-flash",
@@ -258,13 +542,24 @@
       "tool_calling": true,
       "streaming": true,
       "structured_outputs": true,
+      "responses_api": false,
+      "background_responses": false,
+      "responses_native_tools": false,
+      "normalized_output_items": false,
       "vision_input": true,
       "audio_input": true,
       "file_input": true,
       "deprecated": false,
       "replacement": null,
-      "rate_limits": {"req_per_min": 20, "tkn_per_min": 5000000},
-      "usage_costs": {"cached_input": 0.000000125, "input": 0.0000005, "output": 0.000003}
+      "rate_limits": {
+        "tkn_per_min": 5000000,
+        "req_per_min": 20
+      },
+      "usage_costs": {
+        "input": 5e-07,
+        "output": 3e-06,
+        "cached_input": 1.25e-07
+      }
     },
     {
       "key": "gemini-3-pro",
@@ -276,18 +571,537 @@
       "output_dimensions": null,
       "encoding": "cl100k_base",
       "reasoning": true,
-      "reasoning_efforts": ["low", "medium", "high"],
+      "reasoning_efforts": [
+        "low",
+        "medium",
+        "high"
+      ],
       "default_reasoning_effort": "medium",
       "tool_calling": true,
       "streaming": true,
       "structured_outputs": true,
+      "responses_api": false,
+      "background_responses": false,
+      "responses_native_tools": false,
+      "normalized_output_items": false,
       "vision_input": true,
       "audio_input": true,
       "file_input": true,
       "deprecated": false,
       "replacement": null,
-      "rate_limits": {"req_per_min": 15, "tkn_per_min": 3000000},
-      "usage_costs": {"cached_input": 0.0000005, "input": 0.000002, "output": 0.000012}
+      "rate_limits": {
+        "tkn_per_min": 3000000,
+        "req_per_min": 15
+      },
+      "usage_costs": {
+        "input": 2e-06,
+        "output": 1.2e-05,
+        "cached_input": 5e-07
+      }
+    },
+    {
+      "key": "gpt-4.1",
+      "provider": "openai",
+      "model_name": "gpt-4.1-2025-04-14",
+      "category": "completions",
+      "context_window": 1000000,
+      "max_output": 32768,
+      "output_dimensions": null,
+      "encoding": "o200k_base",
+      "reasoning": false,
+      "reasoning_efforts": [],
+      "default_reasoning_effort": null,
+      "tool_calling": true,
+      "streaming": true,
+      "structured_outputs": true,
+      "responses_api": true,
+      "background_responses": true,
+      "responses_native_tools": true,
+      "normalized_output_items": true,
+      "vision_input": true,
+      "audio_input": true,
+      "file_input": true,
+      "deprecated": false,
+      "replacement": null,
+      "rate_limits": {
+        "tkn_per_min": 2000000,
+        "req_per_min": 10000
+      },
+      "usage_costs": {
+        "input": 2e-06,
+        "output": 8e-06,
+        "cached_input": 5e-07
+      }
+    },
+    {
+      "key": "gpt-4.1-mini",
+      "provider": "openai",
+      "model_name": "gpt-4.1-mini-2025-04-14",
+      "category": "completions",
+      "context_window": 1000000,
+      "max_output": 32768,
+      "output_dimensions": null,
+      "encoding": "o200k_base",
+      "reasoning": false,
+      "reasoning_efforts": [],
+      "default_reasoning_effort": null,
+      "tool_calling": true,
+      "streaming": true,
+      "structured_outputs": true,
+      "responses_api": true,
+      "background_responses": true,
+      "responses_native_tools": true,
+      "normalized_output_items": true,
+      "vision_input": true,
+      "audio_input": true,
+      "file_input": true,
+      "deprecated": false,
+      "replacement": null,
+      "rate_limits": {
+        "tkn_per_min": 6000000,
+        "req_per_min": 10000
+      },
+      "usage_costs": {
+        "input": 4e-07,
+        "output": 1.6e-06,
+        "cached_input": 1e-07
+      }
+    },
+    {
+      "key": "gpt-4.1-nano",
+      "provider": "openai",
+      "model_name": "gpt-4.1-nano-2025-04-14",
+      "category": "completions",
+      "context_window": 1000000,
+      "max_output": 32768,
+      "output_dimensions": null,
+      "encoding": "o200k_base",
+      "reasoning": false,
+      "reasoning_efforts": [],
+      "default_reasoning_effort": null,
+      "tool_calling": true,
+      "streaming": true,
+      "structured_outputs": true,
+      "responses_api": true,
+      "background_responses": true,
+      "responses_native_tools": false,
+      "normalized_output_items": true,
+      "vision_input": true,
+      "audio_input": true,
+      "file_input": true,
+      "deprecated": false,
+      "replacement": null,
+      "rate_limits": {
+        "tkn_per_min": 10000000,
+        "req_per_min": 10000
+      },
+      "usage_costs": {
+        "input": 1e-07,
+        "output": 4e-07,
+        "cached_input": 2.5e-08
+      }
+    },
+    {
+      "key": "gpt-4o",
+      "provider": "openai",
+      "model_name": "gpt-4o-2024-08-06",
+      "category": "completions",
+      "context_window": 128000,
+      "max_output": 16384,
+      "output_dimensions": null,
+      "encoding": "o200k_base",
+      "reasoning": false,
+      "reasoning_efforts": [],
+      "default_reasoning_effort": null,
+      "tool_calling": true,
+      "streaming": true,
+      "structured_outputs": true,
+      "responses_api": true,
+      "background_responses": true,
+      "responses_native_tools": true,
+      "normalized_output_items": true,
+      "vision_input": true,
+      "audio_input": true,
+      "file_input": true,
+      "deprecated": false,
+      "replacement": null,
+      "rate_limits": {
+        "tkn_per_min": 2000000,
+        "req_per_min": 10000
+      },
+      "usage_costs": {
+        "input": 2.5e-06,
+        "output": 1e-05,
+        "cached_input": 1.25e-06
+      }
+    },
+    {
+      "key": "gpt-4o-audio-preview",
+      "provider": "openai",
+      "model_name": "gpt-4o-audio-preview",
+      "category": "audio",
+      "context_window": 128000,
+      "max_output": null,
+      "output_dimensions": null,
+      "encoding": "o200k_base",
+      "reasoning": false,
+      "reasoning_efforts": [],
+      "default_reasoning_effort": null,
+      "tool_calling": false,
+      "streaming": false,
+      "structured_outputs": false,
+      "responses_api": false,
+      "background_responses": false,
+      "responses_native_tools": false,
+      "normalized_output_items": false,
+      "vision_input": false,
+      "audio_input": true,
+      "file_input": true,
+      "deprecated": true,
+      "replacement": "gpt-audio",
+      "rate_limits": {
+        "req_per_min": 500
+      },
+      "usage_costs": {
+        "input": 0.0,
+        "output": 0.0,
+        "cached_input": 0.0
+      }
+    },
+    {
+      "key": "gpt-4o-mini",
+      "provider": "openai",
+      "model_name": "gpt-4o-mini-2024-07-18",
+      "category": "completions",
+      "context_window": 128000,
+      "max_output": 16384,
+      "output_dimensions": null,
+      "encoding": "o200k_base",
+      "reasoning": false,
+      "reasoning_efforts": [],
+      "default_reasoning_effort": null,
+      "tool_calling": true,
+      "streaming": true,
+      "structured_outputs": true,
+      "responses_api": true,
+      "background_responses": true,
+      "responses_native_tools": true,
+      "normalized_output_items": true,
+      "vision_input": true,
+      "audio_input": true,
+      "file_input": true,
+      "deprecated": false,
+      "replacement": null,
+      "rate_limits": {
+        "tkn_per_min": 10000000,
+        "req_per_min": 10000
+      },
+      "usage_costs": {
+        "input": 1.5e-07,
+        "output": 6e-07,
+        "cached_input": 7.5e-08
+      }
+    },
+    {
+      "key": "gpt-4o-mini-audio-preview",
+      "provider": "openai",
+      "model_name": "gpt-4o-mini-audio-preview",
+      "category": "audio",
+      "context_window": 128000,
+      "max_output": null,
+      "output_dimensions": null,
+      "encoding": "o200k_base",
+      "reasoning": false,
+      "reasoning_efforts": [],
+      "default_reasoning_effort": null,
+      "tool_calling": false,
+      "streaming": false,
+      "structured_outputs": false,
+      "responses_api": false,
+      "background_responses": false,
+      "responses_native_tools": false,
+      "normalized_output_items": false,
+      "vision_input": false,
+      "audio_input": true,
+      "file_input": true,
+      "deprecated": true,
+      "replacement": "gpt-audio-mini",
+      "rate_limits": {
+        "req_per_min": 500
+      },
+      "usage_costs": {
+        "input": 0.0,
+        "output": 0.0,
+        "cached_input": 0.0
+      }
+    },
+    {
+      "key": "gpt-4o-mini-realtime-preview",
+      "provider": "openai",
+      "model_name": "gpt-4o-mini-realtime-preview",
+      "category": "realtime",
+      "context_window": 128000,
+      "max_output": 4096,
+      "output_dimensions": null,
+      "encoding": "o200k_base",
+      "reasoning": false,
+      "reasoning_efforts": [],
+      "default_reasoning_effort": null,
+      "tool_calling": true,
+      "streaming": true,
+      "structured_outputs": false,
+      "responses_api": false,
+      "background_responses": false,
+      "responses_native_tools": false,
+      "normalized_output_items": false,
+      "vision_input": false,
+      "audio_input": true,
+      "file_input": true,
+      "deprecated": true,
+      "replacement": "gpt-realtime-mini",
+      "rate_limits": {
+        "req_per_min": 1000,
+        "tkn_per_min": 2000000
+      },
+      "usage_costs": {
+        "input": 6e-07,
+        "output": 2.4e-06,
+        "cached_input": 6e-08
+      }
+    },
+    {
+      "key": "gpt-4o-mini-search-preview",
+      "provider": "openai",
+      "model_name": "gpt-4o-mini-search-preview",
+      "category": "completions",
+      "context_window": 128000,
+      "max_output": 16384,
+      "output_dimensions": null,
+      "encoding": "o200k_base",
+      "reasoning": false,
+      "reasoning_efforts": [],
+      "default_reasoning_effort": null,
+      "tool_calling": true,
+      "streaming": true,
+      "structured_outputs": true,
+      "responses_api": false,
+      "background_responses": false,
+      "responses_native_tools": false,
+      "normalized_output_items": false,
+      "vision_input": true,
+      "audio_input": true,
+      "file_input": true,
+      "deprecated": false,
+      "replacement": null,
+      "rate_limits": {
+        "tkn_per_min": 10000000,
+        "req_per_min": 10000
+      },
+      "usage_costs": {
+        "input": 1.5e-07,
+        "output": 6e-07,
+        "cached_input": 7.5e-08
+      }
+    },
+    {
+      "key": "gpt-4o-mini-transcribe",
+      "provider": "openai",
+      "model_name": "gpt-4o-mini-transcribe",
+      "category": "audio",
+      "context_window": 128000,
+      "max_output": null,
+      "output_dimensions": null,
+      "encoding": "o200k_base",
+      "reasoning": false,
+      "reasoning_efforts": [],
+      "default_reasoning_effort": null,
+      "tool_calling": false,
+      "streaming": false,
+      "structured_outputs": false,
+      "responses_api": false,
+      "background_responses": false,
+      "responses_native_tools": false,
+      "normalized_output_items": false,
+      "vision_input": false,
+      "audio_input": true,
+      "file_input": true,
+      "deprecated": false,
+      "replacement": null,
+      "rate_limits": {
+        "req_per_min": 1000
+      },
+      "usage_costs": {
+        "input": 0.0,
+        "output": 0.0,
+        "cached_input": 0.0
+      }
+    },
+    {
+      "key": "gpt-4o-mini-tts",
+      "provider": "openai",
+      "model_name": "gpt-4o-mini-tts",
+      "category": "audio",
+      "context_window": 128000,
+      "max_output": null,
+      "output_dimensions": null,
+      "encoding": "o200k_base",
+      "reasoning": false,
+      "reasoning_efforts": [],
+      "default_reasoning_effort": null,
+      "tool_calling": false,
+      "streaming": false,
+      "structured_outputs": false,
+      "responses_api": false,
+      "background_responses": false,
+      "responses_native_tools": false,
+      "normalized_output_items": false,
+      "vision_input": false,
+      "audio_input": true,
+      "file_input": true,
+      "deprecated": false,
+      "replacement": null,
+      "rate_limits": {
+        "req_per_min": 1000
+      },
+      "usage_costs": {
+        "input": 0.0,
+        "output": 0.0,
+        "cached_input": 0.0
+      }
+    },
+    {
+      "key": "gpt-4o-realtime-preview",
+      "provider": "openai",
+      "model_name": "gpt-4o-realtime-preview",
+      "category": "realtime",
+      "context_window": 128000,
+      "max_output": 4096,
+      "output_dimensions": null,
+      "encoding": "o200k_base",
+      "reasoning": false,
+      "reasoning_efforts": [],
+      "default_reasoning_effort": null,
+      "tool_calling": true,
+      "streaming": true,
+      "structured_outputs": false,
+      "responses_api": false,
+      "background_responses": false,
+      "responses_native_tools": false,
+      "normalized_output_items": false,
+      "vision_input": false,
+      "audio_input": true,
+      "file_input": true,
+      "deprecated": true,
+      "replacement": "gpt-realtime",
+      "rate_limits": {
+        "req_per_min": 500,
+        "tkn_per_min": 1000000
+      },
+      "usage_costs": {
+        "input": 4e-06,
+        "output": 1.6e-05,
+        "cached_input": 4e-07
+      }
+    },
+    {
+      "key": "gpt-4o-search-preview",
+      "provider": "openai",
+      "model_name": "gpt-4o-search-preview",
+      "category": "completions",
+      "context_window": 128000,
+      "max_output": 16384,
+      "output_dimensions": null,
+      "encoding": "o200k_base",
+      "reasoning": false,
+      "reasoning_efforts": [],
+      "default_reasoning_effort": null,
+      "tool_calling": true,
+      "streaming": true,
+      "structured_outputs": true,
+      "responses_api": false,
+      "background_responses": false,
+      "responses_native_tools": false,
+      "normalized_output_items": false,
+      "vision_input": true,
+      "audio_input": true,
+      "file_input": true,
+      "deprecated": false,
+      "replacement": null,
+      "rate_limits": {
+        "tkn_per_min": 2000000,
+        "req_per_min": 10000
+      },
+      "usage_costs": {
+        "input": 2.5e-06,
+        "output": 1e-05,
+        "cached_input": 1.25e-06
+      }
+    },
+    {
+      "key": "gpt-4o-transcribe",
+      "provider": "openai",
+      "model_name": "gpt-4o-transcribe",
+      "category": "audio",
+      "context_window": 128000,
+      "max_output": null,
+      "output_dimensions": null,
+      "encoding": "o200k_base",
+      "reasoning": false,
+      "reasoning_efforts": [],
+      "default_reasoning_effort": null,
+      "tool_calling": false,
+      "streaming": false,
+      "structured_outputs": false,
+      "responses_api": false,
+      "background_responses": false,
+      "responses_native_tools": false,
+      "normalized_output_items": false,
+      "vision_input": false,
+      "audio_input": true,
+      "file_input": true,
+      "deprecated": false,
+      "replacement": null,
+      "rate_limits": {
+        "req_per_min": 1000
+      },
+      "usage_costs": {
+        "input": 0.0,
+        "output": 0.0,
+        "cached_input": 0.0
+      }
+    },
+    {
+      "key": "gpt-4o-transcribe-diarize",
+      "provider": "openai",
+      "model_name": "gpt-4o-transcribe-diarize",
+      "category": "audio",
+      "context_window": 128000,
+      "max_output": null,
+      "output_dimensions": null,
+      "encoding": "o200k_base",
+      "reasoning": false,
+      "reasoning_efforts": [],
+      "default_reasoning_effort": null,
+      "tool_calling": false,
+      "streaming": false,
+      "structured_outputs": false,
+      "responses_api": false,
+      "background_responses": false,
+      "responses_native_tools": false,
+      "normalized_output_items": false,
+      "vision_input": false,
+      "audio_input": true,
+      "file_input": true,
+      "deprecated": false,
+      "replacement": null,
+      "rate_limits": {
+        "req_per_min": 1000
+      },
+      "usage_costs": {
+        "input": 0.0,
+        "output": 0.0,
+        "cached_input": 0.0
+      }
     },
     {
       "key": "gpt-5",
@@ -299,18 +1113,112 @@
       "output_dimensions": null,
       "encoding": "o200k_base",
       "reasoning": true,
-      "reasoning_efforts": ["minimal", "low", "medium", "high"],
+      "reasoning_efforts": [
+        "minimal",
+        "low",
+        "medium",
+        "high"
+      ],
       "default_reasoning_effort": "medium",
       "tool_calling": true,
       "streaming": true,
       "structured_outputs": true,
+      "responses_api": true,
+      "background_responses": true,
+      "responses_native_tools": true,
+      "normalized_output_items": true,
       "vision_input": true,
       "audio_input": true,
       "file_input": true,
       "deprecated": false,
       "replacement": null,
-      "rate_limits": {"req_per_min": 10000, "tkn_per_min": 2000000},
-      "usage_costs": {"cached_input": 0.000000125, "input": 0.00000125, "output": 0.00001}
+      "rate_limits": {
+        "tkn_per_min": 2000000,
+        "req_per_min": 10000
+      },
+      "usage_costs": {
+        "input": 1.25e-06,
+        "output": 1e-05,
+        "cached_input": 1.25e-07
+      }
+    },
+    {
+      "key": "gpt-5-chat-latest",
+      "provider": "openai",
+      "model_name": "gpt-5-chat-latest",
+      "category": "completions",
+      "context_window": 400000,
+      "max_output": 128000,
+      "output_dimensions": null,
+      "encoding": "o200k_base",
+      "reasoning": true,
+      "reasoning_efforts": [
+        "minimal",
+        "low",
+        "medium",
+        "high"
+      ],
+      "default_reasoning_effort": "medium",
+      "tool_calling": true,
+      "streaming": true,
+      "structured_outputs": true,
+      "responses_api": true,
+      "background_responses": true,
+      "responses_native_tools": true,
+      "normalized_output_items": true,
+      "vision_input": true,
+      "audio_input": true,
+      "file_input": true,
+      "deprecated": false,
+      "replacement": null,
+      "rate_limits": {
+        "tkn_per_min": 2000000,
+        "req_per_min": 10000
+      },
+      "usage_costs": {
+        "input": 1.25e-06,
+        "output": 1e-05,
+        "cached_input": 1.25e-07
+      }
+    },
+    {
+      "key": "gpt-5-codex",
+      "provider": "openai",
+      "model_name": "gpt-5-codex-2025-12-11",
+      "category": "completions",
+      "context_window": 400000,
+      "max_output": 128000,
+      "output_dimensions": null,
+      "encoding": "o200k_base",
+      "reasoning": true,
+      "reasoning_efforts": [
+        "minimal",
+        "low",
+        "medium",
+        "high"
+      ],
+      "default_reasoning_effort": "medium",
+      "tool_calling": true,
+      "streaming": true,
+      "structured_outputs": true,
+      "responses_api": true,
+      "background_responses": true,
+      "responses_native_tools": true,
+      "normalized_output_items": true,
+      "vision_input": true,
+      "audio_input": true,
+      "file_input": true,
+      "deprecated": false,
+      "replacement": null,
+      "rate_limits": {
+        "tkn_per_min": 1000000,
+        "req_per_min": 10000
+      },
+      "usage_costs": {
+        "input": 1.5e-06,
+        "output": 1.2e-05,
+        "cached_input": 1.5e-07
+      }
     },
     {
       "key": "gpt-5-mini",
@@ -322,18 +1230,34 @@
       "output_dimensions": null,
       "encoding": "o200k_base",
       "reasoning": true,
-      "reasoning_efforts": ["minimal", "low", "medium", "high"],
+      "reasoning_efforts": [
+        "minimal",
+        "low",
+        "medium",
+        "high"
+      ],
       "default_reasoning_effort": "medium",
       "tool_calling": true,
       "streaming": true,
       "structured_outputs": true,
+      "responses_api": true,
+      "background_responses": true,
+      "responses_native_tools": true,
+      "normalized_output_items": true,
       "vision_input": true,
       "audio_input": true,
       "file_input": true,
       "deprecated": false,
       "replacement": null,
-      "rate_limits": {"req_per_min": 10000, "tkn_per_min": 10000000},
-      "usage_costs": {"cached_input": 0.000000025, "input": 0.00000025, "output": 0.000002}
+      "rate_limits": {
+        "tkn_per_min": 10000000,
+        "req_per_min": 10000
+      },
+      "usage_costs": {
+        "input": 2.5e-07,
+        "output": 2e-06,
+        "cached_input": 2.5e-08
+      }
     },
     {
       "key": "gpt-5-nano",
@@ -345,18 +1269,73 @@
       "output_dimensions": null,
       "encoding": "o200k_base",
       "reasoning": true,
-      "reasoning_efforts": ["minimal", "low", "medium", "high"],
+      "reasoning_efforts": [
+        "minimal",
+        "low",
+        "medium",
+        "high"
+      ],
       "default_reasoning_effort": "medium",
       "tool_calling": true,
       "streaming": true,
       "structured_outputs": true,
+      "responses_api": true,
+      "background_responses": true,
+      "responses_native_tools": true,
+      "normalized_output_items": true,
       "vision_input": true,
       "audio_input": true,
       "file_input": true,
       "deprecated": false,
       "replacement": null,
-      "rate_limits": {"req_per_min": 10000, "tkn_per_min": 10000000},
-      "usage_costs": {"cached_input": 0.000000005, "input": 0.00000005, "output": 0.0000004}
+      "rate_limits": {
+        "tkn_per_min": 10000000,
+        "req_per_min": 10000
+      },
+      "usage_costs": {
+        "input": 5e-08,
+        "output": 4e-07,
+        "cached_input": 5e-09
+      }
+    },
+    {
+      "key": "gpt-5-pro",
+      "provider": "openai",
+      "model_name": "gpt-5-pro-2025-12-11",
+      "category": "completions",
+      "context_window": 400000,
+      "max_output": 128000,
+      "output_dimensions": null,
+      "encoding": "o200k_base",
+      "reasoning": true,
+      "reasoning_efforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ],
+      "default_reasoning_effort": "high",
+      "tool_calling": true,
+      "streaming": true,
+      "structured_outputs": true,
+      "responses_api": true,
+      "background_responses": true,
+      "responses_native_tools": true,
+      "normalized_output_items": true,
+      "vision_input": true,
+      "audio_input": true,
+      "file_input": true,
+      "deprecated": false,
+      "replacement": null,
+      "rate_limits": {
+        "tkn_per_min": 500000,
+        "req_per_min": 5000
+      },
+      "usage_costs": {
+        "input": 1.5e-05,
+        "output": 0.00012,
+        "cached_input": 1.5e-06
+      }
     },
     {
       "key": "gpt-5.1",
@@ -368,18 +1347,196 @@
       "output_dimensions": null,
       "encoding": "o200k_base",
       "reasoning": true,
-      "reasoning_efforts": ["none", "minimal", "low", "medium", "high"],
+      "reasoning_efforts": [
+        "none",
+        "minimal",
+        "low",
+        "medium",
+        "high"
+      ],
       "default_reasoning_effort": "none",
       "tool_calling": true,
       "streaming": true,
       "structured_outputs": true,
+      "responses_api": true,
+      "background_responses": true,
+      "responses_native_tools": true,
+      "normalized_output_items": true,
       "vision_input": true,
       "audio_input": true,
       "file_input": true,
       "deprecated": false,
       "replacement": null,
-      "rate_limits": {"req_per_min": 10000, "tkn_per_min": 2000000},
-      "usage_costs": {"cached_input": 0.000000125, "input": 0.00000125, "output": 0.00001}
+      "rate_limits": {
+        "tkn_per_min": 2000000,
+        "req_per_min": 10000
+      },
+      "usage_costs": {
+        "input": 1.25e-06,
+        "output": 1e-05,
+        "cached_input": 1.25e-07
+      }
+    },
+    {
+      "key": "gpt-5.1-chat-latest",
+      "provider": "openai",
+      "model_name": "gpt-5.1-chat-latest",
+      "category": "completions",
+      "context_window": 400000,
+      "max_output": 128000,
+      "output_dimensions": null,
+      "encoding": "o200k_base",
+      "reasoning": true,
+      "reasoning_efforts": [
+        "none",
+        "minimal",
+        "low",
+        "medium",
+        "high"
+      ],
+      "default_reasoning_effort": "none",
+      "tool_calling": true,
+      "streaming": true,
+      "structured_outputs": true,
+      "responses_api": true,
+      "background_responses": true,
+      "responses_native_tools": true,
+      "normalized_output_items": true,
+      "vision_input": true,
+      "audio_input": true,
+      "file_input": true,
+      "deprecated": false,
+      "replacement": null,
+      "rate_limits": {
+        "tkn_per_min": 2000000,
+        "req_per_min": 10000
+      },
+      "usage_costs": {
+        "input": 1.25e-06,
+        "output": 1e-05,
+        "cached_input": 1.25e-07
+      }
+    },
+    {
+      "key": "gpt-5.1-codex",
+      "provider": "openai",
+      "model_name": "gpt-5.1-codex-2025-11-13",
+      "category": "completions",
+      "context_window": 400000,
+      "max_output": 128000,
+      "output_dimensions": null,
+      "encoding": "o200k_base",
+      "reasoning": true,
+      "reasoning_efforts": [
+        "none",
+        "minimal",
+        "low",
+        "medium",
+        "high"
+      ],
+      "default_reasoning_effort": "medium",
+      "tool_calling": true,
+      "streaming": true,
+      "structured_outputs": true,
+      "responses_api": true,
+      "background_responses": true,
+      "responses_native_tools": true,
+      "normalized_output_items": true,
+      "vision_input": true,
+      "audio_input": true,
+      "file_input": true,
+      "deprecated": false,
+      "replacement": null,
+      "rate_limits": {
+        "tkn_per_min": 1000000,
+        "req_per_min": 10000
+      },
+      "usage_costs": {
+        "input": 1.4e-06,
+        "output": 1.12e-05,
+        "cached_input": 1.4e-07
+      }
+    },
+    {
+      "key": "gpt-5.1-codex-max",
+      "provider": "openai",
+      "model_name": "gpt-5.1-codex-max-2025-11-13",
+      "category": "completions",
+      "context_window": 400000,
+      "max_output": 128000,
+      "output_dimensions": null,
+      "encoding": "o200k_base",
+      "reasoning": true,
+      "reasoning_efforts": [
+        "none",
+        "minimal",
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ],
+      "default_reasoning_effort": "high",
+      "tool_calling": true,
+      "streaming": true,
+      "structured_outputs": true,
+      "responses_api": true,
+      "background_responses": true,
+      "responses_native_tools": true,
+      "normalized_output_items": true,
+      "vision_input": true,
+      "audio_input": true,
+      "file_input": true,
+      "deprecated": false,
+      "replacement": null,
+      "rate_limits": {
+        "tkn_per_min": 750000,
+        "req_per_min": 8000
+      },
+      "usage_costs": {
+        "input": 2.1e-06,
+        "output": 1.68e-05,
+        "cached_input": 2.1e-07
+      }
+    },
+    {
+      "key": "gpt-5.1-codex-mini",
+      "provider": "openai",
+      "model_name": "gpt-5.1-codex-mini-2025-11-13",
+      "category": "completions",
+      "context_window": 400000,
+      "max_output": 128000,
+      "output_dimensions": null,
+      "encoding": "o200k_base",
+      "reasoning": true,
+      "reasoning_efforts": [
+        "none",
+        "minimal",
+        "low",
+        "medium",
+        "high"
+      ],
+      "default_reasoning_effort": "medium",
+      "tool_calling": true,
+      "streaming": true,
+      "structured_outputs": true,
+      "responses_api": true,
+      "background_responses": true,
+      "responses_native_tools": true,
+      "normalized_output_items": true,
+      "vision_input": true,
+      "audio_input": true,
+      "file_input": true,
+      "deprecated": false,
+      "replacement": null,
+      "rate_limits": {
+        "tkn_per_min": 4000000,
+        "req_per_min": 10000
+      },
+      "usage_costs": {
+        "input": 4e-07,
+        "output": 3.2e-06,
+        "cached_input": 4e-08
+      }
     },
     {
       "key": "gpt-5.2",
@@ -391,18 +1548,832 @@
       "output_dimensions": null,
       "encoding": "o200k_base",
       "reasoning": true,
-      "reasoning_efforts": ["none", "minimal", "low", "medium", "high", "xhigh"],
+      "reasoning_efforts": [
+        "none",
+        "minimal",
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ],
       "default_reasoning_effort": null,
       "tool_calling": true,
       "streaming": true,
       "structured_outputs": true,
+      "responses_api": true,
+      "background_responses": true,
+      "responses_native_tools": true,
+      "normalized_output_items": true,
       "vision_input": true,
       "audio_input": true,
       "file_input": true,
       "deprecated": false,
       "replacement": null,
-      "rate_limits": {"req_per_min": 10000, "tkn_per_min": 2000000},
-      "usage_costs": {"cached_input": 0.000000175, "input": 0.00000175, "output": 0.000014}
+      "rate_limits": {
+        "tkn_per_min": 2000000,
+        "req_per_min": 10000
+      },
+      "usage_costs": {
+        "input": 1.75e-06,
+        "output": 1.4e-05,
+        "cached_input": 1.75e-07
+      }
+    },
+    {
+      "key": "gpt-5.2-chat-latest",
+      "provider": "openai",
+      "model_name": "gpt-5.2-chat-latest",
+      "category": "completions",
+      "context_window": 400000,
+      "max_output": 128000,
+      "output_dimensions": null,
+      "encoding": "o200k_base",
+      "reasoning": true,
+      "reasoning_efforts": [
+        "none",
+        "minimal",
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ],
+      "default_reasoning_effort": null,
+      "tool_calling": true,
+      "streaming": true,
+      "structured_outputs": true,
+      "responses_api": true,
+      "background_responses": true,
+      "responses_native_tools": true,
+      "normalized_output_items": true,
+      "vision_input": true,
+      "audio_input": true,
+      "file_input": true,
+      "deprecated": false,
+      "replacement": null,
+      "rate_limits": {
+        "tkn_per_min": 2000000,
+        "req_per_min": 10000
+      },
+      "usage_costs": {
+        "input": 1.75e-06,
+        "output": 1.4e-05,
+        "cached_input": 1.75e-07
+      }
+    },
+    {
+      "key": "gpt-5.2-pro",
+      "provider": "openai",
+      "model_name": "gpt-5.2-pro-2025-12-11",
+      "category": "completions",
+      "context_window": 400000,
+      "max_output": 128000,
+      "output_dimensions": null,
+      "encoding": "o200k_base",
+      "reasoning": true,
+      "reasoning_efforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ],
+      "default_reasoning_effort": "high",
+      "tool_calling": true,
+      "streaming": true,
+      "structured_outputs": true,
+      "responses_api": true,
+      "background_responses": true,
+      "responses_native_tools": true,
+      "normalized_output_items": true,
+      "vision_input": true,
+      "audio_input": true,
+      "file_input": true,
+      "deprecated": false,
+      "replacement": null,
+      "rate_limits": {
+        "tkn_per_min": 500000,
+        "req_per_min": 3000
+      },
+      "usage_costs": {
+        "input": 1.8e-05,
+        "output": 0.000144,
+        "cached_input": 1.8e-06
+      }
+    },
+    {
+      "key": "gpt-audio",
+      "provider": "openai",
+      "model_name": "gpt-audio",
+      "category": "audio",
+      "context_window": 128000,
+      "max_output": null,
+      "output_dimensions": null,
+      "encoding": "o200k_base",
+      "reasoning": false,
+      "reasoning_efforts": [],
+      "default_reasoning_effort": null,
+      "tool_calling": false,
+      "streaming": false,
+      "structured_outputs": false,
+      "responses_api": false,
+      "background_responses": false,
+      "responses_native_tools": false,
+      "normalized_output_items": false,
+      "vision_input": false,
+      "audio_input": true,
+      "file_input": true,
+      "deprecated": false,
+      "replacement": null,
+      "rate_limits": {
+        "req_per_min": 1000
+      },
+      "usage_costs": {
+        "input": 0.0,
+        "output": 0.0,
+        "cached_input": 0.0
+      }
+    },
+    {
+      "key": "gpt-audio-mini",
+      "provider": "openai",
+      "model_name": "gpt-audio-mini",
+      "category": "audio",
+      "context_window": 128000,
+      "max_output": null,
+      "output_dimensions": null,
+      "encoding": "o200k_base",
+      "reasoning": false,
+      "reasoning_efforts": [],
+      "default_reasoning_effort": null,
+      "tool_calling": false,
+      "streaming": false,
+      "structured_outputs": false,
+      "responses_api": false,
+      "background_responses": false,
+      "responses_native_tools": false,
+      "normalized_output_items": false,
+      "vision_input": false,
+      "audio_input": true,
+      "file_input": true,
+      "deprecated": false,
+      "replacement": null,
+      "rate_limits": {
+        "req_per_min": 1000
+      },
+      "usage_costs": {
+        "input": 0.0,
+        "output": 0.0,
+        "cached_input": 0.0
+      }
+    },
+    {
+      "key": "gpt-image-1",
+      "provider": "openai",
+      "model_name": "gpt-image-1",
+      "category": "images",
+      "context_window": 32768,
+      "max_output": null,
+      "output_dimensions": null,
+      "encoding": "o200k_base",
+      "reasoning": false,
+      "reasoning_efforts": [],
+      "default_reasoning_effort": null,
+      "tool_calling": false,
+      "streaming": false,
+      "structured_outputs": false,
+      "responses_api": false,
+      "background_responses": false,
+      "responses_native_tools": false,
+      "normalized_output_items": false,
+      "vision_input": true,
+      "audio_input": false,
+      "file_input": true,
+      "deprecated": false,
+      "replacement": null,
+      "rate_limits": {
+        "req_per_min": 500
+      },
+      "usage_costs": {
+        "input": 0.0,
+        "output": 0.0,
+        "cached_input": 0.0
+      }
+    },
+    {
+      "key": "gpt-image-1-mini",
+      "provider": "openai",
+      "model_name": "gpt-image-1-mini",
+      "category": "images",
+      "context_window": 32768,
+      "max_output": null,
+      "output_dimensions": null,
+      "encoding": "o200k_base",
+      "reasoning": false,
+      "reasoning_efforts": [],
+      "default_reasoning_effort": null,
+      "tool_calling": false,
+      "streaming": false,
+      "structured_outputs": false,
+      "responses_api": false,
+      "background_responses": false,
+      "responses_native_tools": false,
+      "normalized_output_items": false,
+      "vision_input": true,
+      "audio_input": false,
+      "file_input": true,
+      "deprecated": false,
+      "replacement": null,
+      "rate_limits": {
+        "req_per_min": 500
+      },
+      "usage_costs": {
+        "input": 0.0,
+        "output": 0.0,
+        "cached_input": 0.0
+      }
+    },
+    {
+      "key": "gpt-image-1.5",
+      "provider": "openai",
+      "model_name": "gpt-image-1.5",
+      "category": "images",
+      "context_window": 32768,
+      "max_output": null,
+      "output_dimensions": null,
+      "encoding": "o200k_base",
+      "reasoning": false,
+      "reasoning_efforts": [],
+      "default_reasoning_effort": null,
+      "tool_calling": false,
+      "streaming": false,
+      "structured_outputs": false,
+      "responses_api": false,
+      "background_responses": false,
+      "responses_native_tools": false,
+      "normalized_output_items": false,
+      "vision_input": true,
+      "audio_input": false,
+      "file_input": true,
+      "deprecated": false,
+      "replacement": null,
+      "rate_limits": {
+        "req_per_min": 500
+      },
+      "usage_costs": {
+        "input": 0.0,
+        "output": 0.0,
+        "cached_input": 0.0
+      }
+    },
+    {
+      "key": "gpt-oss-120b",
+      "provider": "openai",
+      "model_name": "gpt-oss-120b",
+      "category": "completions",
+      "context_window": 131072,
+      "max_output": 16384,
+      "output_dimensions": null,
+      "encoding": "o200k_base",
+      "reasoning": true,
+      "reasoning_efforts": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "default_reasoning_effort": "medium",
+      "tool_calling": true,
+      "streaming": true,
+      "structured_outputs": true,
+      "responses_api": false,
+      "background_responses": false,
+      "responses_native_tools": false,
+      "normalized_output_items": false,
+      "vision_input": true,
+      "audio_input": false,
+      "file_input": true,
+      "deprecated": false,
+      "replacement": null,
+      "rate_limits": {
+        "req_per_min": 0,
+        "tkn_per_min": 0
+      },
+      "usage_costs": {
+        "input": 0.0,
+        "output": 0.0,
+        "cached_input": 0.0
+      }
+    },
+    {
+      "key": "gpt-oss-20b",
+      "provider": "openai",
+      "model_name": "gpt-oss-20b",
+      "category": "completions",
+      "context_window": 131072,
+      "max_output": 16384,
+      "output_dimensions": null,
+      "encoding": "o200k_base",
+      "reasoning": true,
+      "reasoning_efforts": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "default_reasoning_effort": "medium",
+      "tool_calling": true,
+      "streaming": true,
+      "structured_outputs": true,
+      "responses_api": false,
+      "background_responses": false,
+      "responses_native_tools": false,
+      "normalized_output_items": false,
+      "vision_input": true,
+      "audio_input": false,
+      "file_input": true,
+      "deprecated": false,
+      "replacement": null,
+      "rate_limits": {
+        "req_per_min": 0,
+        "tkn_per_min": 0
+      },
+      "usage_costs": {
+        "input": 0.0,
+        "output": 0.0,
+        "cached_input": 0.0
+      }
+    },
+    {
+      "key": "gpt-realtime",
+      "provider": "openai",
+      "model_name": "gpt-realtime",
+      "category": "realtime",
+      "context_window": 128000,
+      "max_output": 4096,
+      "output_dimensions": null,
+      "encoding": "o200k_base",
+      "reasoning": false,
+      "reasoning_efforts": [],
+      "default_reasoning_effort": null,
+      "tool_calling": true,
+      "streaming": true,
+      "structured_outputs": false,
+      "responses_api": false,
+      "background_responses": false,
+      "responses_native_tools": false,
+      "normalized_output_items": false,
+      "vision_input": false,
+      "audio_input": true,
+      "file_input": true,
+      "deprecated": false,
+      "replacement": null,
+      "rate_limits": {
+        "req_per_min": 500,
+        "tkn_per_min": 1000000
+      },
+      "usage_costs": {
+        "input": 4e-06,
+        "output": 1.6e-05,
+        "cached_input": 4e-07
+      }
+    },
+    {
+      "key": "gpt-realtime-mini",
+      "provider": "openai",
+      "model_name": "gpt-realtime-mini",
+      "category": "realtime",
+      "context_window": 128000,
+      "max_output": 4096,
+      "output_dimensions": null,
+      "encoding": "o200k_base",
+      "reasoning": false,
+      "reasoning_efforts": [],
+      "default_reasoning_effort": null,
+      "tool_calling": true,
+      "streaming": true,
+      "structured_outputs": false,
+      "responses_api": false,
+      "background_responses": false,
+      "responses_native_tools": false,
+      "normalized_output_items": false,
+      "vision_input": false,
+      "audio_input": true,
+      "file_input": true,
+      "deprecated": false,
+      "replacement": null,
+      "rate_limits": {
+        "req_per_min": 1000,
+        "tkn_per_min": 2000000
+      },
+      "usage_costs": {
+        "input": 6e-07,
+        "output": 2.4e-06,
+        "cached_input": 6e-08
+      }
+    },
+    {
+      "key": "o1",
+      "provider": "openai",
+      "model_name": "o1-2024-12-17",
+      "category": "completions",
+      "context_window": 200000,
+      "max_output": 100000,
+      "output_dimensions": null,
+      "encoding": "o200k_base",
+      "reasoning": true,
+      "reasoning_efforts": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "default_reasoning_effort": "medium",
+      "tool_calling": false,
+      "streaming": true,
+      "structured_outputs": true,
+      "responses_api": true,
+      "background_responses": true,
+      "responses_native_tools": true,
+      "normalized_output_items": true,
+      "vision_input": true,
+      "audio_input": true,
+      "file_input": true,
+      "deprecated": true,
+      "replacement": "gpt-5",
+      "rate_limits": {
+        "req_per_min": 500,
+        "tkn_per_min": 500000
+      },
+      "usage_costs": {
+        "input": 1.5e-05,
+        "output": 6e-05,
+        "cached_input": 1.5e-06
+      }
+    },
+    {
+      "key": "o1-mini",
+      "provider": "openai",
+      "model_name": "o1-mini-2024-09-12",
+      "category": "completions",
+      "context_window": 128000,
+      "max_output": 65536,
+      "output_dimensions": null,
+      "encoding": "o200k_base",
+      "reasoning": true,
+      "reasoning_efforts": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "default_reasoning_effort": "medium",
+      "tool_calling": false,
+      "streaming": true,
+      "structured_outputs": true,
+      "responses_api": true,
+      "background_responses": true,
+      "responses_native_tools": true,
+      "normalized_output_items": true,
+      "vision_input": true,
+      "audio_input": true,
+      "file_input": true,
+      "deprecated": true,
+      "replacement": "gpt-5-mini",
+      "rate_limits": {
+        "req_per_min": 1000,
+        "tkn_per_min": 1000000
+      },
+      "usage_costs": {
+        "input": 3e-06,
+        "output": 1.2e-05,
+        "cached_input": 3e-07
+      }
+    },
+    {
+      "key": "o1-preview",
+      "provider": "openai",
+      "model_name": "o1-preview-2024-09-12",
+      "category": "completions",
+      "context_window": 128000,
+      "max_output": 65536,
+      "output_dimensions": null,
+      "encoding": "o200k_base",
+      "reasoning": true,
+      "reasoning_efforts": [
+        "medium",
+        "high"
+      ],
+      "default_reasoning_effort": "high",
+      "tool_calling": false,
+      "streaming": true,
+      "structured_outputs": true,
+      "responses_api": true,
+      "background_responses": true,
+      "responses_native_tools": true,
+      "normalized_output_items": true,
+      "vision_input": true,
+      "audio_input": true,
+      "file_input": true,
+      "deprecated": true,
+      "replacement": "gpt-5",
+      "rate_limits": {
+        "req_per_min": 250,
+        "tkn_per_min": 250000
+      },
+      "usage_costs": {
+        "input": 1.5e-05,
+        "output": 6e-05,
+        "cached_input": 1.5e-06
+      }
+    },
+    {
+      "key": "o1-pro",
+      "provider": "openai",
+      "model_name": "o1-pro-2025-03-19",
+      "category": "completions",
+      "context_window": 200000,
+      "max_output": 100000,
+      "output_dimensions": null,
+      "encoding": "o200k_base",
+      "reasoning": true,
+      "reasoning_efforts": [
+        "high",
+        "xhigh"
+      ],
+      "default_reasoning_effort": "high",
+      "tool_calling": false,
+      "streaming": true,
+      "structured_outputs": true,
+      "responses_api": true,
+      "background_responses": true,
+      "responses_native_tools": true,
+      "normalized_output_items": true,
+      "vision_input": true,
+      "audio_input": true,
+      "file_input": true,
+      "deprecated": true,
+      "replacement": "gpt-5-pro",
+      "rate_limits": {
+        "req_per_min": 250,
+        "tkn_per_min": 250000
+      },
+      "usage_costs": {
+        "input": 2e-05,
+        "output": 8e-05,
+        "cached_input": 2e-06
+      }
+    },
+    {
+      "key": "o3",
+      "provider": "openai",
+      "model_name": "o3-2025-04-16",
+      "category": "completions",
+      "context_window": 200000,
+      "max_output": 100000,
+      "output_dimensions": null,
+      "encoding": "o200k_base",
+      "reasoning": true,
+      "reasoning_efforts": [
+        "medium",
+        "high",
+        "xhigh"
+      ],
+      "default_reasoning_effort": "high",
+      "tool_calling": true,
+      "streaming": true,
+      "structured_outputs": true,
+      "responses_api": true,
+      "background_responses": true,
+      "responses_native_tools": true,
+      "normalized_output_items": true,
+      "vision_input": true,
+      "audio_input": true,
+      "file_input": true,
+      "deprecated": false,
+      "replacement": null,
+      "rate_limits": {
+        "req_per_min": 1000,
+        "tkn_per_min": 1000000
+      },
+      "usage_costs": {
+        "input": 8e-06,
+        "output": 3.2e-05,
+        "cached_input": 8e-07
+      }
+    },
+    {
+      "key": "o3-deep-research",
+      "provider": "openai",
+      "model_name": "o3-deep-research",
+      "category": "completions",
+      "context_window": 400000,
+      "max_output": 128000,
+      "output_dimensions": null,
+      "encoding": "o200k_base",
+      "reasoning": true,
+      "reasoning_efforts": [
+        "high",
+        "xhigh"
+      ],
+      "default_reasoning_effort": "high",
+      "tool_calling": false,
+      "streaming": true,
+      "structured_outputs": true,
+      "responses_api": true,
+      "background_responses": true,
+      "responses_native_tools": true,
+      "normalized_output_items": true,
+      "vision_input": true,
+      "audio_input": true,
+      "file_input": true,
+      "deprecated": false,
+      "replacement": null,
+      "rate_limits": {
+        "req_per_min": 500,
+        "tkn_per_min": 500000
+      },
+      "usage_costs": {
+        "input": 1e-05,
+        "output": 4e-05,
+        "cached_input": 1e-06
+      }
+    },
+    {
+      "key": "o3-mini",
+      "provider": "openai",
+      "model_name": "o3-mini-2025-01-31",
+      "category": "completions",
+      "context_window": 200000,
+      "max_output": 100000,
+      "output_dimensions": null,
+      "encoding": "o200k_base",
+      "reasoning": true,
+      "reasoning_efforts": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "default_reasoning_effort": "medium",
+      "tool_calling": true,
+      "streaming": true,
+      "structured_outputs": true,
+      "responses_api": true,
+      "background_responses": true,
+      "responses_native_tools": true,
+      "normalized_output_items": true,
+      "vision_input": true,
+      "audio_input": true,
+      "file_input": true,
+      "deprecated": true,
+      "replacement": "gpt-5-mini",
+      "rate_limits": {
+        "req_per_min": 3000,
+        "tkn_per_min": 2000000
+      },
+      "usage_costs": {
+        "input": 1.5e-06,
+        "output": 6e-06,
+        "cached_input": 1.5e-07
+      }
+    },
+    {
+      "key": "o3-pro",
+      "provider": "openai",
+      "model_name": "o3-pro-2025-06-10",
+      "category": "completions",
+      "context_window": 200000,
+      "max_output": 100000,
+      "output_dimensions": null,
+      "encoding": "o200k_base",
+      "reasoning": true,
+      "reasoning_efforts": [
+        "high",
+        "xhigh"
+      ],
+      "default_reasoning_effort": "high",
+      "tool_calling": true,
+      "streaming": true,
+      "structured_outputs": true,
+      "responses_api": true,
+      "background_responses": true,
+      "responses_native_tools": true,
+      "normalized_output_items": true,
+      "vision_input": true,
+      "audio_input": true,
+      "file_input": true,
+      "deprecated": false,
+      "replacement": null,
+      "rate_limits": {
+        "req_per_min": 500,
+        "tkn_per_min": 500000
+      },
+      "usage_costs": {
+        "input": 1.2e-05,
+        "output": 4.8e-05,
+        "cached_input": 1.2e-06
+      }
+    },
+    {
+      "key": "o4-mini",
+      "provider": "openai",
+      "model_name": "o4-mini-2025-04-16",
+      "category": "completions",
+      "context_window": 200000,
+      "max_output": 100000,
+      "output_dimensions": null,
+      "encoding": "o200k_base",
+      "reasoning": true,
+      "reasoning_efforts": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "default_reasoning_effort": "medium",
+      "tool_calling": true,
+      "streaming": true,
+      "structured_outputs": true,
+      "responses_api": true,
+      "background_responses": true,
+      "responses_native_tools": true,
+      "normalized_output_items": true,
+      "vision_input": true,
+      "audio_input": true,
+      "file_input": true,
+      "deprecated": false,
+      "replacement": null,
+      "rate_limits": {
+        "req_per_min": 2000,
+        "tkn_per_min": 2000000
+      },
+      "usage_costs": {
+        "input": 3e-06,
+        "output": 1.2e-05,
+        "cached_input": 3e-07
+      }
+    },
+    {
+      "key": "o4-mini-deep-research",
+      "provider": "openai",
+      "model_name": "o4-mini-deep-research",
+      "category": "completions",
+      "context_window": 400000,
+      "max_output": 128000,
+      "output_dimensions": null,
+      "encoding": "o200k_base",
+      "reasoning": true,
+      "reasoning_efforts": [
+        "high"
+      ],
+      "default_reasoning_effort": "high",
+      "tool_calling": false,
+      "streaming": true,
+      "structured_outputs": true,
+      "responses_api": true,
+      "background_responses": true,
+      "responses_native_tools": true,
+      "normalized_output_items": true,
+      "vision_input": true,
+      "audio_input": true,
+      "file_input": true,
+      "deprecated": false,
+      "replacement": null,
+      "rate_limits": {
+        "req_per_min": 1000,
+        "tkn_per_min": 1000000
+      },
+      "usage_costs": {
+        "input": 2e-06,
+        "output": 8e-06,
+        "cached_input": 2e-07
+      }
+    },
+    {
+      "key": "omni-moderation-latest",
+      "provider": "openai",
+      "model_name": "omni-moderation-latest",
+      "category": "moderations",
+      "context_window": 32768,
+      "max_output": null,
+      "output_dimensions": null,
+      "encoding": "o200k_base",
+      "reasoning": false,
+      "reasoning_efforts": [],
+      "default_reasoning_effort": null,
+      "tool_calling": false,
+      "streaming": false,
+      "structured_outputs": false,
+      "responses_api": false,
+      "background_responses": false,
+      "responses_native_tools": false,
+      "normalized_output_items": false,
+      "vision_input": true,
+      "audio_input": false,
+      "file_input": false,
+      "deprecated": false,
+      "replacement": null,
+      "rate_limits": {
+        "req_per_min": 1000
+      },
+      "usage_costs": {
+        "input": 0.0,
+        "output": 0.0,
+        "cached_input": 0.0
+      }
     },
     {
       "key": "text-embedding-3-large",
@@ -419,13 +2390,22 @@
       "tool_calling": false,
       "streaming": false,
       "structured_outputs": false,
+      "responses_api": false,
+      "background_responses": false,
+      "responses_native_tools": false,
+      "normalized_output_items": false,
       "vision_input": false,
       "audio_input": false,
       "file_input": false,
       "deprecated": false,
       "replacement": null,
-      "rate_limits": {"req_per_min": 5000, "tkn_per_min": 1000000},
-      "usage_costs": {"input": 0.00000013}
+      "rate_limits": {
+        "tkn_per_min": 1000000,
+        "req_per_min": 5000
+      },
+      "usage_costs": {
+        "input": 1.3e-07
+      }
     },
     {
       "key": "text-embedding-3-small",
@@ -442,13 +2422,219 @@
       "tool_calling": false,
       "streaming": false,
       "structured_outputs": false,
+      "responses_api": false,
+      "background_responses": false,
+      "responses_native_tools": false,
+      "normalized_output_items": false,
       "vision_input": false,
       "audio_input": false,
       "file_input": false,
       "deprecated": false,
       "replacement": null,
-      "rate_limits": {"req_per_min": 5000, "tkn_per_min": 1000000},
-      "usage_costs": {"input": 0.00000002}
+      "rate_limits": {
+        "tkn_per_min": 1000000,
+        "req_per_min": 5000
+      },
+      "usage_costs": {
+        "input": 2e-08
+      }
+    },
+    {
+      "key": "text-embedding-ada-002",
+      "provider": "openai",
+      "model_name": "text-embedding-ada-002",
+      "category": "embeddings",
+      "context_window": 8191,
+      "max_output": null,
+      "output_dimensions": 1536,
+      "encoding": "cl100k_base",
+      "reasoning": false,
+      "reasoning_efforts": [],
+      "default_reasoning_effort": null,
+      "tool_calling": false,
+      "streaming": false,
+      "structured_outputs": false,
+      "responses_api": false,
+      "background_responses": false,
+      "responses_native_tools": false,
+      "normalized_output_items": false,
+      "vision_input": false,
+      "audio_input": false,
+      "file_input": false,
+      "deprecated": true,
+      "replacement": "text-embedding-3-small",
+      "rate_limits": {
+        "tkn_per_min": 500000,
+        "req_per_min": 3000
+      },
+      "usage_costs": {
+        "input": 1e-07
+      }
+    },
+    {
+      "key": "text-moderation-latest",
+      "provider": "openai",
+      "model_name": "text-moderation-latest",
+      "category": "moderations",
+      "context_window": 32768,
+      "max_output": null,
+      "output_dimensions": null,
+      "encoding": "cl100k_base",
+      "reasoning": false,
+      "reasoning_efforts": [],
+      "default_reasoning_effort": null,
+      "tool_calling": false,
+      "streaming": false,
+      "structured_outputs": false,
+      "responses_api": false,
+      "background_responses": false,
+      "responses_native_tools": false,
+      "normalized_output_items": false,
+      "vision_input": false,
+      "audio_input": false,
+      "file_input": false,
+      "deprecated": false,
+      "replacement": null,
+      "rate_limits": {
+        "req_per_min": 1000
+      },
+      "usage_costs": {
+        "input": 0.0,
+        "output": 0.0,
+        "cached_input": 0.0
+      }
+    },
+    {
+      "key": "text-moderation-stable",
+      "provider": "openai",
+      "model_name": "text-moderation-stable",
+      "category": "moderations",
+      "context_window": 32768,
+      "max_output": null,
+      "output_dimensions": null,
+      "encoding": "cl100k_base",
+      "reasoning": false,
+      "reasoning_efforts": [],
+      "default_reasoning_effort": null,
+      "tool_calling": false,
+      "streaming": false,
+      "structured_outputs": false,
+      "responses_api": false,
+      "background_responses": false,
+      "responses_native_tools": false,
+      "normalized_output_items": false,
+      "vision_input": false,
+      "audio_input": false,
+      "file_input": false,
+      "deprecated": false,
+      "replacement": null,
+      "rate_limits": {
+        "req_per_min": 1000
+      },
+      "usage_costs": {
+        "input": 0.0,
+        "output": 0.0,
+        "cached_input": 0.0
+      }
+    },
+    {
+      "key": "tts-1",
+      "provider": "openai",
+      "model_name": "tts-1",
+      "category": "audio",
+      "context_window": 32768,
+      "max_output": null,
+      "output_dimensions": null,
+      "encoding": "cl100k_base",
+      "reasoning": false,
+      "reasoning_efforts": [],
+      "default_reasoning_effort": null,
+      "tool_calling": false,
+      "streaming": false,
+      "structured_outputs": false,
+      "responses_api": false,
+      "background_responses": false,
+      "responses_native_tools": false,
+      "normalized_output_items": false,
+      "vision_input": false,
+      "audio_input": true,
+      "file_input": true,
+      "deprecated": false,
+      "replacement": null,
+      "rate_limits": {
+        "req_per_min": 500
+      },
+      "usage_costs": {
+        "input": 0.0,
+        "output": 0.0,
+        "cached_input": 0.0
+      }
+    },
+    {
+      "key": "tts-1-hd",
+      "provider": "openai",
+      "model_name": "tts-1-hd",
+      "category": "audio",
+      "context_window": 32768,
+      "max_output": null,
+      "output_dimensions": null,
+      "encoding": "cl100k_base",
+      "reasoning": false,
+      "reasoning_efforts": [],
+      "default_reasoning_effort": null,
+      "tool_calling": false,
+      "streaming": false,
+      "structured_outputs": false,
+      "responses_api": false,
+      "background_responses": false,
+      "responses_native_tools": false,
+      "normalized_output_items": false,
+      "vision_input": false,
+      "audio_input": true,
+      "file_input": true,
+      "deprecated": false,
+      "replacement": null,
+      "rate_limits": {
+        "req_per_min": 500
+      },
+      "usage_costs": {
+        "input": 0.0,
+        "output": 0.0,
+        "cached_input": 0.0
+      }
+    },
+    {
+      "key": "whisper-1",
+      "provider": "openai",
+      "model_name": "whisper-1",
+      "category": "audio",
+      "context_window": 32768,
+      "max_output": null,
+      "output_dimensions": null,
+      "encoding": "cl100k_base",
+      "reasoning": false,
+      "reasoning_efforts": [],
+      "default_reasoning_effort": null,
+      "tool_calling": false,
+      "streaming": false,
+      "structured_outputs": false,
+      "responses_api": false,
+      "background_responses": false,
+      "responses_native_tools": false,
+      "normalized_output_items": false,
+      "vision_input": false,
+      "audio_input": true,
+      "file_input": true,
+      "deprecated": false,
+      "replacement": null,
+      "rate_limits": {
+        "req_per_min": 500
+      },
+      "usage_costs": {
+        "input": 0.0,
+        "output": 0.0,
+        "cached_input": 0.0
+      }
     }
   ]
 }

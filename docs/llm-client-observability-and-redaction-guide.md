@@ -5,13 +5,13 @@ the redaction controls that keep those outputs safe by default.
 
 Runnable examples:
 
-- [11_observability_and_redaction.py](/home/namiral/Projects/Packages/intelligence-layer-bif/examples/11_observability_and_redaction.py)
-- [12_benchmarks.py](/home/namiral/Projects/Packages/intelligence-layer-bif/examples/12_benchmarks.py)
+- [11_observability_and_redaction.py](/home/namiral/Projects/Packages/llm-client-v1/examples/11_observability_and_redaction.py)
+- [12_benchmarks.py](/home/namiral/Projects/Packages/llm-client-v1/examples/12_benchmarks.py)
 
 Security background:
 
-- [llm-client-threat-model.md](/home/namiral/Projects/Packages/intelligence-layer-bif/docs/llm-client-threat-model.md)
-- [llm-client-secure-deployment-defaults.md](/home/namiral/Projects/Packages/intelligence-layer-bif/docs/llm-client-secure-deployment-defaults.md)
+- [llm-client-threat-model.md](/home/namiral/Projects/Packages/llm-client-v1/docs/llm-client-threat-model.md)
+- [llm-client-secure-deployment-defaults.md](/home/namiral/Projects/Packages/llm-client-v1/docs/llm-client-secure-deployment-defaults.md)
 
 ## Observability layers
 

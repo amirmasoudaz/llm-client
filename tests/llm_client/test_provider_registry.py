@@ -70,9 +70,22 @@ def test_default_provider_registry_exposes_common_providers() -> None:
     registry = get_default_provider_registry()
 
     assert registry.get("openai").default_model == "gpt-5"
+    assert registry.get("openai").capabilities.responses_api is True
+    assert registry.get("openai").capabilities.background_responses is True
+    assert registry.get("openai").capabilities.responses_native_tools is True
+    assert registry.get("openai").capabilities.normalized_output_items is True
     assert registry.get("anthropic").capabilities.reasoning is True
+    assert registry.get("anthropic").capabilities.responses_api is False
     assert registry.get("gemini").name == "google"
     assert registry.get("google").capabilities.embeddings is True
+
+
+def test_provider_registry_can_filter_by_responses_capabilities() -> None:
+    registry = get_default_provider_registry()
+
+    matches = registry.find_capable(responses_api=True, background_responses=True, responses_native_tools=True)
+
+    assert [item.name for item in matches] == ["openai"]
 
 
 def test_provider_registry_rejects_duplicate_names_and_aliases() -> None:

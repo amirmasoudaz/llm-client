@@ -20,7 +20,40 @@ from .errors import failure_to_completion_result, normalize_exception, normalize
 from .hooks import HookManager
 from .idempotency import IdempotencyTracker
 from .providers.base import Provider
-from .providers.types import CompletionResult, StreamEvent, StreamEventType
+from .providers.types import (
+    AudioSpeechResult,
+    AudioTranscriptionResult,
+    BackgroundResponseResult,
+    CompactionResult,
+    CompletionResult,
+    DeepResearchRunResult,
+    ConversationItemResource,
+    ConversationItemsPage,
+    ConversationResource,
+    DeletionResult,
+    FileContentResult,
+    FileResource,
+    FilesPage,
+    FineTuningJobEventsPage,
+    FineTuningJobResult,
+    FineTuningJobsPage,
+    ImageGenerationResult,
+    ModerationResult,
+    RealtimeCallResult,
+    RealtimeConnection,
+    RealtimeClientSecretResult,
+    RealtimeTranscriptionSessionResult,
+    VectorStoreFileBatchResource,
+    StreamEvent,
+    StreamEventType,
+    VectorStoreFileContentResult,
+    VectorStoreFileResource,
+    VectorStoreFilesPage,
+    VectorStoreResource,
+    VectorStoreSearchResult,
+    VectorStoresPage,
+    WebhookEventResult,
+)
 from .retry_policy import DEFAULT_RETRYABLE_STATUSES, compute_backoff_delay, is_retryable_status
 from .resilience import CircuitBreaker, CircuitBreakerConfig
 from .routing import ProviderRouter
@@ -883,6 +916,1492 @@ class ExecutionEngine:
         async for event in self.stream(request_spec, context=context, timeout=timeout, idempotency_key=idempotency_key):
             yield completion_stream_event_to_content_event(event)
 
+    async def moderate(
+        self,
+        inputs: str | list[str] | list[dict[str, Any]],
+        *,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> ModerationResult:
+        return await self._run_workflow_operation(
+            "moderate",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.moderate(inputs, **kwargs),
+        )
+
+    async def generate_image(
+        self,
+        prompt: str,
+        *,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> ImageGenerationResult:
+        return await self._run_workflow_operation(
+            "generate_image",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.generate_image(prompt, **kwargs),
+        )
+
+    async def edit_image(
+        self,
+        image: Any,
+        prompt: str,
+        *,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> ImageGenerationResult:
+        return await self._run_workflow_operation(
+            "edit_image",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.edit_image(image, prompt, **kwargs),
+        )
+
+    async def transcribe_audio(
+        self,
+        file: Any,
+        *,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> AudioTranscriptionResult:
+        return await self._run_workflow_operation(
+            "transcribe_audio",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.transcribe_audio(file, **kwargs),
+        )
+
+    async def translate_audio(
+        self,
+        file: Any,
+        *,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> AudioTranscriptionResult:
+        return await self._run_workflow_operation(
+            "translate_audio",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.translate_audio(file, **kwargs),
+        )
+
+    async def synthesize_speech(
+        self,
+        text: str,
+        *,
+        voice: str,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> AudioSpeechResult:
+        return await self._run_workflow_operation(
+            "synthesize_speech",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.synthesize_speech(text, voice=voice, **kwargs),
+        )
+
+    async def create_file(
+        self,
+        *,
+        file: Any,
+        purpose: str,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> FileResource:
+        return await self._run_workflow_operation(
+            "create_file",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.create_file(file=file, purpose=purpose, **kwargs),
+        )
+
+    async def retrieve_file(
+        self,
+        file_id: str,
+        *,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> FileResource:
+        return await self._run_workflow_operation(
+            "retrieve_file",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.retrieve_file(file_id, **kwargs),
+        )
+
+    async def list_files(
+        self,
+        *,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> FilesPage:
+        return await self._run_workflow_operation(
+            "list_files",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.list_files(**kwargs),
+        )
+
+    async def delete_file(
+        self,
+        file_id: str,
+        *,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> DeletionResult:
+        return await self._run_workflow_operation(
+            "delete_file",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.delete_file(file_id, **kwargs),
+        )
+
+    async def get_file_content(
+        self,
+        file_id: str,
+        *,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> FileContentResult:
+        return await self._run_workflow_operation(
+            "get_file_content",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.get_file_content(file_id, **kwargs),
+        )
+
+    async def create_vector_store(
+        self,
+        *,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> VectorStoreResource:
+        return await self._run_workflow_operation(
+            "create_vector_store",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.create_vector_store(**kwargs),
+        )
+
+    async def retrieve_vector_store(
+        self,
+        vector_store_id: str,
+        *,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> VectorStoreResource:
+        return await self._run_workflow_operation(
+            "retrieve_vector_store",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.retrieve_vector_store(vector_store_id, **kwargs),
+        )
+
+    async def update_vector_store(
+        self,
+        vector_store_id: str,
+        *,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> VectorStoreResource:
+        return await self._run_workflow_operation(
+            "update_vector_store",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.update_vector_store(vector_store_id, **kwargs),
+        )
+
+    async def delete_vector_store(
+        self,
+        vector_store_id: str,
+        *,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> DeletionResult:
+        return await self._run_workflow_operation(
+            "delete_vector_store",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.delete_vector_store(vector_store_id, **kwargs),
+        )
+
+    async def list_vector_stores(
+        self,
+        *,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> VectorStoresPage:
+        return await self._run_workflow_operation(
+            "list_vector_stores",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.list_vector_stores(**kwargs),
+        )
+
+    async def search_vector_store(
+        self,
+        vector_store_id: str,
+        *,
+        query: str | list[str],
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> VectorStoreSearchResult:
+        return await self._run_workflow_operation(
+            "search_vector_store",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.search_vector_store(vector_store_id, query=query, **kwargs),
+        )
+
+    async def create_fine_tuning_job(
+        self,
+        *,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> FineTuningJobResult:
+        return await self._run_workflow_operation(
+            "create_fine_tuning_job",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.create_fine_tuning_job(**kwargs),
+        )
+
+    async def retrieve_fine_tuning_job(
+        self,
+        job_id: str,
+        *,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> FineTuningJobResult:
+        return await self._run_workflow_operation(
+            "retrieve_fine_tuning_job",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.retrieve_fine_tuning_job(job_id, **kwargs),
+        )
+
+    async def cancel_fine_tuning_job(
+        self,
+        job_id: str,
+        *,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> FineTuningJobResult:
+        return await self._run_workflow_operation(
+            "cancel_fine_tuning_job",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.cancel_fine_tuning_job(job_id, **kwargs),
+        )
+
+    async def list_fine_tuning_jobs(
+        self,
+        *,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> FineTuningJobsPage:
+        return await self._run_workflow_operation(
+            "list_fine_tuning_jobs",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.list_fine_tuning_jobs(**kwargs),
+        )
+
+    async def list_fine_tuning_events(
+        self,
+        job_id: str,
+        *,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> FineTuningJobEventsPage:
+        return await self._run_workflow_operation(
+            "list_fine_tuning_events",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.list_fine_tuning_events(job_id, **kwargs),
+        )
+
+    async def create_realtime_client_secret(
+        self,
+        *,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> RealtimeClientSecretResult:
+        return await self._run_workflow_operation(
+            "create_realtime_client_secret",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.create_realtime_client_secret(**kwargs),
+        )
+
+    async def connect_realtime(
+        self,
+        *,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> RealtimeConnection:
+        return await self._run_workflow_operation(
+            "connect_realtime",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.connect_realtime(**kwargs),
+        )
+
+    async def create_realtime_transcription_session(
+        self,
+        *,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> RealtimeTranscriptionSessionResult:
+        return await self._run_workflow_operation(
+            "create_realtime_transcription_session",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.create_realtime_transcription_session(**kwargs),
+        )
+
+    async def connect_realtime_transcription(
+        self,
+        *,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> RealtimeConnection:
+        return await self._run_workflow_operation(
+            "connect_realtime_transcription",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.connect_realtime_transcription(**kwargs),
+        )
+
+    async def create_realtime_call(
+        self,
+        sdp: str,
+        *,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> RealtimeCallResult:
+        return await self._run_workflow_operation(
+            "create_realtime_call",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.create_realtime_call(sdp, **kwargs),
+        )
+
+    async def accept_realtime_call(
+        self,
+        call_id: str,
+        *,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> RealtimeCallResult:
+        return await self._run_workflow_operation(
+            "accept_realtime_call",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.accept_realtime_call(call_id, **kwargs),
+        )
+
+    async def reject_realtime_call(
+        self,
+        call_id: str,
+        *,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> RealtimeCallResult:
+        return await self._run_workflow_operation(
+            "reject_realtime_call",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.reject_realtime_call(call_id, **kwargs),
+        )
+
+    async def hangup_realtime_call(
+        self,
+        call_id: str,
+        *,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> RealtimeCallResult:
+        return await self._run_workflow_operation(
+            "hangup_realtime_call",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.hangup_realtime_call(call_id, **kwargs),
+        )
+
+    async def refer_realtime_call(
+        self,
+        call_id: str,
+        *,
+        target_uri: str,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> RealtimeCallResult:
+        return await self._run_workflow_operation(
+            "refer_realtime_call",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.refer_realtime_call(call_id, target_uri=target_uri, **kwargs),
+        )
+
+    async def unwrap_webhook(
+        self,
+        payload: str | bytes,
+        headers: Any,
+        *,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        secret: str | None = None,
+    ) -> WebhookEventResult:
+        return await self._run_workflow_operation(
+            "unwrap_webhook",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.unwrap_webhook(payload, headers, secret=secret),
+        )
+
+    async def verify_webhook_signature(
+        self,
+        payload: str | bytes,
+        headers: Any,
+        *,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        secret: str | None = None,
+        tolerance: int = 300,
+    ) -> bool:
+        return await self._run_workflow_operation(
+            "verify_webhook_signature",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.verify_webhook_signature(
+                payload,
+                headers,
+                secret=secret,
+                tolerance=tolerance,
+            ),
+        )
+
+    async def create_vector_store_file(
+        self,
+        vector_store_id: str,
+        *,
+        file_id: str,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> VectorStoreFileResource:
+        return await self._run_workflow_operation(
+            "create_vector_store_file",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.create_vector_store_file(vector_store_id, file_id=file_id, **kwargs),
+        )
+
+    async def upload_vector_store_file(
+        self,
+        vector_store_id: str,
+        *,
+        file: Any,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> VectorStoreFileResource:
+        return await self._run_workflow_operation(
+            "upload_vector_store_file",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.upload_vector_store_file(vector_store_id, file=file, **kwargs),
+        )
+
+    async def list_vector_store_files(
+        self,
+        vector_store_id: str,
+        *,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> VectorStoreFilesPage:
+        return await self._run_workflow_operation(
+            "list_vector_store_files",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.list_vector_store_files(vector_store_id, **kwargs),
+        )
+
+    async def retrieve_vector_store_file(
+        self,
+        vector_store_id: str,
+        file_id: str,
+        *,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> VectorStoreFileResource:
+        return await self._run_workflow_operation(
+            "retrieve_vector_store_file",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.retrieve_vector_store_file(vector_store_id, file_id, **kwargs),
+        )
+
+    async def update_vector_store_file(
+        self,
+        vector_store_id: str,
+        file_id: str,
+        *,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> VectorStoreFileResource:
+        return await self._run_workflow_operation(
+            "update_vector_store_file",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.update_vector_store_file(vector_store_id, file_id, **kwargs),
+        )
+
+    async def delete_vector_store_file(
+        self,
+        vector_store_id: str,
+        file_id: str,
+        *,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> DeletionResult:
+        return await self._run_workflow_operation(
+            "delete_vector_store_file",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.delete_vector_store_file(vector_store_id, file_id, **kwargs),
+        )
+
+    async def get_vector_store_file_content(
+        self,
+        vector_store_id: str,
+        file_id: str,
+        *,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> VectorStoreFileContentResult:
+        return await self._run_workflow_operation(
+            "get_vector_store_file_content",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.get_vector_store_file_content(vector_store_id, file_id, **kwargs),
+        )
+
+    async def poll_vector_store_file(
+        self,
+        vector_store_id: str,
+        file_id: str,
+        *,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> VectorStoreFileResource:
+        return await self._run_workflow_operation(
+            "poll_vector_store_file",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.poll_vector_store_file(vector_store_id, file_id, **kwargs),
+        )
+
+    async def create_vector_store_file_and_poll(
+        self,
+        vector_store_id: str,
+        *,
+        file_id: str,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> VectorStoreFileResource:
+        return await self._run_workflow_operation(
+            "create_vector_store_file_and_poll",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.create_vector_store_file_and_poll(vector_store_id, file_id=file_id, **kwargs),
+        )
+
+    async def upload_vector_store_file_and_poll(
+        self,
+        vector_store_id: str,
+        *,
+        file: Any,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> VectorStoreFileResource:
+        return await self._run_workflow_operation(
+            "upload_vector_store_file_and_poll",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.upload_vector_store_file_and_poll(vector_store_id, file=file, **kwargs),
+        )
+
+    async def create_vector_store_file_batch(
+        self,
+        vector_store_id: str,
+        *,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> VectorStoreFileBatchResource:
+        return await self._run_workflow_operation(
+            "create_vector_store_file_batch",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.create_vector_store_file_batch(vector_store_id, **kwargs),
+        )
+
+    async def retrieve_vector_store_file_batch(
+        self,
+        vector_store_id: str,
+        batch_id: str,
+        *,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> VectorStoreFileBatchResource:
+        return await self._run_workflow_operation(
+            "retrieve_vector_store_file_batch",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.retrieve_vector_store_file_batch(vector_store_id, batch_id, **kwargs),
+        )
+
+    async def cancel_vector_store_file_batch(
+        self,
+        vector_store_id: str,
+        batch_id: str,
+        *,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> VectorStoreFileBatchResource:
+        return await self._run_workflow_operation(
+            "cancel_vector_store_file_batch",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.cancel_vector_store_file_batch(vector_store_id, batch_id, **kwargs),
+        )
+
+    async def poll_vector_store_file_batch(
+        self,
+        vector_store_id: str,
+        batch_id: str,
+        *,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> VectorStoreFileBatchResource:
+        return await self._run_workflow_operation(
+            "poll_vector_store_file_batch",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.poll_vector_store_file_batch(vector_store_id, batch_id, **kwargs),
+        )
+
+    async def list_vector_store_file_batch_files(
+        self,
+        vector_store_id: str,
+        batch_id: str,
+        *,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> VectorStoreFilesPage:
+        return await self._run_workflow_operation(
+            "list_vector_store_file_batch_files",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.list_vector_store_file_batch_files(vector_store_id, batch_id, **kwargs),
+        )
+
+    async def create_vector_store_file_batch_and_poll(
+        self,
+        vector_store_id: str,
+        *,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> VectorStoreFileBatchResource:
+        return await self._run_workflow_operation(
+            "create_vector_store_file_batch_and_poll",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.create_vector_store_file_batch_and_poll(vector_store_id, **kwargs),
+        )
+
+    async def upload_vector_store_file_batch_and_poll(
+        self,
+        vector_store_id: str,
+        *,
+        files: list[Any] | tuple[Any, ...],
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> VectorStoreFileBatchResource:
+        return await self._run_workflow_operation(
+            "upload_vector_store_file_batch_and_poll",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.upload_vector_store_file_batch_and_poll(vector_store_id, files=files, **kwargs),
+        )
+
+    async def clarify_deep_research_task(
+        self,
+        prompt: str,
+        *,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> CompletionResult:
+        return await self._run_workflow_operation(
+            "clarify_deep_research_task",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.clarify_deep_research_task(prompt, **kwargs),
+        )
+
+    async def rewrite_deep_research_prompt(
+        self,
+        prompt: str,
+        *,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> CompletionResult:
+        return await self._run_workflow_operation(
+            "rewrite_deep_research_prompt",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.rewrite_deep_research_prompt(prompt, **kwargs),
+        )
+
+    async def respond_with_web_search(
+        self,
+        prompt: str,
+        *,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> CompletionResult:
+        return await self._run_workflow_operation(
+            "respond_with_web_search",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.respond_with_web_search(prompt, **kwargs),
+        )
+
+    async def respond_with_file_search(
+        self,
+        prompt: str,
+        *,
+        vector_store_ids: list[str] | tuple[str, ...],
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> CompletionResult:
+        return await self._run_workflow_operation(
+            "respond_with_file_search",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.respond_with_file_search(
+                prompt,
+                vector_store_ids=vector_store_ids,
+                **kwargs,
+            ),
+        )
+
+    async def respond_with_code_interpreter(
+        self,
+        prompt: str,
+        *,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> CompletionResult:
+        return await self._run_workflow_operation(
+            "respond_with_code_interpreter",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.respond_with_code_interpreter(prompt, **kwargs),
+        )
+
+    async def respond_with_remote_mcp(
+        self,
+        prompt: str,
+        *,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> CompletionResult:
+        return await self._run_workflow_operation(
+            "respond_with_remote_mcp",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.respond_with_remote_mcp(prompt, **kwargs),
+        )
+
+    async def respond_with_connector(
+        self,
+        prompt: str,
+        *,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> CompletionResult:
+        return await self._run_workflow_operation(
+            "respond_with_connector",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.respond_with_connector(prompt, **kwargs),
+        )
+
+    async def start_deep_research(
+        self,
+        prompt: str,
+        *,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> CompletionResult:
+        return await self._run_workflow_operation(
+            "start_deep_research",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.start_deep_research(prompt, **kwargs),
+        )
+
+    async def run_deep_research(
+        self,
+        prompt: str,
+        *,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> DeepResearchRunResult:
+        return await self._run_workflow_operation(
+            "run_deep_research",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.run_deep_research(prompt, **kwargs),
+        )
+
+    async def retrieve_background_response(
+        self,
+        response_id: str,
+        *,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> BackgroundResponseResult:
+        return await self._run_workflow_operation(
+            "retrieve_background_response",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.retrieve_background_response(response_id, **kwargs),
+        )
+
+    async def cancel_background_response(
+        self,
+        response_id: str,
+        *,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> BackgroundResponseResult:
+        return await self._run_workflow_operation(
+            "cancel_background_response",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.cancel_background_response(response_id, **kwargs),
+        )
+
+    async def wait_background_response(
+        self,
+        response_id: str,
+        *,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        poll_interval: float = 2.0,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> BackgroundResponseResult:
+        return await self._run_workflow_operation(
+            "wait_background_response",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.wait_background_response(
+                response_id,
+                poll_interval=poll_interval,
+                timeout=timeout,
+                **kwargs,
+            ),
+        )
+
+    async def stream_background_response(
+        self,
+        response_id: str,
+        *,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        starting_after: int | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> AsyncIterator[StreamEvent]:
+        async for event in self._run_stream_workflow_operation(
+            "stream_background_response",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.stream_background_response(
+                response_id,
+                starting_after=starting_after,
+                **kwargs,
+            ),
+        ):
+            yield event
+
+    async def create_conversation(
+        self,
+        *,
+        items: Any = None,
+        metadata: dict[str, Any] | None = None,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> ConversationResource:
+        return await self._run_workflow_operation(
+            "create_conversation",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.create_conversation(items=items, metadata=metadata, **kwargs),
+        )
+
+    async def retrieve_conversation(
+        self,
+        conversation_id: str,
+        *,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> ConversationResource:
+        return await self._run_workflow_operation(
+            "retrieve_conversation",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.retrieve_conversation(conversation_id, **kwargs),
+        )
+
+    async def update_conversation(
+        self,
+        conversation_id: str,
+        *,
+        metadata: dict[str, Any] | None = None,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> ConversationResource:
+        return await self._run_workflow_operation(
+            "update_conversation",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.update_conversation(conversation_id, metadata=metadata, **kwargs),
+        )
+
+    async def delete_conversation(
+        self,
+        conversation_id: str,
+        *,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> ConversationResource:
+        return await self._run_workflow_operation(
+            "delete_conversation",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.delete_conversation(conversation_id, **kwargs),
+        )
+
+    async def create_conversation_items(
+        self,
+        conversation_id: str,
+        *,
+        items: Any,
+        include: list[str] | None = None,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> ConversationItemsPage:
+        return await self._run_workflow_operation(
+            "create_conversation_items",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.create_conversation_items(
+                conversation_id,
+                items=items,
+                include=include,
+                **kwargs,
+            ),
+        )
+
+    async def list_conversation_items(
+        self,
+        conversation_id: str,
+        *,
+        after: str | None = None,
+        include: list[str] | None = None,
+        limit: int | None = None,
+        order: str | None = None,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> ConversationItemsPage:
+        return await self._run_workflow_operation(
+            "list_conversation_items",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.list_conversation_items(
+                conversation_id,
+                after=after,
+                include=include,
+                limit=limit,
+                order=order,
+                **kwargs,
+            ),
+        )
+
+    async def retrieve_conversation_item(
+        self,
+        conversation_id: str,
+        item_id: str,
+        *,
+        include: list[str] | None = None,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> ConversationItemResource:
+        return await self._run_workflow_operation(
+            "retrieve_conversation_item",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.retrieve_conversation_item(
+                conversation_id,
+                item_id,
+                include=include,
+                **kwargs,
+            ),
+        )
+
+    async def delete_conversation_item(
+        self,
+        conversation_id: str,
+        item_id: str,
+        *,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> ConversationResource:
+        return await self._run_workflow_operation(
+            "delete_conversation_item",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.delete_conversation_item(conversation_id, item_id, **kwargs),
+        )
+
+    async def compact_response_context(
+        self,
+        *,
+        messages: Any = None,
+        model: str | None = None,
+        instructions: str | None = None,
+        previous_response_id: str | None = None,
+        provider_name: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> CompactionResult:
+        return await self._run_workflow_operation(
+            "compact_response_context",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.compact_response_context(
+                messages=messages,
+                model=model,
+                instructions=instructions,
+                previous_response_id=previous_response_id,
+                **kwargs,
+            ),
+        )
+
+    async def submit_mcp_approval_response(
+        self,
+        *,
+        previous_response_id: str,
+        approval_request_id: str,
+        approve: bool,
+        tools: list[Any] | None = None,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> CompletionResult:
+        return await self._run_workflow_operation(
+            "submit_mcp_approval_response",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.submit_mcp_approval_response(
+                previous_response_id=previous_response_id,
+                approval_request_id=approval_request_id,
+                approve=approve,
+                tools=tools,
+                **kwargs,
+            ),
+        )
+
+    async def delete_response(
+        self,
+        response_id: str,
+        *,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> DeletionResult:
+        return await self._run_workflow_operation(
+            "delete_response",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.delete_response(response_id, **kwargs),
+        )
+
     def _normalize_content_request_spec(self, spec: RequestSpec) -> RequestSpec:
         provider_name = str(spec.provider or "").strip().lower()
         if provider_name in {"", "unknown", "auto", "any"}:
@@ -922,6 +2441,159 @@ class ExecutionEngine:
     def _provider_id(self, provider: Provider) -> str:
         model_name = getattr(provider, "model_name", "")
         return f"{provider.__class__.__name__}:{model_name}"
+
+    def _workflow_spec(self, *, provider_name: str | None, model: str | None) -> RequestSpec:
+        return RequestSpec(
+            provider=provider_name or "auto",
+            model=model,
+            messages=[],
+        )
+
+    async def _run_workflow_operation(
+        self,
+        operation: str,
+        *,
+        provider_name: str | None,
+        model: str | None,
+        context: RequestContext | None,
+        timeout: float | None,
+        call: Any,
+    ) -> Any:
+        ctx = RequestContext.ensure(context)
+        spec = self._workflow_spec(provider_name=provider_name, model=model)
+        providers = self._resolve_providers(spec)
+        selected_provider_ids = [self._provider_id(provider) for provider in providers]
+        await self.hooks.emit(
+            "workflow.start",
+            {
+                "operation": operation,
+                "requested_provider": provider_name,
+                "requested_model": model,
+                "selected_providers": selected_provider_ids,
+            },
+            ctx,
+        )
+        if not providers:
+            error = ValueError(f"No provider available for workflow operation {operation!r}")
+            await self.hooks.emit(
+                "workflow.error",
+                {"operation": operation, "error": str(error), "selected_providers": selected_provider_ids},
+                ctx,
+            )
+            raise error
+
+        last_error: Exception | None = None
+        for provider in providers:
+            try:
+                result = await self._await_with_timeout(call(provider), timeout=timeout)
+                await self.hooks.emit(
+                    "workflow.end",
+                    {
+                        "operation": operation,
+                        "provider": self._provider_id(provider),
+                        "resolved_provider": self._lifecycle_provider_name(spec, provider),
+                    },
+                    ctx,
+                )
+                return result
+            except NotImplementedError as exc:
+                last_error = exc
+                continue
+            except Exception as exc:
+                await self.hooks.emit(
+                    "workflow.error",
+                    {
+                        "operation": operation,
+                        "provider": self._provider_id(provider),
+                        "resolved_provider": self._lifecycle_provider_name(spec, provider),
+                        "error": str(exc),
+                    },
+                    ctx,
+                )
+                raise
+
+        error = last_error or NotImplementedError(f"No provider supports workflow operation {operation!r}")
+        await self.hooks.emit(
+            "workflow.error",
+            {"operation": operation, "error": str(error), "selected_providers": selected_provider_ids},
+            ctx,
+        )
+        raise error
+
+    async def _run_stream_workflow_operation(
+        self,
+        operation: str,
+        *,
+        provider_name: str | None,
+        model: str | None,
+        context: RequestContext | None,
+        timeout: float | None,
+        call: Any,
+    ) -> AsyncIterator[StreamEvent]:
+        ctx = RequestContext.ensure(context)
+        spec = self._workflow_spec(provider_name=provider_name, model=model)
+        providers = self._resolve_providers(spec)
+        selected_provider_ids = [self._provider_id(provider) for provider in providers]
+        await self.hooks.emit(
+            "workflow.start",
+            {
+                "operation": operation,
+                "requested_provider": provider_name,
+                "requested_model": model,
+                "selected_providers": selected_provider_ids,
+                "stream": True,
+            },
+            ctx,
+        )
+        if not providers:
+            error = ValueError(f"No provider available for workflow stream operation {operation!r}")
+            await self.hooks.emit(
+                "workflow.error",
+                {"operation": operation, "error": str(error), "selected_providers": selected_provider_ids, "stream": True},
+                ctx,
+            )
+            raise error
+
+        last_error: Exception | None = None
+        for provider in providers:
+            try:
+                async for event in self._stream_with_timeout(call(provider), timeout=timeout):
+                    yield event
+                await self.hooks.emit(
+                    "workflow.end",
+                    {
+                        "operation": operation,
+                        "provider": self._provider_id(provider),
+                        "resolved_provider": self._lifecycle_provider_name(spec, provider),
+                        "stream": True,
+                    },
+                    ctx,
+                )
+                return
+            except NotImplementedError as exc:
+                last_error = exc
+                continue
+            except Exception as exc:
+                await self.hooks.emit(
+                    "workflow.error",
+                    {
+                        "operation": operation,
+                        "provider": self._provider_id(provider),
+                        "resolved_provider": self._lifecycle_provider_name(spec, provider),
+                        "error": str(exc),
+                        "stream": True,
+                    },
+                    ctx,
+                )
+                raise
+
+        error = last_error or NotImplementedError(f"No provider supports workflow stream operation {operation!r}")
+        await self.hooks.emit(
+            "workflow.error",
+            {"operation": operation, "error": str(error), "selected_providers": selected_provider_ids, "stream": True},
+            ctx,
+        )
+        raise error
 
     def _lifecycle_provider_name(self, spec: RequestSpec, provider: Provider | None = None) -> str | None:
         requested = str(spec.provider or "").strip()
@@ -1029,6 +2701,11 @@ class ExecutionEngine:
                 failure,
                 model=spec.model or getattr(provider, "model_name", "unknown"),
             )
+
+    async def _await_with_timeout(self, awaitable: Any, *, timeout: float | None) -> Any:
+        if timeout is None:
+            return await awaitable
+        return await asyncio.wait_for(awaitable, timeout=timeout)
 
     async def _stream_with_timeout(
         self,

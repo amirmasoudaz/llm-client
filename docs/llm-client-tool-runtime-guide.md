@@ -5,8 +5,8 @@ middleware, execution modes, and agent integration.
 
 Runnable examples:
 
-- [08_tool_execution_modes.py](/home/namiral/Projects/Packages/intelligence-layer-bif/examples/08_tool_execution_modes.py)
-- [09_tool_calling_agent.py](/home/namiral/Projects/Packages/intelligence-layer-bif/examples/09_tool_calling_agent.py)
+- [08_tool_execution_modes.py](/home/namiral/Projects/Packages/llm-client-v1/examples/08_tool_execution_modes.py)
+- [09_tool_calling_agent.py](/home/namiral/Projects/Packages/llm-client-v1/examples/09_tool_calling_agent.py)
 
 ## Core concepts
 
@@ -52,7 +52,7 @@ Use them intentionally:
   above the runtime
 
 The runnable reference is
-[08_tool_execution_modes.py](/home/namiral/Projects/Packages/intelligence-layer-bif/examples/08_tool_execution_modes.py).
+[08_tool_execution_modes.py](/home/namiral/Projects/Packages/llm-client-v1/examples/08_tool_execution_modes.py).
 
 ## Middleware
 
@@ -82,7 +82,7 @@ runtime, and interprets the resulting tool outputs inside the conversation
 loop.
 
 The runnable reference is
-[09_tool_calling_agent.py](/home/namiral/Projects/Packages/intelligence-layer-bif/examples/09_tool_calling_agent.py).
+[09_tool_calling_agent.py](/home/namiral/Projects/Packages/llm-client-v1/examples/09_tool_calling_agent.py).
 
 ## Practical recommendation
 

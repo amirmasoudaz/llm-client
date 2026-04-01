@@ -18,14 +18,54 @@ from llm_client.observability import (
     RuntimeEvent,
     RuntimeEventType,
 )
+from llm_client.tools import (
+    ResponsesBuiltinTool,
+    ResponsesConnectorId,
+    ResponsesCustomTool,
+    ResponsesGrammar,
+    ResponsesMCPApprovalPolicy,
+    ResponsesMCPTool,
+    ResponsesMCPToolFilter,
+)
 from llm_client.types import (
+    AudioSpeechResult,
+    AudioTranscriptionResult,
+    BackgroundResponseResult,
     CancellationToken,
+    CompactionResult,
     CompletionResult,
+    DeepResearchRunResult,
+    ConversationItemResource,
+    ConversationItemsPage,
+    ConversationResource,
+    DeletionResult,
+    FileContentResult,
+    FileResource,
+    FilesPage,
+    FineTuningJobEventsPage,
+    FineTuningJobResult,
+    FineTuningJobsPage,
+    GeneratedImage,
+    ImageGenerationResult,
+    ModerationResult,
+    NormalizedOutputItem,
+    RealtimeCallResult,
+    RealtimeConnection,
+    RealtimeClientSecretResult,
+    RealtimeTranscriptionSessionResult,
     RequestContext,
     RequestSpec,
     StreamEvent,
     StreamEventType,
     Usage,
+    VectorStoreFileContentResult,
+    VectorStoreFileBatchResource,
+    VectorStoreFileResource,
+    VectorStoreFilesPage,
+    VectorStoreResource,
+    VectorStoreSearchResult,
+    VectorStoresPage,
+    WebhookEventResult,
 )
 
 
@@ -44,12 +84,72 @@ def test_types_namespace_exports_shared_request_and_result_types() -> None:
         messages=[Message.user("hi")],
     )
     result = CompletionResult(content="hello", usage=Usage(total_tokens=3))
+    background = BackgroundResponseResult(response_id="resp_1", lifecycle_status="queued")
+    conversation = ConversationResource(conversation_id="conv_1")
+    compaction = CompactionResult(compaction_id="cmp_1")
+    deletion = DeletionResult(resource_id="resp_2")
+    file_resource = FileResource(file_id="file_1", filename="guide.pdf", purpose="assistants")
+    files_page = FilesPage(items=[file_resource])
+    file_content = FileContentResult(file_id="file_1", content=b"abc", media_type="application/pdf")
+    conversation_item = ConversationItemResource(item_id="item_1", item_type="message")
+    conversation_items = ConversationItemsPage(items=[conversation_item])
+    moderation = ModerationResult(flagged=False, model="omni-moderation-latest")
+    image = ImageGenerationResult(images=[GeneratedImage(url="https://example.com/image.png")], model="gpt-image-1")
+    transcript = AudioTranscriptionResult(text="hello", language="en", model="gpt-4o-transcribe")
+    speech = AudioSpeechResult(audio=b"abc", format="mp3", model="tts-1")
+    vector_store = VectorStoreResource(vector_store_id="vs_1", name="Docs")
+    vector_stores = VectorStoresPage(items=[vector_store])
+    vector_store_file = VectorStoreFileResource(file_id="file_1", vector_store_id="vs_1")
+    vector_store_files = VectorStoreFilesPage(items=[vector_store_file])
+    vector_store_content = VectorStoreFileContentResult(file_id="file_1", vector_store_id="vs_1", chunks=[{"text": "hello"}])
+    vector_search = VectorStoreSearchResult(vector_store_id="vs_1", query="docs", results=[{"file_id": "file_1"}])
+    fine_tune = FineTuningJobResult(job_id="ftjob_1", status="queued")
+    fine_tune_jobs = FineTuningJobsPage(items=[fine_tune])
+    fine_tune_events = FineTuningJobEventsPage(job_id="ftjob_1", events=[{"id": "evt_1"}])
+    realtime_secret = RealtimeClientSecretResult(value="secret_1")
+    realtime_transcription = RealtimeTranscriptionSessionResult(value="tx_secret_1")
+    realtime_call = RealtimeCallResult(call_id="rtc_1", action="create")
+    realtime_connection = RealtimeConnection(connection=object(), model="gpt-realtime", call_id="rtc_1")
+    webhook = WebhookEventResult(event_id="wh_1", event_type="realtime.call.incoming", data={"call_id": "rtc_1"})
+    vector_store_batch = VectorStoreFileBatchResource(batch_id="vsfb_1", vector_store_id="vs_1", status="in_progress")
+    output_item = NormalizedOutputItem(type="refusal", text="No")
     event = StreamEvent(type=StreamEventType.DONE, data=result)
+    research_run = DeepResearchRunResult(prompt="Research", effective_prompt="Research", queued=result)
 
     assert spec.provider == "openai"
     assert RequestContext(session_id="session-1").session_id == "session-1"
     assert result.usage.total_tokens == 3
+    assert background.lifecycle_status == "queued"
+    assert conversation.conversation_id == "conv_1"
+    assert compaction.compaction_id == "cmp_1"
+    assert deletion.resource_id == "resp_2"
+    assert file_resource.filename == "guide.pdf"
+    assert files_page.items[0].purpose == "assistants"
+    assert file_content.byte_length == 3
+    assert conversation_item.item_id == "item_1"
+    assert conversation_items.items[0].item_type == "message"
+    assert moderation.model == "omni-moderation-latest"
+    assert image.images[0].url == "https://example.com/image.png"
+    assert transcript.language == "en"
+    assert speech.byte_length == 3
+    assert vector_store.vector_store_id == "vs_1"
+    assert vector_stores.items[0].name == "Docs"
+    assert vector_store_file.file_id == "file_1"
+    assert vector_store_files.items[0].vector_store_id == "vs_1"
+    assert vector_store_content.chunks[0]["text"] == "hello"
+    assert vector_search.results[0]["file_id"] == "file_1"
+    assert fine_tune.job_id == "ftjob_1"
+    assert fine_tune_jobs.items[0].status == "queued"
+    assert fine_tune_events.events[0]["id"] == "evt_1"
+    assert realtime_secret.value == "secret_1"
+    assert realtime_transcription.value == "tx_secret_1"
+    assert realtime_call.call_id == "rtc_1"
+    assert realtime_connection.call_id == "rtc_1"
+    assert webhook.event_type == "realtime.call.incoming"
+    assert vector_store_batch.batch_id == "vsfb_1"
+    assert output_item.type == "refusal"
     assert event.type.value == "done"
+    assert research_run.effective_prompt == "Research"
     assert isinstance(CancellationToken.none(), CancellationToken)
 
 
@@ -107,6 +207,33 @@ def test_public_modules_define_explicit_all_contracts() -> None:
     assert "load_env" in config.__all__
     assert "GPT5" in models.__all__
     assert "OpenAIClient" in compat.__all__
+
+
+def test_tools_namespace_exports_responses_tool_descriptors() -> None:
+    builtin = ResponsesBuiltinTool.web_search(search_context_size="low")
+    custom = ResponsesCustomTool(
+        name="planner",
+        description="Emit a plan.",
+        grammar=ResponsesGrammar(syntax="lark", definition='start: "done"'),
+    )
+    mcp = ResponsesMCPTool.connector(
+        ResponsesConnectorId.GMAIL,
+        require_approval=ResponsesMCPApprovalPolicy(
+            always=ResponsesMCPToolFilter(tool_names=("read_thread",)),
+        ),
+    )
+
+    assert builtin.to_dict()["type"] == "web_search"
+    assert custom.to_dict()["format"]["syntax"] == "lark"
+    assert mcp.to_dict()["connector_id"] == "connector_gmail"
+    assert mcp.to_dict()["require_approval"] == {"always": {"tool_names": ["read_thread"]}}
+    assert "ResponsesBuiltinTool" in tools.__all__
+    assert "ResponsesConnectorId" in tools.__all__
+    assert "ResponsesMCPTool" in tools.__all__
+    assert "ResponsesMCPApprovalPolicy" in tools.__all__
+    assert "ResponsesMCPToolFilter" in tools.__all__
+    assert "ResponsesCustomTool" in tools.__all__
+    assert "ResponsesGrammar" in tools.__all__
 
 
 def test_budget_namespace_exports_generic_usage_and_budget_primitives() -> None:

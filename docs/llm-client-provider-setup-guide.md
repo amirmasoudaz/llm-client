@@ -6,10 +6,10 @@ cookbook examples.
 
 Runnable examples:
 
-- [01_one_shot_completion.py](/home/namiral/Projects/Packages/intelligence-layer-bif/examples/01_one_shot_completion.py)
-- [02_streaming.py](/home/namiral/Projects/Packages/intelligence-layer-bif/examples/02_streaming.py)
-- [03_embeddings.py](/home/namiral/Projects/Packages/intelligence-layer-bif/examples/03_embeddings.py)
-- [06_provider_registry_and_routing.py](/home/namiral/Projects/Packages/intelligence-layer-bif/examples/06_provider_registry_and_routing.py)
+- [01_one_shot_completion.py](/home/namiral/Projects/Packages/llm-client-v1/examples/01_one_shot_completion.py)
+- [02_streaming.py](/home/namiral/Projects/Packages/llm-client-v1/examples/02_streaming.py)
+- [03_embeddings.py](/home/namiral/Projects/Packages/llm-client-v1/examples/03_embeddings.py)
+- [06_provider_registry_and_routing.py](/home/namiral/Projects/Packages/llm-client-v1/examples/06_provider_registry_and_routing.py)
 
 ## Stable imports
 
@@ -17,7 +17,7 @@ For new projects, prefer:
 
 ```python
 from llm_client.providers import OpenAIProvider, AnthropicProvider, GoogleProvider
-from llm_client.providers.types import Message, StreamEventType
+from llm_client.providers.types import BackgroundResponseResult, Message, StreamEventType
 from llm_client.engine import ExecutionEngine
 ```
 
@@ -29,6 +29,7 @@ Use a provider directly when you want the thinnest path:
 - raw streaming events
 - embeddings
 - provider-specific debugging
+- provider-native lifecycle workflows such as OpenAI background Responses retrieval or cancellation
 
 Minimal shape:
 
@@ -72,6 +73,124 @@ GoogleProvider(model="gemini-2.0-flash", api_key="...")
 
 When loading credentials from environment, call
 [`load_env()`](../llm_client/README.md) explicitly first.
+
+## OpenAI Responses lifecycle and state
+
+When you construct `OpenAIProvider(..., use_responses_api=True)`, the provider now exposes the OpenAI background response lifecycle directly:
+
+- `retrieve_background_response(response_id, **kwargs)`
+- `cancel_background_response(response_id, **kwargs)`
+- `stream_background_response(response_id, starting_after=None, **kwargs)`
+- `wait_background_response(response_id, poll_interval=2.0, timeout=None, **kwargs)`
+- `create_conversation(items=None, metadata=None, **kwargs)`
+- `retrieve_conversation(conversation_id, **kwargs)`
+- `update_conversation(conversation_id, metadata=None, **kwargs)`
+- `delete_conversation(conversation_id, **kwargs)`
+- `create_conversation_items(conversation_id, items, include=None, **kwargs)`
+- `list_conversation_items(conversation_id, after=None, include=None, limit=None, order=None, **kwargs)`
+- `retrieve_conversation_item(conversation_id, item_id, include=None, **kwargs)`
+- `delete_conversation_item(conversation_id, item_id, **kwargs)`
+- `compact_response_context(messages=None, model=None, instructions=None, previous_response_id=None, **kwargs)`
+- `submit_mcp_approval_response(previous_response_id, approval_request_id, approve, tools=None, **kwargs)`
+- `delete_response(response_id, **kwargs)`
+
+Minimal polling example:
+
+```python
+provider = OpenAIProvider(model="gpt-5.2", use_responses_api=True)
+queued = await provider.complete("Write a long report.", background=True, store=True)
+response_id = queued.raw_response.id
+
+state = await provider.wait_background_response(response_id, poll_interval=0.5, timeout=30.0)
+if state.completion:
+    print(state.completion.content)
+```
+
+Minimal resumed-stream example:
+
+```python
+cursor = None
+async for event in provider.stream_background_response("resp_123", starting_after=cursor):
+    cursor = event.sequence_number or cursor
+```
+
+Minimal conversation-state example:
+
+```python
+conversation = await provider.create_conversation(
+    items=[{"role": "user", "content": "Summarize the launch plan."}],
+    metadata={"team": "mission-control"},
+)
+
+updated = await provider.update_conversation(
+    conversation.conversation_id,
+    metadata={"team": "mission-control", "phase": "review"},
+)
+
+compacted = await provider.compact_response_context(
+    messages=[{"role": "user", "content": "Summarize the launch plan."}],
+    previous_response_id="resp_123",
+)
+
+items_page = await provider.list_conversation_items(
+    conversation.conversation_id,
+    limit=20,
+    order="asc",
+)
+
+await provider.delete_response("resp_123")
+```
+
+## OpenAI Responses tool descriptors
+
+`OpenAIProvider(..., use_responses_api=True)` now accepts first-class
+Responses tool descriptors from `llm_client.tools`:
+
+- `ResponsesBuiltinTool` for built-in hosted tools such as `web_search`,
+  `file_search`, `computer_use`, `code_interpreter`, `image_generation`, `mcp`,
+  `shell`, and `apply_patch`
+- `ResponsesCustomTool` plus `ResponsesGrammar` for grammar-backed custom tools
+
+Example:
+
+```python
+from llm_client.providers import OpenAIProvider
+from llm_client.tools import ResponsesBuiltinTool, ResponsesCustomTool, ResponsesGrammar
+
+provider = OpenAIProvider(model="gpt-5.2", use_responses_api=True)
+
+result = await provider.complete(
+    "Search the web and return a compact plan.",
+    tools=[
+        ResponsesBuiltinTool.web_search(search_context_size="medium"),
+        ResponsesCustomTool(
+            name="planner",
+            description="Emit a compact plan.",
+            grammar=ResponsesGrammar(syntax="lark", definition='start: "done"'),
+        ),
+    ],
+)
+```
+
+These descriptors are provider-native request objects. They are not registered
+or executed through `ToolRegistry`, which remains the runtime for local
+function tools only.
+
+## OpenAI Responses request controls
+
+`OpenAIProvider(..., use_responses_api=True)` now exposes the following
+OpenAI-specific controls as first-class keyword parameters on `complete(...)`
+and `stream(...)`:
+
+- `include`
+- `prompt_cache_key`
+- `prompt_cache_retention`
+
+Typical uses:
+
+- `include=["reasoning.encrypted_content"]` for stateless reasoning continuity
+- `prompt_cache_key="tenant-a"` to improve prompt-cache routing for repeated prefixes
+- `prompt_cache_retention="24h"` on supported models
 
 ## Live cookbook environment
 
@@ -122,8 +241,16 @@ provider registry and router:
 - priority
 - latency/cost/compliance hints
 
+The default registry now exposes explicit OpenAI Responses capability flags in
+addition to the broader completion/tool/streaming booleans:
+
+- `responses_api`
+- `background_responses`
+- `responses_native_tools`
+- `normalized_output_items`
+
 The runnable reference is
-[06_provider_registry_and_routing.py](/home/namiral/Projects/Packages/intelligence-layer-bif/examples/06_provider_registry_and_routing.py).
+[06_provider_registry_and_routing.py](/home/namiral/Projects/Packages/llm-client-v1/examples/06_provider_registry_and_routing.py).
 
 ## Practical recommendation
 

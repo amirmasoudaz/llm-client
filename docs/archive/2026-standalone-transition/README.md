@@ -18,7 +18,7 @@ Archived materials here include:
 
 For the active package documentation surface, start with:
 
-- [llm-client-guides-index.md](/home/namiral/Projects/Packages/intelligence-layer-bif/docs/llm-client-guides-index.md)
-- [llm-client-package-api-guide.md](/home/namiral/Projects/Packages/intelligence-layer-bif/docs/llm-client-package-api-guide.md)
-- [llm-client-build-and-recipes-guide.md](/home/namiral/Projects/Packages/intelligence-layer-bif/docs/llm-client-build-and-recipes-guide.md)
-- [llm-client-usage-and-capabilities-guide.md](/home/namiral/Projects/Packages/intelligence-layer-bif/docs/llm-client-usage-and-capabilities-guide.md)
+- [llm-client-guides-index.md](/home/namiral/Projects/Packages/llm-client-v1/docs/llm-client-guides-index.md)
+- [llm-client-package-api-guide.md](/home/namiral/Projects/Packages/llm-client-v1/docs/llm-client-package-api-guide.md)
+- [llm-client-build-and-recipes-guide.md](/home/namiral/Projects/Packages/llm-client-v1/docs/llm-client-build-and-recipes-guide.md)
+- [llm-client-usage-and-capabilities-guide.md](/home/namiral/Projects/Packages/llm-client-v1/docs/llm-client-usage-and-capabilities-guide.md)

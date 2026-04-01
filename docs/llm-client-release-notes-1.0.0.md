@@ -7,7 +7,7 @@ standalone, typed, reusable LLM and agentic runtime framework.
 
 This release freezes the `1.x` public package contract defined in:
 
-- [llm-client-public-api-v1.md](/home/namiral/Projects/Packages/intelligence-layer-bif/docs/llm-client-public-api-v1.md)
+- [llm-client-public-api-v1.md](/home/namiral/Projects/Packages/llm-client-v1/docs/llm-client-public-api-v1.md)
 
 ## What 1.0.0 Means
 
@@ -85,7 +85,7 @@ the primary `1.x` promise.
 - the GPT-5 Mini live smoke path was corrected to avoid false failures caused
   by a too-small completion budget
 - a practical build guide was added:
-  [llm-client-build-and-recipes-guide.md](/home/namiral/Projects/Packages/intelligence-layer-bif/docs/llm-client-build-and-recipes-guide.md)
+  [llm-client-build-and-recipes-guide.md](/home/namiral/Projects/Packages/llm-client-v1/docs/llm-client-build-and-recipes-guide.md)
 - the public API map was promoted from draft to frozen `1.x` contract
 - support and semver docs were updated to reflect the `1.x` freeze explicitly
 
@@ -93,11 +93,11 @@ the primary `1.x` promise.
 
 If you are adopting the package in another project, start with:
 
-1. [llm-client-package-api-guide.md](/home/namiral/Projects/Packages/intelligence-layer-bif/docs/llm-client-package-api-guide.md)
-2. [llm-client-build-and-recipes-guide.md](/home/namiral/Projects/Packages/intelligence-layer-bif/docs/llm-client-build-and-recipes-guide.md)
-3. [llm-client-usage-and-capabilities-guide.md](/home/namiral/Projects/Packages/intelligence-layer-bif/docs/llm-client-usage-and-capabilities-guide.md)
-4. [llm-client-examples-guide.md](/home/namiral/Projects/Packages/intelligence-layer-bif/docs/llm-client-examples-guide.md)
-5. [examples/README.md](/home/namiral/Projects/Packages/intelligence-layer-bif/examples/README.md)
+1. [llm-client-package-api-guide.md](/home/namiral/Projects/Packages/llm-client-v1/docs/llm-client-package-api-guide.md)
+2. [llm-client-build-and-recipes-guide.md](/home/namiral/Projects/Packages/llm-client-v1/docs/llm-client-build-and-recipes-guide.md)
+3. [llm-client-usage-and-capabilities-guide.md](/home/namiral/Projects/Packages/llm-client-v1/docs/llm-client-usage-and-capabilities-guide.md)
+4. [llm-client-examples-guide.md](/home/namiral/Projects/Packages/llm-client-v1/docs/llm-client-examples-guide.md)
+5. [examples/README.md](/home/namiral/Projects/Packages/llm-client-v1/examples/README.md)
 
 ## Compatibility Note
 

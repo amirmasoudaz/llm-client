@@ -5,8 +5,8 @@ between a request and the selected provider.
 
 Runnable examples:
 
-- [06_provider_registry_and_routing.py](/home/namiral/Projects/Packages/intelligence-layer-bif/examples/06_provider_registry_and_routing.py)
-- [07_engine_cache_retry_idempotency.py](/home/namiral/Projects/Packages/intelligence-layer-bif/examples/07_engine_cache_retry_idempotency.py)
+- [06_provider_registry_and_routing.py](/home/namiral/Projects/Packages/llm-client-v1/examples/06_provider_registry_and_routing.py)
+- [07_engine_cache_retry_idempotency.py](/home/namiral/Projects/Packages/llm-client-v1/examples/07_engine_cache_retry_idempotency.py)
 
 ## The routing stack
 

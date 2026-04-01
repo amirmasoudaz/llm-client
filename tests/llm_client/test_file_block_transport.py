@@ -79,13 +79,13 @@ def test_openai_responses_content_uses_native_file_transport_for_inline_or_refer
     assert payload[2] == {"type": "input_file", "file_id": "file-123"}
 
 
-def test_openai_responses_content_falls_back_to_extracted_text_for_url_only_files() -> None:
+def test_openai_responses_content_uses_native_file_transport_for_url_only_files() -> None:
     payload = content_blocks_to_openai_responses_content(
         [FileBlock(file_url="https://example.com/guide.pdf", extracted_text="guide body text")],
         mode=ContentHandlingMode.LOSSY,
     )
 
-    assert payload == [{"type": "input_text", "text": "guide body text"}]
+    assert payload == [{"type": "input_file", "file_url": "https://example.com/guide.pdf"}]
 
 
 def test_non_native_providers_use_extracted_text_sidecar_for_file_fallback() -> None:
@@ -99,12 +99,13 @@ def test_non_native_providers_use_extracted_text_sidecar_for_file_fallback() -> 
     assert projection.degradations[0].reason == "provider does not support file content"
 
 
-def test_openai_responses_content_strict_mode_rejects_url_only_files_without_extract() -> None:
-    with pytest.raises(Exception):
-        content_blocks_to_openai_responses_content(
-            [FileBlock(file_url="https://example.com/guide.pdf")],
-            mode=ContentHandlingMode.STRICT,
-        )
+def test_openai_responses_content_strict_mode_accepts_url_only_files() -> None:
+    payload = content_blocks_to_openai_responses_content(
+        [FileBlock(file_url="https://example.com/guide.pdf")],
+        mode=ContentHandlingMode.STRICT,
+    )
+
+    assert payload == [{"type": "input_file", "file_url": "https://example.com/guide.pdf"}]
 
 
 def test_openai_provider_messages_to_api_format_uses_responses_file_transport(tmp_path: Path) -> None:

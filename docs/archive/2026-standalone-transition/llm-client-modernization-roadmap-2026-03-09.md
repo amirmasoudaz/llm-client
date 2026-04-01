@@ -20,8 +20,8 @@ This roadmap assumes:
 
 - Capability audit: [llm-client-capability-audit-2026-03-09.md](./llm-client-capability-audit-2026-03-09.md)
 - Superseded short roadmap pointer: [llm-client-roadmap-2026-03-09.md](./llm-client-roadmap-2026-03-09.md)
-- Current package docs: [`llm_client/README.md`](/home/namiral/Projects/Packages/intelligence-layer-bif/llm_client/README.md)
-- Current package source: [`llm_client`](/home/namiral/Projects/Packages/intelligence-layer-bif/llm_client)
+- Current package docs: [`llm_client/README.md`](/home/namiral/Projects/Packages/llm-client-v1/llm_client/README.md)
+- Current package source: [`llm_client`](/home/namiral/Projects/Packages/llm-client-v1/llm_client)
 
 ## Current Implementation Frontier
 

@@ -284,12 +284,15 @@ class ContentRequestEnvelope:
     model: str
     messages: tuple[ContentMessage, ...]
     tools: tuple[Any, ...] | None = None
-    tool_choice: str | None = None
+    tool_choice: str | dict[str, Any] | None = None
     temperature: float | None = None
     max_tokens: int | None = None
     response_format: str | dict[str, Any] | type | None = None
     reasoning_effort: str | None = None
     reasoning: dict[str, Any] | None = None
+    include: tuple[str, ...] | None = None
+    prompt_cache_key: str | None = None
+    prompt_cache_retention: str | None = None
     extra: dict[str, Any] = field(default_factory=dict)
     stream: bool = False
 
@@ -307,6 +310,9 @@ class ContentRequestEnvelope:
             response_format=self.response_format,
             reasoning_effort=self.reasoning_effort,
             reasoning=self.reasoning,
+            include=list(self.include) if self.include is not None else None,
+            prompt_cache_key=self.prompt_cache_key,
+            prompt_cache_retention=self.prompt_cache_retention,
             extra=dict(self.extra),
             stream=self.stream,
         )
@@ -324,6 +330,9 @@ class ContentRequestEnvelope:
             response_format=spec.response_format,
             reasoning_effort=spec.reasoning_effort,
             reasoning=dict(spec.reasoning) if isinstance(spec.reasoning, dict) else spec.reasoning,
+            include=tuple(spec.include) if spec.include is not None else None,
+            prompt_cache_key=spec.prompt_cache_key,
+            prompt_cache_retention=spec.prompt_cache_retention,
             extra=dict(spec.extra),
             stream=bool(spec.stream),
         )
@@ -341,21 +350,43 @@ class ContentResponseEnvelope:
     raw_response: Any | None = None
 
     def to_completion_result(self) -> Any:
-        from .providers.types import CompletionResult
+        from .providers.types import CompletionResult, NormalizedOutputItem
 
         assistant_message = self.message.to_message()
         content_blocks = [block for block in self.message.blocks if not isinstance(block, ToolCallBlock)]
         content_text = content_blocks_to_text(content_blocks)
+        provider_items: list[dict[str, Any]] | None = None
+        normalized_output_items: list[Any] | None = None
+        refusal: str | None = None
+        for block in self.message.blocks:
+            if not isinstance(block, MetadataBlock):
+                continue
+            data = block.data
+            if data.get("provider") != "openai":
+                continue
+            if isinstance(data.get("responses_output"), list):
+                provider_items = [dict(item) for item in data["responses_output"] if isinstance(item, dict)]
+            if isinstance(data.get("normalized_output_items"), list):
+                normalized_output_items = [
+                    NormalizedOutputItem.from_dict(item)
+                    for item in data["normalized_output_items"]
+                    if isinstance(item, dict)
+                ] or None
+            if isinstance(data.get("refusal"), str):
+                refusal = data["refusal"]
         return CompletionResult(
             content=content_text or None,
             tool_calls=assistant_message.tool_calls,
             usage=self.usage,
             reasoning=self.reasoning,
+            refusal=refusal,
             model=self.model,
             finish_reason=self.finish_reason,
             status=self.status,
             error=self.error,
             raw_response=self.raw_response,
+            output_items=normalized_output_items,
+            provider_items=provider_items,
         )
 
     @classmethod
@@ -783,6 +814,9 @@ def content_blocks_to_openai_responses_content(
         if isinstance(block, FileBlock):
             if block.file_id:
                 parts.append({"type": "input_file", "file_id": block.file_id})
+                continue
+            if block.file_url:
+                parts.append({"type": "input_file", "file_url": block.file_url})
                 continue
             if block.data:
                 filename = block.name or "file"

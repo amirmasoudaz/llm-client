@@ -5,8 +5,8 @@ and provider-aware structured transport.
 
 Runnable examples:
 
-- [05_structured_extraction.py](/home/namiral/Projects/Packages/intelligence-layer-bif/examples/05_structured_extraction.py)
-- [12_benchmarks.py](/home/namiral/Projects/Packages/intelligence-layer-bif/examples/12_benchmarks.py)
+- [05_structured_extraction.py](/home/namiral/Projects/Packages/llm-client-v1/examples/05_structured_extraction.py)
+- [12_benchmarks.py](/home/namiral/Projects/Packages/llm-client-v1/examples/12_benchmarks.py)
 
 ## What the package gives you
 
@@ -69,7 +69,7 @@ stop at unit tests. Measure:
 - repair-attempt distribution
 
 The benchmark reference is
-[12_benchmarks.py](/home/namiral/Projects/Packages/intelligence-layer-bif/examples/12_benchmarks.py).
+[12_benchmarks.py](/home/namiral/Projects/Packages/llm-client-v1/examples/12_benchmarks.py).
 
 ## Practical recommendation
 

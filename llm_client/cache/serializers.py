@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..providers.types import CompletionResult, ToolCall, Usage
+from ..providers.types import CompletionResult, NormalizedOutputItem, ToolCall, Usage
 
 
 def result_to_cache_dict(result: CompletionResult, params: dict[str, Any]) -> dict[str, Any]:
@@ -37,6 +37,9 @@ def result_to_cache_dict(result: CompletionResult, params: dict[str, Any]) -> di
         "model": result.model,
         "finish_reason": result.finish_reason,
         "reasoning": result.reasoning,
+        "refusal": result.refusal,
+        "output_items": [item.to_dict() for item in (result.output_items or [])],
+        "provider_items": [dict(item) for item in (result.provider_items or [])],
     }
 
 
@@ -71,6 +74,9 @@ def cache_dict_to_result(cached: dict[str, Any]) -> CompletionResult:
         model=cached.get("model"),
         finish_reason=cached.get("finish_reason"),
         reasoning=cached.get("reasoning"),
+        refusal=cached.get("refusal"),
+        output_items=[NormalizedOutputItem.from_dict(item) for item in (cached.get("output_items") or [])] or None,
+        provider_items=cached.get("provider_items") or None,
     )
 
 

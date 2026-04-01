@@ -23,6 +23,10 @@ class ProviderCapabilities:
     tool_calling: bool = False
     structured_outputs: bool = False
     reasoning: bool = False
+    responses_api: bool = False
+    background_responses: bool = False
+    responses_native_tools: bool = False
+    normalized_output_items: bool = False
     vision_input: bool = False
     audio_input: bool = False
     file_input: bool = False
@@ -102,6 +106,10 @@ class ProviderRegistry:
         tool_calling: bool | None = None,
         structured_outputs: bool | None = None,
         reasoning: bool | None = None,
+        responses_api: bool | None = None,
+        background_responses: bool | None = None,
+        responses_native_tools: bool | None = None,
+        normalized_output_items: bool | None = None,
         vision_input: bool | None = None,
         audio_input: bool | None = None,
         file_input: bool | None = None,
@@ -122,6 +130,14 @@ class ProviderRegistry:
             if structured_outputs is not None and caps.structured_outputs != structured_outputs:
                 continue
             if reasoning is not None and caps.reasoning != reasoning:
+                continue
+            if responses_api is not None and caps.responses_api != responses_api:
+                continue
+            if background_responses is not None and caps.background_responses != background_responses:
+                continue
+            if responses_native_tools is not None and caps.responses_native_tools != responses_native_tools:
+                continue
+            if normalized_output_items is not None and caps.normalized_output_items != normalized_output_items:
                 continue
             if vision_input is not None and caps.vision_input != vision_input:
                 continue
@@ -210,6 +226,10 @@ def get_default_provider_registry() -> ProviderRegistry:
                 tool_calling=True,
                 structured_outputs=True,
                 reasoning=True,
+                responses_api=True,
+                background_responses=True,
+                responses_native_tools=True,
+                normalized_output_items=True,
                 vision_input=True,
                 audio_input=True,
                 file_input=True,
@@ -232,6 +252,10 @@ def get_default_provider_registry() -> ProviderRegistry:
                 tool_calling=True,
                 structured_outputs=False,
                 reasoning=True,
+                responses_api=False,
+                background_responses=False,
+                responses_native_tools=False,
+                normalized_output_items=False,
                 vision_input=True,
                 file_input=True,
             ),
@@ -254,6 +278,10 @@ def get_default_provider_registry() -> ProviderRegistry:
                 tool_calling=True,
                 structured_outputs=True,
                 reasoning=False,
+                responses_api=False,
+                background_responses=False,
+                responses_native_tools=False,
+                normalized_output_items=False,
                 vision_input=True,
                 audio_input=True,
                 file_input=True,

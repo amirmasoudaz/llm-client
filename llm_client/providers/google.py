@@ -38,6 +38,7 @@ from ..errors import (
 )
 from ..hashing import cache_key as compute_cache_key
 from ..rate_limit import Limiter
+from ..tools.base import ToolDefinition, ensure_function_tools_only
 from .base import BaseProvider
 from .types import (
     CompletionResult,
@@ -51,9 +52,6 @@ from .types import (
     ToolCallDelta,
     Usage,
 )
-
-if TYPE_CHECKING:
-    from ..tools.base import Tool
 
 try:
     from google import genai
@@ -250,13 +248,14 @@ class GoogleProvider(BaseProvider):
     def _content_blocks_to_google_parts(blocks: list[Any]) -> list[Any]:
         return content_blocks_to_google_parts(blocks, types_module=types)
 
-    def _convert_tools(self, tools: list[Tool]) -> list[Any] | None:
+    def _convert_tools(self, tools: list[ToolDefinition]) -> list[Any] | None:
         """Convert tools to Gemini format."""
-        if not tools:
+        function_tools = ensure_function_tools_only(tools, provider="google")
+        if not function_tools:
             return None
 
         function_declarations = []
-        for tool in tools:
+        for tool in function_tools:
             function_declarations.append(
                 types.FunctionDeclaration(
                     name=tool.name, description=tool.description, parameters_json_schema=tool.parameters
@@ -269,7 +268,7 @@ class GoogleProvider(BaseProvider):
         self,
         messages: MessageInput,
         *,
-        tools: list[Tool] | None = None,
+        tools: list[ToolDefinition] | None = None,
         tool_choice: str | None = None,
         temperature: float | None = None,
         max_tokens: int | None = None,
@@ -439,7 +438,7 @@ class GoogleProvider(BaseProvider):
         self,
         messages: MessageInput,
         *,
-        tools: list[Tool] | None = None,
+        tools: list[ToolDefinition] | None = None,
         tool_choice: str | None = None,
         temperature: float | None = None,
         max_tokens: int | None = None,

@@ -16,7 +16,7 @@ As of `1.0.0`, the stable namespace map is frozen for the `1.x` line.
 
 The stable API scope is defined in:
 
-- [llm-client-public-api-v1.md](/home/namiral/Projects/Packages/intelligence-layer-bif/docs/llm-client-public-api-v1.md)
+- [llm-client-public-api-v1.md](/home/namiral/Projects/Packages/llm-client-v1/docs/llm-client-public-api-v1.md)
 
 Breaking changes are evaluated against that stable API map, not against
 internal helper modules or compatibility surfaces.

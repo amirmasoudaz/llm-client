@@ -7,6 +7,7 @@ import uuid
 from cookbook_support import (
     build_live_provider,
     close_provider,
+    fail_or_skip,
     print_heading,
     print_json,
     require_database_dsn,
@@ -109,7 +110,13 @@ async def main() -> None:
     pool = None
     try:
         dsn = require_database_dsn()
-        pool = await asyncpg.create_pool(dsn, min_size=1, max_size=2)
+        try:
+            pool = await asyncpg.create_pool(dsn, min_size=1, max_size=2)
+        except (OSError, asyncpg.PostgresError) as exc:
+            fail_or_skip(
+                "The PostgreSQL persistence example could not connect to the configured database. "
+                f"Check LLM_CLIENT_EXAMPLE_PG_DSN and database availability. {type(exc).__name__}: {exc}"
+            )
         repository = PostgresRepository(pool, compress=True)
         await repository.ensure_table(TABLE_NAME)
 

@@ -1,7 +1,11 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
-  "required": ["version", "defaults", "models"],
+  "required": [
+    "version",
+    "defaults",
+    "models"
+  ],
   "additionalProperties": false,
   "properties": {
     "version": {
@@ -39,39 +43,127 @@
           "file_input",
           "deprecated",
           "rate_limits",
-          "usage_costs"
+          "usage_costs",
+          "responses_api",
+          "background_responses",
+          "responses_native_tools",
+          "normalized_output_items"
         ],
         "additionalProperties": false,
         "properties": {
-          "key": {"type": "string", "minLength": 1},
-          "provider": {"type": "string", "minLength": 1},
-          "model_name": {"type": "string", "minLength": 1},
-          "category": {"type": "string", "enum": ["completions", "embeddings"]},
-          "context_window": {"type": "integer", "minimum": 1},
-          "max_output": {"type": ["integer", "null"], "minimum": 1},
-          "output_dimensions": {"type": ["integer", "null"], "minimum": 1},
-          "encoding": {"type": "string", "minLength": 1},
-          "reasoning": {"type": "boolean"},
+          "key": {
+            "type": "string",
+            "minLength": 1
+          },
+          "provider": {
+            "type": "string",
+            "minLength": 1
+          },
+          "model_name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "completions",
+              "embeddings",
+              "images",
+              "audio",
+              "moderations",
+              "realtime"
+            ]
+          },
+          "context_window": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "max_output": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "output_dimensions": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "encoding": {
+            "type": "string",
+            "minLength": 1
+          },
+          "reasoning": {
+            "type": "boolean"
+          },
           "reasoning_efforts": {
             "type": "array",
-            "items": {"type": "string", "minLength": 1}
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
           },
-          "default_reasoning_effort": {"type": ["string", "null"]},
-          "tool_calling": {"type": "boolean"},
-          "streaming": {"type": "boolean"},
-          "structured_outputs": {"type": "boolean"},
-          "vision_input": {"type": "boolean"},
-          "audio_input": {"type": "boolean"},
-          "file_input": {"type": "boolean"},
-          "deprecated": {"type": "boolean"},
-          "replacement": {"type": ["string", "null"]},
+          "default_reasoning_effort": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tool_calling": {
+            "type": "boolean"
+          },
+          "streaming": {
+            "type": "boolean"
+          },
+          "structured_outputs": {
+            "type": "boolean"
+          },
+          "vision_input": {
+            "type": "boolean"
+          },
+          "audio_input": {
+            "type": "boolean"
+          },
+          "file_input": {
+            "type": "boolean"
+          },
+          "deprecated": {
+            "type": "boolean"
+          },
+          "replacement": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "rate_limits": {
             "type": "object",
-            "additionalProperties": {"type": "integer", "minimum": 0}
+            "additionalProperties": {
+              "type": "integer",
+              "minimum": 0
+            }
           },
           "usage_costs": {
             "type": "object",
-            "additionalProperties": {"type": "number", "minimum": 0}
+            "additionalProperties": {
+              "type": "number",
+              "minimum": 0
+            }
+          },
+          "responses_api": {
+            "type": "boolean"
+          },
+          "background_responses": {
+            "type": "boolean"
+          },
+          "responses_native_tools": {
+            "type": "boolean"
+          },
+          "normalized_output_items": {
+            "type": "boolean"
           }
         }
       }

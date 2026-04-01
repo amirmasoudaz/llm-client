@@ -40,7 +40,7 @@ from llm_client.structured_benchmarks import StructuredBenchmarkCase
 from llm_client.summarization import LLMSummarizer
 
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[1]
 BASELINE_PATH = ROOT / "contracts" / "benchmarks" / "llm_client_deterministic_baseline.v1.json"
 ARTIFACT_PATH = ROOT / "tmp" / "cookbook-live-benchmark-report.json"
 

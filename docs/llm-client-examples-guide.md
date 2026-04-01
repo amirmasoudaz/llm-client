@@ -1,7 +1,7 @@
 # llm-client Examples Guide
 
 This guide explains how to use the cookbook under
-[examples/README.md](/home/namiral/Projects/Packages/intelligence-layer-bif/examples/README.md)
+[examples/README.md](/home/namiral/Projects/Packages/llm-client-v1/examples/README.md)
 as a package adoption surface.
 
 ## What The Cookbook Is For
@@ -35,6 +35,33 @@ Optional infrastructure:
 
 - `LLM_CLIENT_EXAMPLE_PG_DSN` for persistence examples
 - `QDRANT_URL` and optionally `QDRANT_API_KEY` for retrieval/cache examples
+- `LLM_CLIENT_EXAMPLE_MCP_PREVIOUS_RESPONSE_ID` and
+  `LLM_CLIENT_EXAMPLE_MCP_APPROVAL_REQUEST_ID` for the MCP approval
+  continuation example
+- optionally `LLM_CLIENT_EXAMPLE_MCP_APPROVE=0|1` to flip the approval
+  continuation outcome
+- `LLM_CLIENT_EXAMPLE_REALTIME_MODEL` for the realtime wrapper example
+- `LLM_CLIENT_EXAMPLE_REALTIME_TRANSCRIPTION_MODEL` for the realtime
+  transcription example
+- `LLM_CLIENT_EXAMPLE_VECTOR_STORE_ID`,
+  `LLM_CLIENT_EXAMPLE_VECTOR_STORE_FILE_IDS`, and
+  `LLM_CLIENT_EXAMPLE_VECTOR_STORE_UPLOAD_PATHS` for the vector-store batch
+  example
+- `LLM_CLIENT_EXAMPLE_DEEP_RESEARCH_MODEL` and
+  `LLM_CLIENT_EXAMPLE_DEEP_RESEARCH_PROMPT` for the deep-research
+  examples
+- `LLM_CLIENT_EXAMPLE_DEEP_RESEARCH_CLARIFICATIONS` and optionally
+  `LLM_CLIENT_EXAMPLE_DEEP_RESEARCH_WAIT=0|1` for the staged deep-research
+  example
+- `LLM_CLIENT_EXAMPLE_OPENAI_TOOLS_MODEL`,
+  `LLM_CLIENT_EXAMPLE_MCP_SERVER_URL`, and/or
+  `LLM_CLIENT_EXAMPLE_CONNECTOR_ID` for the MCP/connector workflow example
+- optionally `LLM_CLIENT_EXAMPLE_MCP_AUTHORIZATION` and
+  `LLM_CLIENT_EXAMPLE_CONNECTOR_AUTHORIZATION` for authenticated MCP and
+  connector workflows
+- `LLM_CLIENT_EXAMPLE_UPLOAD_FILE_PATH` and optionally
+  `LLM_CLIENT_EXAMPLE_FILE_PURPOSE` / `LLM_CLIENT_EXAMPLE_KEEP_UPLOADED_FILE`
+  for the generic OpenAI Files API example
 
 ## Example Categories
 
@@ -58,6 +85,19 @@ These demonstrate stable package capabilities directly:
 - `14` sync wrappers
 - `15` rate limiting
 - `35` file block transport
+- `38` OpenAI background Responses lifecycle
+- `39` OpenAI conversation state workflow
+- `40` OpenAI normalized output items
+- `41` OpenAI background stream resume/reconnect
+- `42` OpenAI prompt caching and encrypted reasoning continuity
+- `43` OpenAI long-running conversation compaction
+- `46` OpenAI realtime connection wrapper
+- `47` OpenAI vector-store file batches
+- `48` OpenAI deep-research clarify/rewrite kickoff
+- `49` OpenAI realtime transcription session
+- `50` OpenAI MCP and connector workflows
+- `51` OpenAI staged deep research orchestration
+- `52` OpenAI Files API upload/retrieve/list/content/delete flow
 
 ### Application-shaped examples
 
@@ -84,6 +124,8 @@ These show realistic compositions of stable package primitives:
 - `34` end-to-end mission control
 - `36` direct PostgreSQL adaptor usage
 - `37` tool-wrapped SQL adaptor agent
+- `44` engine-orchestrated OpenAI workflow
+- `45` MCP approval continuation from stored OpenAI response state
 
 Current experimental classification:
 
@@ -138,8 +180,14 @@ For a new adopter:
 1. `01`, `02`, `05`
 2. `07`, `08`, `09`
 3. `10`, `11`, `35`
-4. `36`, `37` if you plan to expose controlled service access through tools
-5. application-shaped examples that match your target use case
+4. `38`, `39`, `40` if you plan to use OpenAI Responses lifecycle/state APIs
+5. `41`, `42`, `43` if you need reconnectable background streams, prompt
+   caching controls, or context compaction
+6. `44`, `45`, `46`, `47`, `48`, `49`, `50`, `51` if you plan to orchestrate
+   stored OpenAI workflows, realtime product surfaces, or hosted-tool
+   workflows at the engine layer
+7. `36`, `37` if you plan to expose controlled service access through tools
+8. application-shaped examples that match your target use case
 
 ## Per-Example Purpose Notes
 

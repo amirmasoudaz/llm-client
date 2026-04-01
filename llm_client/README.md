@@ -1,4 +1,4 @@
-# llm-client Package Reference (v1.0.0)
+# llm-client Package Reference (v1.1.0)
 
 This document is the canonical, user-facing reference for the `llm-client` Python package (import path: `llm_client`).
 It describes capabilities, API surface, configuration, expected inputs/outputs, and known limitations based on the
@@ -240,7 +240,17 @@ from llm_client.context import ExecutionContext
 from llm_client.observability import InMemoryEventBus, ReplayRecorder
 from llm_client.providers import OpenAIProvider
 from llm_client.tools import tool
-from llm_client.types import CompletionResult, RequestContext
+from llm_client.types import (
+    BackgroundResponseResult,
+    CompactionResult,
+    CompletionResult,
+    ConversationItemResource,
+    ConversationItemsPage,
+    ConversationResource,
+    DeletionResult,
+    NormalizedOutputItem,
+    RequestContext,
+)
 from llm_client.validation import ValidationError, validate_spec
 ```
 
@@ -473,6 +483,15 @@ Important class attributes (defined on subclasses):
   - `token_streaming_support: bool`
 - `encoding: str` (tiktoken encoding name)
 
+The asset-backed model catalog and provider registry expose a richer
+capability view above these raw profile attributes. For OpenAI completions
+models, that now includes:
+
+- `responses_api`
+- `background_responses`
+- `responses_native_tools`
+- `normalized_output_items`
+
 Key methods:
 
 - `ModelProfile.get(key: str) -> type[ModelProfile]`
@@ -492,10 +511,16 @@ Token counting notes:
 The package defines a catalog of model keys in `llm_client.models` (examples):
 
 - Completions:
-  - `gpt-5`, `gpt-5-mini`, `gpt-5-mini`, `gpt-5.1`, `gpt-5.2`
+  - `gpt-5`, `gpt-5-chat-latest`, `gpt-5-mini`, `gpt-5-nano`,
+    `gpt-5.1`, `gpt-5.1-codex`, `gpt-5.2`, `gpt-5.2-pro`,
+    `gpt-4.1`, `gpt-4o`, `o3`, `o4-mini`, `o3-deep-research`
   - several Claude and Gemini entries are also defined as `ModelProfile` subclasses (keys vary)
 - Embeddings:
-  - `text-embedding-3-large`, `text-embedding-3-small`
+  - `text-embedding-3-large`, `text-embedding-3-small`,
+    `text-embedding-ada-002`
+- Images / audio / realtime:
+  - `gpt-image-1.5`, `gpt-image-1`, `gpt-audio`, `gpt-audio-mini`,
+    `gpt-realtime`, `gpt-realtime-mini`
 
 Use either:
 
@@ -546,6 +571,7 @@ Key methods:
 Fields:
 
 - `input_tokens`, `output_tokens`, `total_tokens`, `input_tokens_cached`
+- `output_tokens_reasoning` (Responses/reasoning models when the provider exposes it)
 - `input_cost`, `output_cost`, `total_cost`
 
 Methods:
@@ -561,11 +587,14 @@ Fields:
 - `tool_calls: list[ToolCall] | None`
 - `usage: Usage | None`
 - `reasoning: str | None`
+- `refusal: str | None`
+- `output_items: list[NormalizedOutputItem] | None`
 - `model: str | None`
 - `finish_reason: str | None`
 - `status: int = 200`
 - `error: str | None`
 - `raw_response: Any | None` (debugging; not always set)
+- `provider_items: list[dict[str, Any]] | None` (provider-native replay/debug surface)
 
 Properties:
 
@@ -576,6 +605,21 @@ Methods:
 
 - `to_message() -> Message` (assistant message with tool_calls)
 - `to_dict() -> dict[str, Any]`
+
+### `NormalizedOutputItem` (dataclass)
+
+Stable normalized view over rich provider output items.
+
+Fields:
+
+- `type: str`
+- `id: str | None`
+- `call_id: str | None`
+- `status: str | None`
+- `name: str | None`
+- `text: str | None`
+- `url: str | None`
+- `details: dict[str, Any]`
 
 ### `EmbeddingResult` (dataclass)
 
@@ -619,6 +663,120 @@ Expected `StreamEvent.data` shapes:
 - `DONE`: `CompletionResult`
 - `ERROR`: typically `dict[str, Any]` like `{"status": int, "error": str}`
 
+Additional stream metadata:
+
+- `sequence_number: int | None` is present when the underlying provider emits a resumable event cursor, such as OpenAI background Responses streaming.
+
+### `BackgroundResponseResult` (dataclass)
+
+Fields:
+
+- `response_id: str`
+- `lifecycle_status: str`
+- `completion: CompletionResult | None`
+- `error: str | None`
+- `raw_response: Any | None`
+
+Properties:
+
+- `ok: bool`
+- `is_terminal: bool`
+
+Methods:
+
+- `to_dict() -> dict[str, Any]`
+
+### `ConversationResource` (dataclass)
+
+Fields:
+
+- `conversation_id: str`
+- `created_at: int | None`
+- `metadata: dict[str, Any] | None`
+- `deleted: bool | None`
+- `raw_response: Any | None`
+
+Properties:
+
+- `ok: bool`
+
+Methods:
+
+- `to_dict() -> dict[str, Any]`
+
+### `CompactionResult` (dataclass)
+
+Fields:
+
+- `compaction_id: str`
+- `created_at: int | None`
+- `usage: Usage | None`
+- `output_items: list[NormalizedOutputItem] | None`
+- `provider_items: list[dict[str, Any]] | None`
+- `raw_response: Any | None`
+
+Properties:
+
+- `ok: bool`
+
+Methods:
+
+- `to_dict() -> dict[str, Any]`
+
+### `DeletionResult` (dataclass)
+
+Fields:
+
+- `resource_id: str`
+- `deleted: bool`
+- `raw_response: Any | None`
+
+Properties:
+
+- `ok: bool`
+
+Methods:
+
+- `to_dict() -> dict[str, Any]`
+
+### `ConversationItemResource` (dataclass)
+
+Fields:
+
+- `item_id: str | None`
+- `item_type: str`
+- `role: str | None`
+- `status: str | None`
+- `content: Any | None`
+- `output_items: list[NormalizedOutputItem] | None`
+- `raw_item: dict[str, Any] | None`
+
+Properties:
+
+- `ok: bool`
+
+Methods:
+
+- `to_dict() -> dict[str, Any]`
+
+### `ConversationItemsPage` (dataclass)
+
+Fields:
+
+- `items: list[ConversationItemResource]`
+- `first_id: str | None`
+- `last_id: str | None`
+- `has_more: bool`
+- `raw_response: Any | None`
+
+Properties:
+
+- `ok: bool`
+
+Methods:
+
+- `to_dict() -> dict[str, Any]`
+
 ### `normalize_messages(messages: MessageInput) -> list[Message]`
 
 Accepted `MessageInput`:
@@ -641,6 +799,75 @@ A provider implements:
 - `complete(messages, tools=None, tool_choice=None, temperature=None, max_tokens=None, response_format=None, **kwargs)`
 - `stream(messages, tools=None, tool_choice=None, temperature=None, max_tokens=None, **kwargs)`
 - `embed(inputs, **kwargs)`
+- `moderate(inputs, **kwargs)`
+- `generate_image(prompt, **kwargs)`
+- `edit_image(image, prompt, **kwargs)`
+- `transcribe_audio(file, **kwargs)`
+- `translate_audio(file, **kwargs)`
+- `synthesize_speech(text, voice, **kwargs)`
+- `create_file(file, purpose, **kwargs)`
+- `retrieve_file(file_id, **kwargs)`
+- `list_files(**kwargs)`
+- `delete_file(file_id, **kwargs)`
+- `get_file_content(file_id, **kwargs)`
+- `create_vector_store(**kwargs)`
+- `retrieve_vector_store(vector_store_id, **kwargs)`
+- `update_vector_store(vector_store_id, **kwargs)`
+- `delete_vector_store(vector_store_id, **kwargs)`
+- `list_vector_stores(**kwargs)`
+- `search_vector_store(vector_store_id, query, **kwargs)`
+- `create_fine_tuning_job(**kwargs)`
+- `retrieve_fine_tuning_job(job_id, **kwargs)`
+- `cancel_fine_tuning_job(job_id, **kwargs)`
+- `list_fine_tuning_jobs(**kwargs)`
+- `list_fine_tuning_events(job_id, **kwargs)`
+- `create_realtime_client_secret(**kwargs)`
+- `create_realtime_transcription_session(**kwargs)`
+- `connect_realtime(**kwargs)`
+- `connect_realtime_transcription(**kwargs)`
+- `create_realtime_call(sdp, **kwargs)`
+- `accept_realtime_call(call_id, **kwargs)`
+- `reject_realtime_call(call_id, **kwargs)`
+- `hangup_realtime_call(call_id, **kwargs)`
+- `refer_realtime_call(call_id, target_uri, **kwargs)`
+- `unwrap_webhook(payload, headers, secret=None)`
+- `verify_webhook_signature(payload, headers, secret=None, tolerance=300)`
+- `create_vector_store_file(vector_store_id, file_id, **kwargs)`
+- `upload_vector_store_file(vector_store_id, file, **kwargs)`
+- `list_vector_store_files(vector_store_id, **kwargs)`
+- `retrieve_vector_store_file(vector_store_id, file_id, **kwargs)`
+- `update_vector_store_file(vector_store_id, file_id, **kwargs)`
+- `delete_vector_store_file(vector_store_id, file_id, **kwargs)`
+- `get_vector_store_file_content(vector_store_id, file_id, **kwargs)`
+- `poll_vector_store_file(vector_store_id, file_id, **kwargs)`
+- `create_vector_store_file_and_poll(vector_store_id, file_id, **kwargs)`
+- `upload_vector_store_file_and_poll(vector_store_id, file, **kwargs)`
+- `create_vector_store_file_batch(vector_store_id, **kwargs)`
+- `retrieve_vector_store_file_batch(vector_store_id, batch_id, **kwargs)`
+- `cancel_vector_store_file_batch(vector_store_id, batch_id, **kwargs)`
+- `poll_vector_store_file_batch(vector_store_id, batch_id, **kwargs)`
+- `list_vector_store_file_batch_files(vector_store_id, batch_id, **kwargs)`
+- `create_vector_store_file_batch_and_poll(vector_store_id, **kwargs)`
+- `upload_vector_store_file_batch_and_poll(vector_store_id, files, **kwargs)`
+- `clarify_deep_research_task(prompt, **kwargs)`
+- `rewrite_deep_research_prompt(prompt, **kwargs)`
+- `respond_with_web_search(prompt, **kwargs)`
+- `respond_with_file_search(prompt, vector_store_ids, **kwargs)`
+- `respond_with_code_interpreter(prompt, **kwargs)`
+- `respond_with_remote_mcp(prompt, **kwargs)`
+- `respond_with_connector(prompt, **kwargs)`
+- `start_deep_research(prompt, **kwargs)`
+- `run_deep_research(prompt, **kwargs)`
+- `retrieve_background_response(response_id, **kwargs)`
+- `cancel_background_response(response_id, **kwargs)`
+- `stream_background_response(response_id, starting_after=None, **kwargs)`
+- `wait_background_response(response_id, poll_interval=2.0, timeout=None, **kwargs)`
+- `create_conversation(items=None, metadata=None, **kwargs)`
+- `retrieve_conversation(conversation_id, **kwargs)`
+- `update_conversation(conversation_id, metadata=None, **kwargs)`
+- `delete_conversation(conversation_id, **kwargs)`
+- `compact_response_context(messages=None, model=None, instructions=None, previous_response_id=None, **kwargs)`
+- `submit_mcp_approval_response(previous_response_id, approval_request_id, approve, tools=None, **kwargs)`
 - `count_tokens(content)`
 - `parse_usage(raw_usage)`
 - `close()`
@@ -666,6 +893,7 @@ Capabilities:
 
 - Completions (non-streaming and streaming)
 - Tool calling (OpenAI tool format)
+- Responses built-in tools and grammar-backed custom tools when `use_responses_api=True`
 - Reasoning-effort parameters for reasoning-capable models
 - Embeddings
 - Optional caching backends
@@ -698,14 +926,138 @@ Key methods:
 - `await provider.complete(messages, tools=None, tool_choice=None, temperature=None, max_tokens=None, response_format=None, **kwargs) -> CompletionResult`
 - `provider.stream(...) -> AsyncIterator[StreamEvent]`
 - `await provider.embed(inputs: str | list[str], **kwargs) -> EmbeddingResult`
+- `await provider.moderate(inputs, **kwargs) -> ModerationResult`
+- `await provider.generate_image(prompt: str, **kwargs) -> ImageGenerationResult`
+- `await provider.edit_image(image, prompt: str, **kwargs) -> ImageGenerationResult`
+- `await provider.transcribe_audio(file, **kwargs) -> AudioTranscriptionResult`
+- `await provider.translate_audio(file, **kwargs) -> AudioTranscriptionResult`
+- `await provider.synthesize_speech(text: str, voice: str, **kwargs) -> AudioSpeechResult`
+- `await provider.create_file(file, purpose: str, **kwargs) -> FileResource`
+- `await provider.retrieve_file(file_id: str, **kwargs) -> FileResource`
+- `await provider.list_files(**kwargs) -> FilesPage`
+- `await provider.delete_file(file_id: str, **kwargs) -> DeletionResult`
+- `await provider.get_file_content(file_id: str, **kwargs) -> FileContentResult`
+- `await provider.create_vector_store(**kwargs) -> VectorStoreResource`
+- `await provider.retrieve_vector_store(vector_store_id: str, **kwargs) -> VectorStoreResource`
+- `await provider.update_vector_store(vector_store_id: str, **kwargs) -> VectorStoreResource`
+- `await provider.delete_vector_store(vector_store_id: str, **kwargs) -> DeletionResult`
+- `await provider.list_vector_stores(**kwargs) -> VectorStoresPage`
+- `await provider.search_vector_store(vector_store_id: str, query, **kwargs) -> VectorStoreSearchResult`
+- `await provider.create_fine_tuning_job(**kwargs) -> FineTuningJobResult`
+- `await provider.retrieve_fine_tuning_job(job_id: str, **kwargs) -> FineTuningJobResult`
+- `await provider.cancel_fine_tuning_job(job_id: str, **kwargs) -> FineTuningJobResult`
+- `await provider.list_fine_tuning_jobs(**kwargs) -> FineTuningJobsPage`
+- `await provider.list_fine_tuning_events(job_id: str, **kwargs) -> FineTuningJobEventsPage`
+- `await provider.create_realtime_client_secret(**kwargs) -> RealtimeClientSecretResult`
+- `await provider.create_realtime_transcription_session(**kwargs) -> RealtimeTranscriptionSessionResult`
+- `await provider.connect_realtime(**kwargs) -> RealtimeConnection`
+- `await provider.connect_realtime_transcription(**kwargs) -> RealtimeConnection`
+- `await provider.create_realtime_call(sdp: str, **kwargs) -> RealtimeCallResult`
+- `await provider.accept_realtime_call(call_id: str, **kwargs) -> RealtimeCallResult`
+- `await provider.reject_realtime_call(call_id: str, **kwargs) -> RealtimeCallResult`
+- `await provider.hangup_realtime_call(call_id: str, **kwargs) -> RealtimeCallResult`
+- `await provider.refer_realtime_call(call_id: str, target_uri: str, **kwargs) -> RealtimeCallResult`
+- `await provider.unwrap_webhook(payload, headers, secret=None) -> WebhookEventResult`
+- `await provider.verify_webhook_signature(payload, headers, secret=None, tolerance=300) -> bool`
+- `await provider.create_vector_store_file(vector_store_id: str, file_id: str, **kwargs) -> VectorStoreFileResource`
+- `await provider.upload_vector_store_file(vector_store_id: str, file, **kwargs) -> VectorStoreFileResource`
+- `await provider.list_vector_store_files(vector_store_id: str, **kwargs) -> VectorStoreFilesPage`
+- `await provider.retrieve_vector_store_file(vector_store_id: str, file_id: str, **kwargs) -> VectorStoreFileResource`
+- `await provider.update_vector_store_file(vector_store_id: str, file_id: str, **kwargs) -> VectorStoreFileResource`
+- `await provider.delete_vector_store_file(vector_store_id: str, file_id: str, **kwargs) -> DeletionResult`
+- `await provider.get_vector_store_file_content(vector_store_id: str, file_id: str, **kwargs) -> VectorStoreFileContentResult`
+- `await provider.poll_vector_store_file(vector_store_id: str, file_id: str, **kwargs) -> VectorStoreFileResource`
+- `await provider.create_vector_store_file_and_poll(vector_store_id: str, file_id: str, **kwargs) -> VectorStoreFileResource`
+- `await provider.upload_vector_store_file_and_poll(vector_store_id: str, file, **kwargs) -> VectorStoreFileResource`
+- `await provider.create_vector_store_file_batch(vector_store_id: str, **kwargs) -> VectorStoreFileBatchResource`
+- `await provider.retrieve_vector_store_file_batch(vector_store_id: str, batch_id: str, **kwargs) -> VectorStoreFileBatchResource`
+- `await provider.cancel_vector_store_file_batch(vector_store_id: str, batch_id: str, **kwargs) -> VectorStoreFileBatchResource`
+- `await provider.poll_vector_store_file_batch(vector_store_id: str, batch_id: str, **kwargs) -> VectorStoreFileBatchResource`
+- `await provider.list_vector_store_file_batch_files(vector_store_id: str, batch_id: str, **kwargs) -> VectorStoreFilesPage`
+- `await provider.create_vector_store_file_batch_and_poll(vector_store_id: str, **kwargs) -> VectorStoreFileBatchResource`
+- `await provider.upload_vector_store_file_batch_and_poll(vector_store_id: str, files, **kwargs) -> VectorStoreFileBatchResource`
+- `await provider.clarify_deep_research_task(prompt: str, **kwargs) -> CompletionResult`
+- `await provider.rewrite_deep_research_prompt(prompt: str, **kwargs) -> CompletionResult`
+- `await provider.respond_with_web_search(prompt: str, **kwargs) -> CompletionResult`
+- `await provider.respond_with_file_search(prompt: str, vector_store_ids, **kwargs) -> CompletionResult`
+- `await provider.respond_with_code_interpreter(prompt: str, **kwargs) -> CompletionResult`
+- `await provider.respond_with_remote_mcp(prompt: str, **kwargs) -> CompletionResult`
+- `await provider.respond_with_connector(prompt: str, **kwargs) -> CompletionResult`
+- `await provider.start_deep_research(prompt: str, **kwargs) -> CompletionResult`
+- `await provider.run_deep_research(prompt: str, **kwargs) -> DeepResearchRunResult`
+- `await provider.retrieve_background_response(response_id: str, **kwargs) -> BackgroundResponseResult`
+- `await provider.cancel_background_response(response_id: str, **kwargs) -> BackgroundResponseResult`
+- `provider.stream_background_response(response_id: str, starting_after: int | None = None, **kwargs) -> AsyncIterator[StreamEvent]`
+- `await provider.wait_background_response(response_id: str, poll_interval: float = 2.0, timeout: float | None = None, **kwargs) -> BackgroundResponseResult`
+- `await provider.create_conversation(items=None, metadata=None, **kwargs) -> ConversationResource`
+- `await provider.retrieve_conversation(conversation_id: str, **kwargs) -> ConversationResource`
+- `await provider.update_conversation(conversation_id: str, metadata=None, **kwargs) -> ConversationResource`
+- `await provider.delete_conversation(conversation_id: str, **kwargs) -> ConversationResource`
+- `await provider.create_conversation_items(conversation_id: str, items, include=None, **kwargs) -> ConversationItemsPage`
+- `await provider.list_conversation_items(conversation_id: str, after=None, include=None, limit=None, order=None, **kwargs) -> ConversationItemsPage`
+- `await provider.retrieve_conversation_item(conversation_id: str, item_id: str, include=None, **kwargs) -> ConversationItemResource`
+- `await provider.delete_conversation_item(conversation_id: str, item_id: str, **kwargs) -> ConversationResource`
+- `await provider.compact_response_context(messages=None, model=None, instructions=None, previous_response_id=None, **kwargs) -> CompactionResult`
+- `await provider.submit_mcp_approval_response(previous_response_id: str, approval_request_id: str, approve: bool, tools=None, **kwargs) -> CompletionResult`
+- `await provider.delete_response(response_id: str, **kwargs) -> DeletionResult`
 - `await provider.warm_cache() -> None`
 - `await provider.close() -> None`
 
 Notes:
 
 - The provider uses `openai.AsyncOpenAI`.
-- If `use_responses_api=True`, the provider will use OpenAI’s responses-style API behavior when implemented in this module.
+- If `use_responses_api=True`, the provider will use OpenAI’s Responses API behavior, including manual state replay, background response lifecycle methods, and resumed background streaming.
+- If `use_responses_api=True`, the provider also exposes OpenAI Conversations lifecycle methods, conversation item CRUD/list operations, stored-response deletion, and `/responses/compact` through first-class package APIs.
+- Provider-native Responses tools can be supplied as `ResponsesBuiltinTool` and `ResponsesCustomTool` descriptors from `llm_client.tools`.
+- OpenAI request controls `include`, `prompt_cache_key`, and `prompt_cache_retention` are now first-class parameters on `complete(...)` and `stream(...)`.
+- Built-in/custom Responses tools are request-side abstractions only; local execution via `ToolRegistry` remains function-tool only.
+- `CompletionResult.output_items` is the stable rich-output surface. `CompletionResult.provider_items` remains available for exact provider replay/debugging and may evolve with provider payloads.
+- The provider now also exposes direct moderation, image, speech, fine-tuning, realtime connection/call and transcription-session helpers, webhook helpers, vector-store-file polling and batches, hosted Responses tool workflow helpers, and staged deep-research orchestration.
 - Additional `**kwargs` are provider-specific and may be forwarded to the underlying OpenAI SDK calls.
+
+Background workflow example:
+
+```python
+import asyncio
+from llm_client.providers import OpenAIProvider
+
+async def main():
+    provider = OpenAIProvider(model="gpt-5.2", use_responses_api=True)
+
+    queued = await provider.complete(
+        "Write a long report about orbital mechanics.",
+        background=True,
+        store=True,
+    )
+    response_id = getattr(queued.raw_response, "id")
+
+    state = await provider.wait_background_response(response_id, poll_interval=0.5, timeout=30.0)
+    if state.completion:
+        print(state.completion.content)
+
+    await provider.close()
+
+asyncio.run(main())
+```
+
+Conversation and compaction example:
+
+```python
+provider = OpenAIProvider(model="gpt-5", use_responses_api=True)
+
+conversation = await provider.create_conversation(
+    items=[Message.user("Summarize the launch plan.")],
+    metadata={"team": "mission-control"},
+)
+
+compacted = await provider.compact_response_context(
+    messages=[Message.user("Summarize the launch plan."), Message.user("Now make it shorter.")],
+    previous_response_id="resp_123",
+)
+
+print(conversation.conversation_id)
+print(compacted.compaction_id)
+```
 
 ### AnthropicProvider (`llm_client.providers.anthropic.AnthropicProvider`)
 
@@ -847,6 +1199,93 @@ Runs `complete(...)` concurrently under internal semaphore:
 
 - engine has default semaphore from `max_concurrency`
 - `max_concurrency=` here can reduce concurrency for this batch
+
+#### Provider-native workflow orchestration
+
+`ExecutionEngine` now also exposes provider-native workflow helpers for cases
+where you still want engine-level provider selection, timeout wrapping, and
+hook correlation around non-`complete(...)` operations.
+
+Key methods:
+
+- `await engine.retrieve_background_response(response_id, provider_name=None, model=None, ...)`
+- `await engine.cancel_background_response(response_id, provider_name=None, model=None, ...)`
+- `await engine.wait_background_response(response_id, provider_name=None, model=None, ...)`
+- `engine.stream_background_response(response_id, provider_name=None, model=None, ...)`
+- `await engine.create_conversation(provider_name=None, model=None, ...)`
+- `await engine.create_conversation_items(conversation_id, provider_name=None, model=None, ...)`
+- `await engine.list_conversation_items(conversation_id, provider_name=None, model=None, ...)`
+- `await engine.retrieve_conversation_item(conversation_id, item_id, provider_name=None, model=None, ...)`
+- `await engine.delete_conversation_item(conversation_id, item_id, provider_name=None, model=None, ...)`
+- `await engine.compact_response_context(provider_name=None, model=None, ...)`
+- `await engine.submit_mcp_approval_response(provider_name=None, model=None, ...)`
+- `await engine.delete_response(response_id, provider_name=None, model=None, ...)`
+- `await engine.moderate(inputs, provider_name=None, model=None, ...)`
+- `await engine.generate_image(prompt, provider_name=None, model=None, ...)`
+- `await engine.edit_image(image, prompt, provider_name=None, model=None, ...)`
+- `await engine.transcribe_audio(file, provider_name=None, model=None, ...)`
+- `await engine.translate_audio(file, provider_name=None, model=None, ...)`
+- `await engine.synthesize_speech(text, voice, provider_name=None, model=None, ...)`
+- `await engine.create_file(file=..., purpose=..., provider_name=None, model=None, ...)`
+- `await engine.retrieve_file(file_id, provider_name=None, model=None, ...)`
+- `await engine.list_files(provider_name=None, model=None, ...)`
+- `await engine.delete_file(file_id, provider_name=None, model=None, ...)`
+- `await engine.get_file_content(file_id, provider_name=None, model=None, ...)`
+- `await engine.create_vector_store(provider_name=None, model=None, ...)`
+- `await engine.retrieve_vector_store(vector_store_id, provider_name=None, model=None, ...)`
+- `await engine.update_vector_store(vector_store_id, provider_name=None, model=None, ...)`
+- `await engine.delete_vector_store(vector_store_id, provider_name=None, model=None, ...)`
+- `await engine.list_vector_stores(provider_name=None, model=None, ...)`
+- `await engine.search_vector_store(vector_store_id, query, provider_name=None, model=None, ...)`
+- `await engine.create_fine_tuning_job(provider_name=None, model=None, ...)`
+- `await engine.retrieve_fine_tuning_job(job_id, provider_name=None, model=None, ...)`
+- `await engine.cancel_fine_tuning_job(job_id, provider_name=None, model=None, ...)`
+- `await engine.list_fine_tuning_jobs(provider_name=None, model=None, ...)`
+- `await engine.list_fine_tuning_events(job_id, provider_name=None, model=None, ...)`
+- `await engine.create_realtime_client_secret(provider_name=None, model=None, ...)`
+- `await engine.create_realtime_transcription_session(provider_name=None, model=None, ...)`
+- `await engine.connect_realtime(provider_name=None, model=None, ...)`
+- `await engine.connect_realtime_transcription(provider_name=None, model=None, ...)`
+- `await engine.create_realtime_call(sdp, provider_name=None, model=None, ...)`
+- `await engine.accept_realtime_call(call_id, provider_name=None, model=None, ...)`
+- `await engine.reject_realtime_call(call_id, provider_name=None, model=None, ...)`
+- `await engine.hangup_realtime_call(call_id, provider_name=None, model=None, ...)`
+- `await engine.refer_realtime_call(call_id, target_uri, provider_name=None, model=None, ...)`
+- `await engine.unwrap_webhook(payload, headers, provider_name=None, model=None, ...)`
+- `await engine.verify_webhook_signature(payload, headers, provider_name=None, model=None, ...)`
+- `await engine.create_vector_store_file(vector_store_id, provider_name=None, model=None, ...)`
+- `await engine.upload_vector_store_file(vector_store_id, provider_name=None, model=None, ...)`
+- `await engine.list_vector_store_files(vector_store_id, provider_name=None, model=None, ...)`
+- `await engine.retrieve_vector_store_file(vector_store_id, file_id, provider_name=None, model=None, ...)`
+- `await engine.update_vector_store_file(vector_store_id, file_id, provider_name=None, model=None, ...)`
+- `await engine.delete_vector_store_file(vector_store_id, file_id, provider_name=None, model=None, ...)`
+- `await engine.get_vector_store_file_content(vector_store_id, file_id, provider_name=None, model=None, ...)`
+- `await engine.poll_vector_store_file(vector_store_id, file_id, provider_name=None, model=None, ...)`
+- `await engine.create_vector_store_file_and_poll(vector_store_id, provider_name=None, model=None, ...)`
+- `await engine.upload_vector_store_file_and_poll(vector_store_id, provider_name=None, model=None, ...)`
+- `await engine.create_vector_store_file_batch(vector_store_id, provider_name=None, model=None, ...)`
+- `await engine.retrieve_vector_store_file_batch(vector_store_id, batch_id, provider_name=None, model=None, ...)`
+- `await engine.cancel_vector_store_file_batch(vector_store_id, batch_id, provider_name=None, model=None, ...)`
+- `await engine.poll_vector_store_file_batch(vector_store_id, batch_id, provider_name=None, model=None, ...)`
+- `await engine.list_vector_store_file_batch_files(vector_store_id, batch_id, provider_name=None, model=None, ...)`
+- `await engine.create_vector_store_file_batch_and_poll(vector_store_id, provider_name=None, model=None, ...)`
+- `await engine.upload_vector_store_file_batch_and_poll(vector_store_id, files, provider_name=None, model=None, ...)`
+- `await engine.clarify_deep_research_task(prompt, provider_name=None, model=None, ...)`
+- `await engine.rewrite_deep_research_prompt(prompt, provider_name=None, model=None, ...)`
+- `await engine.respond_with_web_search(prompt, provider_name=None, model=None, ...)`
+- `await engine.respond_with_file_search(prompt, vector_store_ids, provider_name=None, model=None, ...)`
+- `await engine.respond_with_code_interpreter(prompt, provider_name=None, model=None, ...)`
+- `await engine.respond_with_remote_mcp(prompt, provider_name=None, model=None, ...)`
+- `await engine.respond_with_connector(prompt, provider_name=None, model=None, ...)`
+- `await engine.start_deep_research(prompt, provider_name=None, model=None, ...)`
+- `await engine.run_deep_research(prompt, provider_name=None, model=None, ...)`
+
+Design note:
+
+- These methods do not apply automatic retry/failover for mutating
+  provider-native operations, because duplicating provider-side resources would
+  be unsafe. The engine orchestration layer here is provider selection,
+  timeout/hook wrapping, and consistent access from one runtime surface.
 
 ---
 
@@ -1059,6 +1498,57 @@ Methods:
 - `execute(**kwargs) -> ToolResult` (validates if strict; normalizes return values)
 - `execute_json(arguments_json: str) -> ToolResult`
 
+### OpenAI Responses-native tool descriptors
+
+Use these when calling `OpenAIProvider(..., use_responses_api=True)` with
+provider-native tool definitions instead of executable local tools:
+
+- `ResponsesBuiltinTool`
+- `ResponsesMCPToolFilter`
+- `ResponsesMCPApprovalPolicy`
+- `ResponsesMCPTool`
+- `ResponsesConnectorId`
+- `ResponsesCustomTool`
+- `ResponsesGrammar`
+
+`ResponsesBuiltinTool` is a typed wrapper for official Responses built-in tool
+descriptors such as `web_search`, `file_search`, `computer_use`,
+`code_interpreter`, `image_generation`, `mcp`, `shell`, and `apply_patch`.
+It also includes convenience aliases for OpenAI docs terminology such as
+`web_search_preview(...)`, `remote_mcp(...)`, and `connector(...)`, which
+preserve the underlying provider-native request shape.
+
+`ResponsesMCPTool` is the typed OpenAI MCP/connector descriptor when you need
+remote-server URLs, documented connector ids, connector authorization,
+`allowed_tools`, or structured `require_approval` policies via
+`ResponsesMCPApprovalPolicy` and `ResponsesMCPToolFilter`. Use
+`ResponsesConnectorId` when you want docs-aligned connector ids without
+hand-typed strings.
+
+`ResponsesCustomTool` is a typed wrapper for grammar-backed custom tools, with
+the grammar supplied via `ResponsesGrammar`.
+
+Example:
+
+```python
+from llm_client.providers import OpenAIProvider
+from llm_client.tools import ResponsesBuiltinTool, ResponsesCustomTool, ResponsesGrammar
+
+provider = OpenAIProvider(model="gpt-5.2", use_responses_api=True)
+
+result = await provider.complete(
+    "Search the docs and return a compact plan.",
+    tools=[
+        ResponsesBuiltinTool.web_search(search_context_size="medium"),
+        ResponsesCustomTool(
+            name="planner",
+            description="Emit a compact plan.",
+            grammar=ResponsesGrammar(syntax="lark", definition='start: "done"'),
+        ),
+    ],
+)
+```
+
 ### `ToolRegistry`
 
 Responsibilities:
@@ -1066,6 +1556,7 @@ Responsibilities:
 - register tools, lookup by name
 - execute tool calls by name + JSON arguments
 - convert to OpenAI format list
+- manage executable local function tools only
 
 Key methods (names may vary; see `llm_client.tools.base.ToolRegistry`):
 
@@ -1074,6 +1565,9 @@ Key methods (names may vary; see `llm_client.tools.base.ToolRegistry`):
 - `to_openai_format() -> list[dict[str, Any]]`
 - `execute(name: str, arguments_json: str) -> ToolResult`
 - `execute_many(calls: list[dict]) -> list[ToolResult]` (parallel)
+
+`ToolRegistry` does not register or execute provider-native Responses tool
+descriptors. Those are passed directly to the provider on request-time.
 
 ### Creating tools: `tool_from_function`, `@tool`, `sync_tool`
 

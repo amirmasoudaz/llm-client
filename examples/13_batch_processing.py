@@ -13,7 +13,7 @@ from llm_client.providers.types import Message
 from llm_client.spec import RequestSpec
 
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[1]
 CHECKPOINT_PATH = ROOT / "tmp" / "cookbook-batch-processing-checkpoint.jsonl"
 
 
