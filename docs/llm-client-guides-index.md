@@ -51,6 +51,8 @@ examples under [`examples/`](../examples/README.md).
   [llm-client-support-policy.md](/home/namiral/Projects/Packages/llm-client-v1/docs/llm-client-support-policy.md)
 - Release automation:
   [llm-client-release-automation.md](/home/namiral/Projects/Packages/llm-client-v1/docs/llm-client-release-automation.md)
+- 1.1.1 release notes:
+  [llm-client-release-notes-1.1.1.md](/home/namiral/Projects/Packages/llm-client-v1/docs/llm-client-release-notes-1.1.1.md)
 - 1.1.0 release notes:
   [llm-client-release-notes-1.1.0.md](/home/namiral/Projects/Packages/llm-client-v1/docs/llm-client-release-notes-1.1.0.md)
 - 2026-04-01 evaluation report:
