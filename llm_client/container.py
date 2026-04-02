@@ -279,8 +279,6 @@ def create_cache(
         CacheCore,
         FSCache,
         FSCacheConfig,
-        HybridCacheConfig,
-        HybridRedisPostgreSQLCache,
         QdrantCache,
     )
 
@@ -297,6 +295,8 @@ def create_cache(
         return CacheCore(backend=FSCache(fs_config))
 
     if backend == "pg_redis":
+        from .cache import HybridCacheConfig, HybridRedisPostgreSQLCache
+
         hybrid_config = HybridCacheConfig(
             default_table=kwargs.get("collection", "llm_cache"),
             client_type=kwargs.get("client_type", "completions"),

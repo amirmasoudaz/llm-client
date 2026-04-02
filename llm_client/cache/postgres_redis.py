@@ -4,20 +4,40 @@ Hybrid Redis + PostgreSQL cache backend.
 
 from __future__ import annotations
 
+from importlib import import_module
 import json
 import os
 import re
 import time
 import zlib
 from dataclasses import dataclass
-from typing import Any
-
-import asyncpg
-import redis.asyncio as redis_lib
-from redis.exceptions import ConnectionError as RedisConnectionError
+from typing import TYPE_CHECKING, Any
 
 from ..persistence import PostgresRepository
 from .base import CacheBackendName
+
+if TYPE_CHECKING:
+    import asyncpg
+    import redis.asyncio as redis_lib
+
+
+def _load_asyncpg():
+    try:
+        return import_module("asyncpg")
+    except ModuleNotFoundError as exc:
+        raise ModuleNotFoundError(
+            "PostgreSQL-backed cache support requires the optional dependency "
+            "'asyncpg'. Install llm-client[postgres]."
+        ) from exc
+
+
+def _load_redis_asyncio() -> tuple[Any, type[Exception]] | tuple[None, None]:
+    try:
+        redis_asyncio = import_module("redis.asyncio")
+        redis_exceptions = import_module("redis.exceptions")
+    except ModuleNotFoundError:
+        return None, None
+    return redis_asyncio, redis_exceptions.ConnectionError
 
 
 def _sanitize_table_name(name: str) -> str:
@@ -53,9 +73,10 @@ class HybridRedisPostgreSQLCache:
         self.default_collection = _sanitize_table_name(cfg.default_table)
         self.client_type = cfg.client_type
 
-        self._redis: redis_lib.Redis | None = None
-        self._pg_pool: asyncpg.Pool | None = None
+        self._redis: Any | None = None
+        self._pg_pool: Any | None = None
         self._repo: PostgresRepository | None = None
+        self._redis_connection_error: type[Exception] | None = None
 
     def _get_table(self, collection: str | None) -> str:
         table = collection or self.default_collection
@@ -69,15 +90,15 @@ class HybridRedisPostgreSQLCache:
             if isinstance(pong, bool):
                 return pong
             return await pong
-        except RedisConnectionError:
-            return False
-        except Exception:
+        except Exception as exc:
+            if self._redis_connection_error and isinstance(exc, self._redis_connection_error):
+                return False
             raise
 
     async def ensure_ready(self) -> None:
         # Postgres must work
         if self._pg_pool is None:
-            # noinspection PyUnresolvedReferences
+            asyncpg = _load_asyncpg()
             self._pg_pool = await asyncpg.create_pool(dsn=self.cfg.pg_dsn, min_size=1, max_size=20)
             # Initialize repository with the pool
             self._repo = PostgresRepository(
@@ -86,7 +107,10 @@ class HybridRedisPostgreSQLCache:
 
         # Redis is optional
         if self._redis is None:
-            self._redis = redis_lib.from_url(self.cfg.redis_url, decode_responses=False)
+            redis_lib, redis_connection_error = _load_redis_asyncio()
+            if redis_lib is not None and redis_connection_error is not None:
+                self._redis_connection_error = redis_connection_error
+                self._redis = redis_lib.from_url(self.cfg.redis_url, decode_responses=False)
 
         if self._repo:
             await self._repo.ensure_table(self.default_collection)

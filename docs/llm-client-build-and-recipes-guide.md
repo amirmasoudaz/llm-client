@@ -38,6 +38,10 @@ If you are developing against the source tree:
 pip install -e .[all]
 ```
 
+For the `pg_redis` cache backend, install `llm-client[postgres]` for the
+durable PostgreSQL layer and add `llm-client[redis]` if you also want the
+Redis hot-cache path.
+
 ## 2. Choose The Right Entry Point First
 
 Use `llm_client.providers` when:

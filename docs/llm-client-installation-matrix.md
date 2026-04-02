@@ -17,6 +17,10 @@ Use the base package when you want the core runtime, OpenAI provider path,
 engine, agent loop, tools, content model, cache APIs, context/memory APIs,
 observability, and benchmarks.
 
+The base install intentionally excludes optional PostgreSQL and Redis runtime
+dependencies. Install those extras only if you need the Postgres-backed
+persistence paths or the `pg_redis` hot-cache layer.
+
 ```bash
 pip install llm-client
 ```
@@ -58,6 +62,10 @@ pip install "llm-client[mysql]"
 ```bash
 pip install "llm-client[redis]"
 ```
+
+Use this alongside `llm-client[postgres]` if you want the full
+`pg_redis` hot-cache path. Without the Redis extra, the Postgres-backed cache
+can still operate in durable-storage mode without Redis acceleration.
 
 ### Qdrant Adaptor
 
