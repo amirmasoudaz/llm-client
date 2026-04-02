@@ -109,8 +109,8 @@ all = [
 ]
 
 [project.urls]
-Documentation = "https://github.com/namiral/intelligence-layer-bif/tree/main/docs"
-Repository = "https://github.com/namiral/intelligence-layer-bif"
+Documentation = "https://github.com/amirmasoudaz/llm-client/tree/main/docs"
+Repository = "https://github.com/amirmasoudaz/llm-client"
 
 [tool.setuptools.packages.find]
 include = ["llm_client*"]
