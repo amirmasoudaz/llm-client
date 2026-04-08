@@ -1,8 +1,20 @@
 # OpenAI Provider Capability Audit
 
-Last updated: 2026-03-31
+Last updated: 2026-04-08
 
 This document tracks how `llm_client`'s OpenAI provider aligns with the local scraped OpenAI docs index exposed by the docs API container.
+
+## 2026-04-08 refresh
+
+This document was refreshed against both the local docs-ledger inventory and the official OpenAI docs MCP before `1.2` implementation work starts.
+
+Refresh findings:
+
+- the local docs-ledger is still the better inventory source, but localhost reachability remains inconsistent from the default sandbox namespace
+- the official docs MCP confirmed `tool_search` as a current documented surface that is still absent from the repo as a first-class feature
+- the same function-calling guidance now references deferred-tool namespaces, while package-defined OpenAI function tools are still flattened through `_sanitize_tool_name(...)`
+- the official Realtime conversations guidance now explicitly enumerates `conversation.item.added` and `conversation.item.done`, confirming the current Realtime base is useful but still narrower than the latest documented event surface
+- the official retrieval/file-search guidance now explicitly calls out vector-store-file `attributes` and `attribute_filter`-based filtering, which reframes the remaining retrieval gap as ergonomics and first-class workflow support rather than missing vector-store CRUD
 
 ## Canonical sources
 
@@ -74,8 +86,10 @@ This pass used the docs index as the source-of-truth inventory and then ran a bi
 
 - `CompletionResult.provider_items` should remain available as a low-level replay/debug escape hatch, but not as a documented stable provider-agnostic contract. The stable surface is `output_items` plus the typed result objects.
 - The package now exposes a normalized subset of rich Responses outputs via `CompletionResult.output_items` and `CompletionResult.refusal`, while retaining `provider_items` for exact replay of provider-specific details that are not yet part of the stable normalized shape.
+- `tool_search` is still absent as a first-class OpenAI-specific advanced feature; only raw dict passthrough can carry it indirectly today.
+- OpenAI-specific tool namespaces are still absent as a semantic package feature; package-defined function tools are sanitized to flat names on the OpenAI path today.
 - Realtime coverage is now materially broader, but it is still not the full OpenAI Realtime product surface.
-- Hosted retrieval now covers the generic Files API, vector stores, vector-store files, polling, and file batches, but it still does not cover every hosted file-search/resource workflow in the docs.
+- Hosted retrieval now covers the generic Files API, vector stores, vector-store files, polling, and file batches, but it still does not expose the newer retrieval customization surface as a first-class package contract.
 - MCP/connectors now have typed descriptors and helper workflows, but they still do not cover the full skills/connectors product surface from the docs.
 - Deep research now covers clarify/rewrite/kickoff/staged orchestration, but it is still not the full lifecycle/product surface from the docs.
 - The local docs API remains intermittently unavailable on `127.0.0.1:8000`; live re-audit should be treated as best-effort until `/health` and `/docs/index` stabilize consistently.
@@ -114,8 +128,27 @@ This pass used the docs index as the source-of-truth inventory and then ran a bi
 | Stored Responses deletion | `guides/background.md`, SDK surface | Implemented | Important | Added first-class `delete_response(...)` helper instead of requiring raw SDK access. |
 | Responses rich output-item normalization | `guides/migrate-to-responses.md`, SDK `ResponseOutputItem` union | Implemented | Important | Added normalized `output_items` plus `refusal`, while preserving raw `provider_items` for exact replay. |
 | Responses function-tool strict defaults | `guides/function-calling.md` | Implemented | Important | Responses function tools now default `strict=True` unless the caller sets it explicitly. |
+| OpenAI `tool_search` | Official docs MCP `guides/function-calling#tool-search` | Missing | Important | No first-class advanced OpenAI-specific abstraction or helper exists yet; only raw dict passthrough can carry it. |
+| OpenAI-specific tool namespaces | Official docs MCP `guides/function-calling#tool-search` best-practices section | Missing | Important | Package-defined function tools are flattened by `_sanitize_tool_name(...)`; there is no namespace-aware OpenAI-specific path yet. |
+| Realtime conversation item lifecycle events | Official docs MCP `guides/realtime-conversations#text-inputs-and-outputs` | Partial | Important | Current Realtime wrappers cover sessions, calls, and connections, but the package does not yet expose the broader conversation-item event surface as a first-class contract. |
+| Retrieval attributes and attribute filtering ergonomics | Official docs MCP `guides/tools-file-search#metadata-filtering`, `guides/retrieval#attributes`, `guides/retrieval#attribute-filtering` | Partial | Important | Vector-store file primitives already exist, but the package has not yet promoted retrieval attributes, filters, ranking, or richer hosted-RAG ergonomics into a clearly typed/tested surface. |
 
 ## Implementation roadmap
+
+### 1.2 next pass
+
+The first bounded `1.2` implementation slice should be:
+
+1. OpenAI-specific `tool_search`
+2. OpenAI-specific tool namespaces
+3. then the broader retrieval/file-search and Realtime follow-up work
+
+Why this order:
+
+- `tool_search` and namespaces are the clearest newly confirmed gaps from the refreshed docs cross-check
+- they fit the already approved `1.2` scope: advanced/provider-specific, not stable generic abstractions
+- they are smaller and less volatile than the next Realtime expansion
+- retrieval already has a stronger base than the older audit summary implied, so its remaining gap is a second-step ergonomics and workflow problem, not missing foundational APIs
 
 This roadmap covers the remaining work needed to extend `llm_client` toward broader official-docs parity. It is ordered by package impact: fix compliance gaps first, then add missing capabilities that need package-contract expansion, then harden metadata, tests, and user-facing docs.
 

@@ -1,6 +1,6 @@
 # OpenAI Docs-Ledger Completeness Audit
 
-Last updated: 2026-03-31
+Last updated: 2026-04-08
 
 This report audits `llm_client` against the local OpenAI docs ledger API running on `http://127.0.0.1:8000`, using only the `docs/` and `search/` endpoints as requested.
 
@@ -19,6 +19,17 @@ Important API notes from this audit:
 - `POST /search/query` worked and returned reliable `md_relpath` hits.
 - `GET /docs/catalog` returned `500 Internal Server Error` during this audit and should be treated as unreliable until fixed.
 - Because the docs were cached locally after retrieval, the repo/code cross-check below is based on the actual exported docs corpus, not prior package notes.
+
+Important API notes from the 2026-04-08 refresh:
+
+- `GET /docs/index` and selected `GET /docs/export/file/...` reads are currently reachable from the host namespace, but localhost access is still inconsistent from the default sandbox namespace.
+- `GET /docs/export/file/guides/function-calling.md` was readable from the sandbox while `GET /docs/export/file/guides/realtime.md` was not, so the ledger remains useful but operationally inconsistent.
+- Official OpenAI docs MCP was used to cross-validate the highest-risk gaps from this refresh:
+  - `https://developers.openai.com/api/docs/guides/function-calling#tool-search`
+  - `https://developers.openai.com/api/docs/guides/realtime-conversations#text-inputs-and-outputs`
+  - `https://developers.openai.com/api/docs/guides/tools-file-search#metadata-filtering`
+  - `https://developers.openai.com/api/docs/guides/retrieval#attributes`
+  - `https://developers.openai.com/api/docs/guides/retrieval#attribute-filtering`
 
 Relevant docs corpus cached from the ledger included:
 
@@ -95,6 +106,8 @@ Relevant docs corpus cached from the ledger included:
 
 The biggest missing or incomplete areas are:
 
+- first-class OpenAI `tool_search` support
+- first-class OpenAI-specific tool namespaces
 - broader realtime product coverage beyond the current websocket/session wrapper, transcription session helper, and call-control helpers
 - broader hosted retrieval and file-search resource management beyond vector stores, vector-store files, and file batches
 - broader connectors / MCP / skills product coverage beyond typed descriptors and helper workflows
@@ -142,6 +155,8 @@ The biggest missing or incomplete areas are:
 
 | Feature area | Docs evidence | Repo evidence | Status | Gap summary |
 | --- | --- | --- | --- | --- |
+| OpenAI `tool_search` | Official docs MCP `guides/function-calling#tool-search` | No typed descriptor or workflow helper in `llm_client/tools/base.py`, `llm_client/providers/openai.py`, or `llm_client/engine.py`; only raw-dict passthrough can carry it indirectly | Missing | `tool_search` is explicitly documented for deferring large tool ecosystems, but the package does not yet model it as an OpenAI-specific advanced surface. |
+| OpenAI-specific tool namespaces | Official docs MCP `guides/function-calling#tool-search` best-practices section | Package-defined function tools are flattened through `_sanitize_tool_name(...)` in `llm_client/providers/openai.py`; no namespace-aware abstraction exists | Missing | Namespaces are referenced in the current function-calling guidance for deferred tools, but package-defined tools do not preserve them today. |
 | Skills as an OpenAI product surface | `guides/tools-connectors-mcp.md`, `guides/developer-mode.md`, broader docs index | No dedicated “skills” product abstractions in `llm_client` | Missing | The package has its own tool abstractions, but not OpenAI “skills/connectors” product coverage. |
 | Full model coverage | `models.md`, docs index models section | Registry still omits several documented families and legacy/current variants | Missing | Many documented OpenAI models are still absent, especially the broader legacy/current catalog outside the newly added moderation, audio, image, realtime, and deep-research families. |
 
@@ -179,6 +194,15 @@ This means the package’s current OpenAI strengths are real:
 - `llm_client/providers/openai.py` normalizes `file_search_call`, `web_search_call`, `code_interpreter_call`, `image_generation_call`, and MCP-related output items, which proves hosted-tool awareness.
 - That same file now exposes direct image APIs, speech APIs, moderation, fine-tuning jobs, vector stores, vector-store files, vector-store file batches, webhook helpers, realtime connection/call/transcription helpers, hosted Responses tool workflow helpers, and staged deep-research helpers, but it does not yet expose the full remaining hosted-resource or broader product-management surface.
 
+### Evidence for the newly confirmed 1.2 gaps
+
+- The official function-calling docs now explicitly document `tool_search` and recommend it for deferring large or infrequently used tool surfaces.
+- The same function-calling guidance now references namespace descriptions for deferred tools.
+- Repo inspection confirms there is no first-class `tool_search` abstraction in `llm_client/tools/base.py`, `llm_client/providers/openai.py`, or `llm_client/engine.py`.
+- Repo inspection also confirms package-defined function tools are sanitized to flat OpenAI-safe names in `llm_client/providers/openai.py`, and the existing request-translation tests assert the flattened behavior for dotted names.
+- The official realtime conversations docs explicitly enumerate `conversation.item.added` and `conversation.item.done` lifecycle events; the package currently parses Responses streaming events well, but it does not yet model that broader Realtime event surface as a first-class package contract.
+- The official file-search and retrieval docs now explicitly call out vector-store-file `attributes` and `attribute_filter`-based filtering; the package already exposes vector-store file creation/update/search primitives, but the audit still needs to close the gap between those primitives and a clearer higher-level retrieval/file-search contract.
+
 ### Evidence that fine-tuned models are not a supported surface
 
 - The provider contract was widened so OpenAI fine-tuned model ids can now resolve without predeclaring every `ft:` model key in `llm_client/models.py`.
@@ -188,6 +212,8 @@ This means the package’s current OpenAI strengths are real:
 
 ### Priority 0: major remaining platform families
 
+- first-class OpenAI `tool_search`
+- first-class OpenAI-specific tool namespaces
 - broader hosted retrieval / file-search resource management
 - broader realtime product coverage beyond the current websocket/session wrapper
 
@@ -203,7 +229,21 @@ This means the package’s current OpenAI strengths are real:
 
 ## Recommended implementation plan
 
-### Phase 1: Close the remaining research and retrieval gaps
+### Phase 1: Add the newly confirmed tool-surface gaps
+
+Deliverables:
+
+- Add OpenAI-specific advanced support for `tool_search`.
+- Add OpenAI-specific tool namespace support without promoting namespaces into the stable generic tool contract.
+- Add focused docs/tests for the new advanced OpenAI-only surfaces.
+
+Exit criteria:
+
+- `tool_search` is modeled through a typed or clearly namespaced OpenAI-specific package surface instead of raw dict passthrough.
+- Package-defined OpenAI function tools can preserve namespace intent where the OpenAI-specific path is used.
+- The audit can mark the two newly confirmed gaps as implemented or intentionally deferred with code-level evidence.
+
+### Phase 2: Close the remaining research and retrieval gaps
 
 Deliverables:
 
@@ -214,7 +254,7 @@ Exit criteria:
 
 - The package can represent the docs-ledger deep-research and hosted retrieval workflows further end to end, not just the setup calls.
 
-### Phase 2: Expand broader realtime and hosted-tool coverage
+### Phase 3: Expand broader realtime and hosted-tool coverage
 
 Deliverables:
 
@@ -225,7 +265,7 @@ Exit criteria:
 
 - Realtime and hosted-tool workflows from the docs can be expressed without dropping to raw SDK access.
 
-### Phase 3: Continue model-registry and docs parity expansion
+### Phase 4: Continue model-registry and docs parity expansion
 
 Deliverables:
 
