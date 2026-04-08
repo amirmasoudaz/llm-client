@@ -360,6 +360,14 @@ async def test_openai_realtime_and_webhook_surfaces() -> None:
                     "content_index": 0,
                 }
             ),
+            SimpleNamespace(
+                to_dict=lambda: {
+                    "type": "response.done",
+                    "event_id": "evt_3",
+                    "response_id": "resp_1",
+                    "status": "completed",
+                }
+            ),
         ]
     )
     realtime_manager = _FakeRealtimeManager(realtime_connection)
@@ -457,6 +465,7 @@ async def test_openai_realtime_and_webhook_surfaces() -> None:
     received = await connection.recv()
     received_event = await connection.recv_event()
     received_delta = await connection.recv_until_type("response.output_text.delta", timeout=1.0)
+    received_done = await connection.recv_until_type("response.done", timeout=1.0)
     received_bytes = await connection.recv_bytes()
     await connection.close()
     await transcription_stream.close()
@@ -507,6 +516,10 @@ async def test_openai_realtime_and_webhook_surfaces() -> None:
     assert received_delta.item_id == "item_1"
     assert received_delta.delta == "hello"
     assert received_delta.details["content_index"] == 0
+    assert received_done.event_type == "response.done"
+    assert received_done.event_id == "evt_3"
+    assert received_done.response_id == "resp_1"
+    assert received_done.status == "completed"
     assert received_bytes == b"audio"
     assert realtime_manager.exited is True
     assert transcription_manager.exited is True
