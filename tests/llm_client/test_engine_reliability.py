@@ -379,6 +379,22 @@ class _WorkflowProvider(ScriptedProvider):
         self.workflow_calls.append(("respond_with_code_interpreter", {"prompt": prompt, **kwargs}))
         return ok_result("code interpreter done", model=self.model_name)
 
+    async def respond_with_shell(self, prompt: str, **kwargs):
+        self.workflow_calls.append(("respond_with_shell", {"prompt": prompt, **kwargs}))
+        return ok_result("shell done", model=self.model_name)
+
+    async def respond_with_apply_patch(self, prompt: str, **kwargs):
+        self.workflow_calls.append(("respond_with_apply_patch", {"prompt": prompt, **kwargs}))
+        return ok_result("apply patch done", model=self.model_name)
+
+    async def respond_with_computer_use(self, prompt: str, **kwargs):
+        self.workflow_calls.append(("respond_with_computer_use", {"prompt": prompt, **kwargs}))
+        return ok_result("computer use done", model=self.model_name)
+
+    async def respond_with_image_generation(self, prompt: str, **kwargs):
+        self.workflow_calls.append(("respond_with_image_generation", {"prompt": prompt, **kwargs}))
+        return ok_result("image generation done", model=self.model_name)
+
     async def respond_with_remote_mcp(self, prompt: str, **kwargs):
         self.workflow_calls.append(("respond_with_remote_mcp", {"prompt": prompt, **kwargs}))
         return ok_result("remote mcp done", model=self.model_name)
@@ -875,6 +891,10 @@ async def test_engine_orchestrates_realtime_webhook_vector_file_and_deep_researc
     web_search = await engine.respond_with_web_search("Find latest docs")
     file_search = await engine.respond_with_file_search("Find tenant docs", vector_store_ids=["vs_1"])
     code_interpreter = await engine.respond_with_code_interpreter("Run analysis")
+    shell = await engine.respond_with_shell("List files")
+    apply_patch = await engine.respond_with_apply_patch("Rename helper")
+    computer_use = await engine.respond_with_computer_use("Open the dashboard")
+    image_generation = await engine.respond_with_image_generation("Draw a chart mascot")
     remote_mcp = await engine.respond_with_remote_mcp("Inspect wiki", server_url="https://mcp.example.com")
     connector = await engine.respond_with_connector("Inspect gmail", connector_id="gmail")
     research = await engine.start_deep_research("Research semaglutide", web_search=True, rewrite_prompt=True)
@@ -904,6 +924,10 @@ async def test_engine_orchestrates_realtime_webhook_vector_file_and_deep_researc
     assert web_search.content == "web search done"
     assert file_search.content == "file search done"
     assert code_interpreter.content == "code interpreter done"
+    assert shell.content == "shell done"
+    assert apply_patch.content == "apply patch done"
+    assert computer_use.content == "computer use done"
+    assert image_generation.content == "image generation done"
     assert remote_mcp.content == "remote mcp done"
     assert connector.content == "connector done"
     assert research.content == "research queued"

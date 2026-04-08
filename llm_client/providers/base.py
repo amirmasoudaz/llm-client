@@ -544,6 +544,38 @@ class Provider(Protocol):
         """Run a Responses request with the hosted code-interpreter tool when supported."""
         ...
 
+    async def respond_with_shell(
+        self,
+        prompt: str,
+        **kwargs: Any,
+    ) -> CompletionResult:
+        """Run a Responses request with the hosted shell tool when supported."""
+        ...
+
+    async def respond_with_apply_patch(
+        self,
+        prompt: str,
+        **kwargs: Any,
+    ) -> CompletionResult:
+        """Run a Responses request with the hosted apply-patch tool when supported."""
+        ...
+
+    async def respond_with_computer_use(
+        self,
+        prompt: str,
+        **kwargs: Any,
+    ) -> CompletionResult:
+        """Run a Responses request with the hosted computer-use tool when supported."""
+        ...
+
+    async def respond_with_image_generation(
+        self,
+        prompt: str,
+        **kwargs: Any,
+    ) -> CompletionResult:
+        """Run a Responses request with the hosted image-generation tool when supported."""
+        ...
+
     async def respond_with_remote_mcp(
         self,
         prompt: str,
@@ -1332,6 +1364,38 @@ class BaseProvider(Provider, ABC):
     ) -> CompletionResult:
         _ = prompt, kwargs
         raise NotImplementedError(f"{self.__class__.__name__} does not support hosted code-interpreter workflows.")
+
+    async def respond_with_shell(
+        self,
+        prompt: str,
+        **kwargs: Any,
+    ) -> CompletionResult:
+        _ = prompt, kwargs
+        raise NotImplementedError(f"{self.__class__.__name__} does not support hosted shell workflows.")
+
+    async def respond_with_apply_patch(
+        self,
+        prompt: str,
+        **kwargs: Any,
+    ) -> CompletionResult:
+        _ = prompt, kwargs
+        raise NotImplementedError(f"{self.__class__.__name__} does not support hosted apply-patch workflows.")
+
+    async def respond_with_computer_use(
+        self,
+        prompt: str,
+        **kwargs: Any,
+    ) -> CompletionResult:
+        _ = prompt, kwargs
+        raise NotImplementedError(f"{self.__class__.__name__} does not support hosted computer-use workflows.")
+
+    async def respond_with_image_generation(
+        self,
+        prompt: str,
+        **kwargs: Any,
+    ) -> CompletionResult:
+        _ = prompt, kwargs
+        raise NotImplementedError(f"{self.__class__.__name__} does not support hosted image-generation workflows.")
 
     async def respond_with_remote_mcp(
         self,

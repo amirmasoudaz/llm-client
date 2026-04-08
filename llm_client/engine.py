@@ -2091,6 +2091,82 @@ class ExecutionEngine:
             call=lambda provider: provider.respond_with_code_interpreter(prompt, **kwargs),
         )
 
+    async def respond_with_shell(
+        self,
+        prompt: str,
+        *,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> CompletionResult:
+        return await self._run_workflow_operation(
+            "respond_with_shell",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.respond_with_shell(prompt, **kwargs),
+        )
+
+    async def respond_with_apply_patch(
+        self,
+        prompt: str,
+        *,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> CompletionResult:
+        return await self._run_workflow_operation(
+            "respond_with_apply_patch",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.respond_with_apply_patch(prompt, **kwargs),
+        )
+
+    async def respond_with_computer_use(
+        self,
+        prompt: str,
+        *,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> CompletionResult:
+        return await self._run_workflow_operation(
+            "respond_with_computer_use",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.respond_with_computer_use(prompt, **kwargs),
+        )
+
+    async def respond_with_image_generation(
+        self,
+        prompt: str,
+        *,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> CompletionResult:
+        return await self._run_workflow_operation(
+            "respond_with_image_generation",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.respond_with_image_generation(prompt, **kwargs),
+        )
+
     async def respond_with_remote_mcp(
         self,
         prompt: str,

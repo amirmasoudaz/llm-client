@@ -3771,6 +3771,57 @@ class OpenAIProvider(BaseProvider):
             )
         return await self._complete_with_responses_tools(prompt, tools=[tool], model=model_name, **kwargs)
 
+    async def respond_with_shell(
+        self,
+        prompt: str,
+        **kwargs: Any,
+    ) -> CompletionResult:
+        model_name = str(kwargs.pop("model", self.model_name))
+        tool = kwargs.pop("tool", None)
+        tool_config = dict(kwargs.pop("tool_config", {}) or {})
+        if tool is None:
+            tool = ResponsesBuiltinTool.shell(
+                environment=tool_config.pop("environment", {"type": "container_auto"}),
+                **tool_config,
+            )
+        return await self._complete_with_responses_tools(prompt, tools=[tool], model=model_name, **kwargs)
+
+    async def respond_with_apply_patch(
+        self,
+        prompt: str,
+        **kwargs: Any,
+    ) -> CompletionResult:
+        model_name = str(kwargs.pop("model", self.model_name))
+        tool = kwargs.pop("tool", None)
+        tool_config = dict(kwargs.pop("tool_config", {}) or {})
+        if tool is None:
+            tool = ResponsesBuiltinTool.apply_patch(**tool_config)
+        return await self._complete_with_responses_tools(prompt, tools=[tool], model=model_name, **kwargs)
+
+    async def respond_with_computer_use(
+        self,
+        prompt: str,
+        **kwargs: Any,
+    ) -> CompletionResult:
+        model_name = str(kwargs.pop("model", self.model_name))
+        tool = kwargs.pop("tool", None)
+        tool_config = dict(kwargs.pop("tool_config", {}) or {})
+        if tool is None:
+            tool = ResponsesBuiltinTool.computer_use(**tool_config)
+        return await self._complete_with_responses_tools(prompt, tools=[tool], model=model_name, **kwargs)
+
+    async def respond_with_image_generation(
+        self,
+        prompt: str,
+        **kwargs: Any,
+    ) -> CompletionResult:
+        model_name = str(kwargs.pop("model", self.model_name))
+        tool = kwargs.pop("tool", None)
+        tool_config = dict(kwargs.pop("tool_config", {}) or {})
+        if tool is None:
+            tool = ResponsesBuiltinTool.image_generation(**tool_config)
+        return await self._complete_with_responses_tools(prompt, tools=[tool], model=model_name, **kwargs)
+
     async def respond_with_remote_mcp(
         self,
         prompt: str,

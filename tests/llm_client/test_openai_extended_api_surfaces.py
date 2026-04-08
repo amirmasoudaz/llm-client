@@ -982,6 +982,10 @@ async def test_openai_hosted_tool_workflow_helpers_build_typed_tools() -> None:
     await provider.respond_with_web_search("Find latest docs", tool_config={"search_context_size": "low"})
     await provider.respond_with_file_search("Search my files", vector_store_ids=["vs_1"], tool_config={"max_num_results": 3})
     await provider.respond_with_code_interpreter("Run an analysis")
+    await provider.respond_with_shell("List files", tool_config={"environment": {"type": "container_auto"}})
+    await provider.respond_with_apply_patch("Rename helper")
+    await provider.respond_with_computer_use("Inspect dashboard", tool_config={"display_width": 1440, "display_height": 900})
+    await provider.respond_with_image_generation("Draw a mascot", tool_config={"size": "1024x1024", "quality": "medium"})
     await provider.respond_with_remote_mcp("Inspect wiki", tool=remote_mcp_tool)
     await provider.respond_with_connector(
         "Inspect gmail",
@@ -1002,13 +1006,22 @@ async def test_openai_hosted_tool_workflow_helpers_build_typed_tools() -> None:
     assert rendered_calls[2] == [{"type": "code_interpreter", "container": {"type": "auto"}}]
     assert rendered_calls[3] == [
         {
+            "type": "shell",
+            "environment": {"type": "container_auto"},
+        }
+    ]
+    assert rendered_calls[4] == [{"type": "apply_patch"}]
+    assert rendered_calls[5] == [{"type": "computer_use", "display_width": 1440, "display_height": 900}]
+    assert rendered_calls[6] == [{"type": "image_generation", "size": "1024x1024", "quality": "medium"}]
+    assert rendered_calls[7] == [
+        {
             "type": "mcp",
             "server_label": "Research Wiki",
             "server_url": "https://mcp.example.com",
             "require_approval": "always",
         }
     ]
-    assert rendered_calls[4] == [
+    assert rendered_calls[8] == [
         {
             "type": "mcp",
             "connector_id": "connector_gmail",
