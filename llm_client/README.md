@@ -1504,6 +1504,9 @@ Use these when calling `OpenAIProvider(..., use_responses_api=True)` with
 provider-native tool definitions instead of executable local tools:
 
 - `ResponsesBuiltinTool`
+- `ResponsesToolSearch`
+- `ResponsesFunctionTool`
+- `ResponsesToolNamespace`
 - `ResponsesMCPToolFilter`
 - `ResponsesMCPApprovalPolicy`
 - `ResponsesMCPTool`
@@ -1517,6 +1520,17 @@ descriptors such as `web_search`, `file_search`, `computer_use`,
 It also includes convenience aliases for OpenAI docs terminology such as
 `web_search_preview(...)`, `remote_mcp(...)`, and `connector(...)`, which
 preserve the underlying provider-native request shape.
+
+`ResponsesToolSearch` is the advanced OpenAI-specific descriptor for
+`tool_search`, including hosted mode and client-executed mode via
+`ResponsesToolSearch.hosted(...)` and `ResponsesToolSearch.client(...)`.
+
+`ResponsesFunctionTool` is the advanced OpenAI-specific typed function
+descriptor when you need provider metadata such as `defer_loading=True`.
+
+`ResponsesToolNamespace` groups OpenAI function tools under a namespace such as
+`crm` or `billing`, which is the preferred shape when using deferred tools with
+`tool_search`.
 
 `ResponsesMCPTool` is the typed OpenAI MCP/connector descriptor when you need
 remote-server URLs, documented connector ids, connector authorization,
@@ -1532,13 +1546,38 @@ Example:
 
 ```python
 from llm_client.providers import OpenAIProvider
-from llm_client.tools import ResponsesBuiltinTool, ResponsesCustomTool, ResponsesGrammar
+from llm_client.tools import (
+    ResponsesBuiltinTool,
+    ResponsesCustomTool,
+    ResponsesFunctionTool,
+    ResponsesGrammar,
+    ResponsesToolNamespace,
+    ResponsesToolSearch,
+)
 
 provider = OpenAIProvider(model="gpt-5.2", use_responses_api=True)
 
 result = await provider.complete(
     "Search the docs and return a compact plan.",
     tools=[
+        ResponsesToolSearch.hosted(),
+        ResponsesToolNamespace(
+            name="crm",
+            description="CRM tools for customer lookup and order support.",
+            tools=(
+                ResponsesFunctionTool(
+                    name="lookup_profile",
+                    description="Fetch a customer profile by customer id.",
+                    parameters={
+                        "type": "object",
+                        "properties": {"customer_id": {"type": "string"}},
+                        "required": ["customer_id"],
+                        "additionalProperties": False,
+                    },
+                    defer_loading=True,
+                ),
+            ),
+        ),
         ResponsesBuiltinTool.web_search(search_context_size="medium"),
         ResponsesCustomTool(
             name="planner",
@@ -1548,6 +1587,10 @@ result = await provider.complete(
     ],
 )
 ```
+
+For client-executed tool search, use
+`OpenAIProvider.submit_tool_search_output(...)` to return a loaded tool set
+after the model emits a `tool_search_call`.
 
 ### `ToolRegistry`
 

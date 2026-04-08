@@ -191,11 +191,15 @@ Current package boundary:
 Use:
 
 - `llm_client.tools`
-- specifically `ResponsesBuiltinTool`, `ResponsesCustomTool`, and `ResponsesGrammar`
+- specifically `ResponsesBuiltinTool`, `ResponsesToolSearch`,
+  `ResponsesFunctionTool`, `ResponsesToolNamespace`, `ResponsesCustomTool`, and
+  `ResponsesGrammar`
 
 Best for:
 
 - OpenAI Responses built-in hosted tools without raw provider dict payloads
+- OpenAI-specific deferred-tool workflows using `tool_search`
+- namespaced OpenAI function tools with deferred loading
 - typed MCP and connector descriptors with `allowed_tools` and approval-policy shaping
 - grammar-backed custom tools on `OpenAIProvider(..., use_responses_api=True)`
 - request-time tool descriptors that should stay in the stable package surface
@@ -205,6 +209,8 @@ Current package boundary:
 - provider-level and engine request-envelope compatible in `1.1.0`
 - richer MCP/connector descriptors are available through `ResponsesMCPTool`
 - `ResponsesConnectorId` provides docs-aligned connector ids for typed connector requests
+- `OpenAIProvider.submit_tool_search_output(...)` continues client-executed
+  `tool_search` loops by returning the loaded tool set from your application
 - `ToolRegistry` and the agent tool runtime remain function-tool execution layers
 - the package now exposes a normalized subset of rich Responses output items and retains raw `provider_items` for exact replay
 

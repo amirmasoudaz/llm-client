@@ -128,8 +128,8 @@ This pass used the docs index as the source-of-truth inventory and then ran a bi
 | Stored Responses deletion | `guides/background.md`, SDK surface | Implemented | Important | Added first-class `delete_response(...)` helper instead of requiring raw SDK access. |
 | Responses rich output-item normalization | `guides/migrate-to-responses.md`, SDK `ResponseOutputItem` union | Implemented | Important | Added normalized `output_items` plus `refusal`, while preserving raw `provider_items` for exact replay. |
 | Responses function-tool strict defaults | `guides/function-calling.md` | Implemented | Important | Responses function tools now default `strict=True` unless the caller sets it explicitly. |
-| OpenAI `tool_search` | Official docs MCP `guides/function-calling#tool-search` | Missing | Important | No first-class advanced OpenAI-specific abstraction or helper exists yet; only raw dict passthrough can carry it. |
-| OpenAI-specific tool namespaces | Official docs MCP `guides/function-calling#tool-search` best-practices section | Missing | Important | Package-defined function tools are flattened by `_sanitize_tool_name(...)`; there is no namespace-aware OpenAI-specific path yet. |
+| OpenAI `tool_search` | Official docs MCP `guides/function-calling#tool-search` | Implemented | Important | Added first-class advanced `ResponsesToolSearch` plus `respond_with_tool_search(...)` and `submit_tool_search_output(...)` helpers for hosted and client-executed workflows. |
+| OpenAI-specific tool namespaces | Official docs MCP `guides/function-calling#tool-search` best-practices section | Implemented | Important | Added `ResponsesToolNamespace` and `ResponsesFunctionTool`, plus recursive alias sanitization and output normalization so namespace intent is preserved on the OpenAI path. |
 | Realtime conversation item lifecycle events | Official docs MCP `guides/realtime-conversations#text-inputs-and-outputs` | Partial | Important | Current Realtime wrappers cover sessions, calls, and connections, but the package does not yet expose the broader conversation-item event surface as a first-class contract. |
 | Retrieval attributes and attribute filtering ergonomics | Official docs MCP `guides/tools-file-search#metadata-filtering`, `guides/retrieval#attributes`, `guides/retrieval#attribute-filtering` | Partial | Important | Vector-store file primitives already exist, but the package has not yet promoted retrieval attributes, filters, ranking, or richer hosted-RAG ergonomics into a clearly typed/tested surface. |
 
@@ -137,17 +137,16 @@ This pass used the docs index as the source-of-truth inventory and then ran a bi
 
 ### 1.2 next pass
 
-The first bounded `1.2` implementation slice should be:
+The next bounded `1.2` implementation slice should be:
 
-1. OpenAI-specific `tool_search`
-2. OpenAI-specific tool namespaces
-3. then the broader retrieval/file-search and Realtime follow-up work
+1. retrieval/file-search customization and hosted-RAG ergonomics
+2. then the broader Realtime follow-up work
 
 Why this order:
 
-- `tool_search` and namespaces are the clearest newly confirmed gaps from the refreshed docs cross-check
-- they fit the already approved `1.2` scope: advanced/provider-specific, not stable generic abstractions
-- they are smaller and less volatile than the next Realtime expansion
+- `tool_search` and namespaces are now closed as the first advanced OpenAI-specific `1.2` slice
+- retrieval/file-search now has the clearest remaining docs-backed gap with lower volatility than deeper Realtime expansion
+- it builds directly on the already implemented vector-store, file-search, and hosted-tool base
 - retrieval already has a stronger base than the older audit summary implied, so its remaining gap is a second-step ergonomics and workflow problem, not missing foundational APIs
 
 This roadmap covers the remaining work needed to extend `llm_client` toward broader official-docs parity. It is ordered by package impact: fix compliance gaps first, then add missing capabilities that need package-contract expansion, then harden metadata, tests, and user-facing docs.

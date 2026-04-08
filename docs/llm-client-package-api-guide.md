@@ -174,6 +174,9 @@ The tool layer defines callable runtime capabilities:
 - `Tool`
 - `ToolRegistry`
 - `ResponsesBuiltinTool`
+- `ResponsesToolSearch`
+- `ResponsesFunctionTool`
+- `ResponsesToolNamespace`
 - `ResponsesConnectorId`
 - `ResponsesMCPTool`
 - `ResponsesMCPApprovalPolicy`
@@ -193,6 +196,14 @@ of raw dicts. That includes convenience aliases such as
 `ResponsesBuiltinTool.connector(...)`, plus the richer MCP/connector-specific
 descriptor `ResponsesMCPTool`. When you want docs-aligned connector ids without
 hand-typed strings, use `ResponsesConnectorId`.
+
+For advanced OpenAI-specific deferred-tool workflows, use:
+
+- `ResponsesToolSearch` for hosted or client-executed `tool_search`
+- `ResponsesFunctionTool` when a function needs provider metadata such as
+  `defer_loading=True`
+- `ResponsesToolNamespace` to group deferred tools under a namespace like
+  `crm` or `billing`
 
 Provider-native Responses tools are request-side descriptors, not executable
 runtime tools. Keep using `ToolRegistry` for locally executed function tools.

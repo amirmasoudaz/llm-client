@@ -155,10 +155,15 @@ The biggest missing or incomplete areas are:
 
 | Feature area | Docs evidence | Repo evidence | Status | Gap summary |
 | --- | --- | --- | --- | --- |
-| OpenAI `tool_search` | Official docs MCP `guides/function-calling#tool-search` | No typed descriptor or workflow helper in `llm_client/tools/base.py`, `llm_client/providers/openai.py`, or `llm_client/engine.py`; only raw-dict passthrough can carry it indirectly | Missing | `tool_search` is explicitly documented for deferring large tool ecosystems, but the package does not yet model it as an OpenAI-specific advanced surface. |
-| OpenAI-specific tool namespaces | Official docs MCP `guides/function-calling#tool-search` best-practices section | Package-defined function tools are flattened through `_sanitize_tool_name(...)` in `llm_client/providers/openai.py`; no namespace-aware abstraction exists | Missing | Namespaces are referenced in the current function-calling guidance for deferred tools, but package-defined tools do not preserve them today. |
 | Skills as an OpenAI product surface | `guides/tools-connectors-mcp.md`, `guides/developer-mode.md`, broader docs index | No dedicated “skills” product abstractions in `llm_client` | Missing | The package has its own tool abstractions, but not OpenAI “skills/connectors” product coverage. |
 | Full model coverage | `models.md`, docs index models section | Registry still omits several documented families and legacy/current variants | Missing | Many documented OpenAI models are still absent, especially the broader legacy/current catalog outside the newly added moderation, audio, image, realtime, and deep-research families. |
+
+### Newly implemented in 1.2 work
+
+| Feature area | Docs evidence | Repo evidence | Status | Notes |
+| --- | --- | --- | --- | --- |
+| OpenAI `tool_search` | Official docs MCP `guides/function-calling#tool-search` | `ResponsesToolSearch` in `llm_client/tools/base.py`; `respond_with_tool_search(...)` and `submit_tool_search_output(...)` in `llm_client/providers/openai.py` | Implemented | The package now supports hosted and client-executed `tool_search` as an OpenAI-specific advanced surface. |
+| OpenAI-specific tool namespaces | Official docs MCP `guides/function-calling#defining-namespaces` | `ResponsesToolNamespace` and `ResponsesFunctionTool` in `llm_client/tools/base.py`; recursive tool aliasing/normalization in `llm_client/providers/openai.py` | Implemented | Namespace tool definitions now preserve deferred-tool intent instead of flattening everything to raw dict passthrough. |
 
 ## Correctness notes for implemented areas
 

@@ -149,19 +149,49 @@ Responses tool descriptors from `llm_client.tools`:
 - `ResponsesBuiltinTool` for built-in hosted tools such as `web_search`,
   `file_search`, `computer_use`, `code_interpreter`, `image_generation`, `mcp`,
   `shell`, and `apply_patch`
+- `ResponsesToolSearch` for OpenAI-specific advanced deferred-tool workflows
+- `ResponsesFunctionTool` when a function tool needs provider metadata such as
+  `defer_loading=True`
+- `ResponsesToolNamespace` to group related OpenAI function tools under a
+  namespace
 - `ResponsesCustomTool` plus `ResponsesGrammar` for grammar-backed custom tools
 
 Example:
 
 ```python
 from llm_client.providers import OpenAIProvider
-from llm_client.tools import ResponsesBuiltinTool, ResponsesCustomTool, ResponsesGrammar
+from llm_client.tools import (
+    ResponsesBuiltinTool,
+    ResponsesCustomTool,
+    ResponsesFunctionTool,
+    ResponsesGrammar,
+    ResponsesToolNamespace,
+    ResponsesToolSearch,
+)
 
 provider = OpenAIProvider(model="gpt-5.2", use_responses_api=True)
 
 result = await provider.complete(
-    "Search the web and return a compact plan.",
+    "Search the web and CRM tools, then return a compact plan.",
     tools=[
+        ResponsesToolSearch.hosted(),
+        ResponsesToolNamespace(
+            name="crm",
+            description="CRM tools for customer lookup and order management.",
+            tools=(
+                ResponsesFunctionTool(
+                    name="lookup_profile",
+                    description="Fetch a customer profile by customer id.",
+                    parameters={
+                        "type": "object",
+                        "properties": {"customer_id": {"type": "string"}},
+                        "required": ["customer_id"],
+                        "additionalProperties": False,
+                    },
+                    defer_loading=True,
+                ),
+            ),
+        ),
         ResponsesBuiltinTool.web_search(search_context_size="medium"),
         ResponsesCustomTool(
             name="planner",
@@ -175,6 +205,10 @@ result = await provider.complete(
 These descriptors are provider-native request objects. They are not registered
 or executed through `ToolRegistry`, which remains the runtime for local
 function tools only.
+
+If you use client-executed `tool_search`, return the loaded tool set with
+`OpenAIProvider.submit_tool_search_output(...)` after the model emits a
+`tool_search_call`.
 
 ## OpenAI Responses request controls
 
