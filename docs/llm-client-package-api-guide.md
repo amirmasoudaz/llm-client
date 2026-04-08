@@ -237,7 +237,10 @@ per-file `files=[ResponsesVectorStoreFileSpec(...)]` inputs on
 `create_vector_store(...)`, `create_vector_store_file(...)`,
 `create_vector_store_file_and_poll(...)`,
 `create_vector_store_file_batch(...)`, and
-`create_vector_store_file_batch_and_poll(...)`.
+`create_vector_store_file_batch_and_poll(...)`. When a vector store is created
+with initial `file_ids`, use `poll_vector_store(...)` or
+`create_vector_store_and_poll(...)` to wait for hosted ingestion to settle
+based on terminal `status` or `file_counts`.
 
 ### Service Adaptors
 

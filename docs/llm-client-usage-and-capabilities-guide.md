@@ -225,6 +225,9 @@ Current package boundary:
 - OpenAI vector-store helpers now expose typed `expiration_policy`,
   `chunking_strategy`, and `files=[ResponsesVectorStoreFileSpec(...)]`
   controls on the vector-store creation and file-batch workflows
+- Store-level ingestion can now be awaited with `poll_vector_store(...)` and
+  `create_vector_store_and_poll(...)` when hosted vector-store creation starts
+  with initial `file_ids`
 
 ### Rich Responses output items
 

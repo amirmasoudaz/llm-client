@@ -816,6 +816,8 @@ A provider implements:
 - `delete_vector_store(vector_store_id, **kwargs)`
 - `list_vector_stores(**kwargs)`
 - `search_vector_store(vector_store_id, query, **kwargs)`
+- `poll_vector_store(vector_store_id, **kwargs)`
+- `create_vector_store_and_poll(**kwargs)`
 - `create_fine_tuning_job(**kwargs)`
 - `retrieve_fine_tuning_job(job_id, **kwargs)`
 - `cancel_fine_tuning_job(job_id, **kwargs)`
@@ -943,6 +945,8 @@ Key methods:
 - `await provider.delete_vector_store(vector_store_id: str, **kwargs) -> DeletionResult`
 - `await provider.list_vector_stores(**kwargs) -> VectorStoresPage`
 - `await provider.search_vector_store(vector_store_id: str, query, **kwargs) -> VectorStoreSearchResult`
+- `await provider.poll_vector_store(vector_store_id: str, **kwargs) -> VectorStoreResource`
+- `await provider.create_vector_store_and_poll(**kwargs) -> VectorStoreResource`
 - `await provider.create_fine_tuning_job(**kwargs) -> FineTuningJobResult`
 - `await provider.retrieve_fine_tuning_job(job_id: str, **kwargs) -> FineTuningJobResult`
 - `await provider.cancel_fine_tuning_job(job_id: str, **kwargs) -> FineTuningJobResult`
@@ -1238,6 +1242,8 @@ Key methods:
 - `await engine.delete_vector_store(vector_store_id, provider_name=None, model=None, ...)`
 - `await engine.list_vector_stores(provider_name=None, model=None, ...)`
 - `await engine.search_vector_store(vector_store_id, query, provider_name=None, model=None, ...)`
+- `await engine.poll_vector_store(vector_store_id, provider_name=None, model=None, ...)`
+- `await engine.create_vector_store_and_poll(provider_name=None, model=None, ...)`
 - `await engine.create_fine_tuning_job(provider_name=None, model=None, ...)`
 - `await engine.retrieve_fine_tuning_job(job_id, provider_name=None, model=None, ...)`
 - `await engine.cancel_fine_tuning_job(job_id, provider_name=None, model=None, ...)`
@@ -1567,6 +1573,9 @@ For hosted vector-store resource management, use `ResponsesExpirationPolicy`,
 `create_vector_store_file_batch(...)`, and
 `create_vector_store_file_batch_and_poll(...)` when you need typed expiration,
 chunking, or per-file batch metadata instead of raw OpenAI request dicts.
+When vector stores are created with initial `file_ids`, use
+`poll_vector_store(...)` or `create_vector_store_and_poll(...)` to wait for
+hosted ingestion to settle based on terminal `status` or `file_counts`.
 
 Example:
 
