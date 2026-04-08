@@ -9,9 +9,12 @@ from llm_client.providers.google import GoogleProvider
 from llm_client.providers.openai import OpenAIProvider
 from llm_client.providers.types import CompletionResult, Message, ToolCall
 from llm_client.tools import (
+    ResponsesAttributeFilter,
     ResponsesBuiltinTool,
     ResponsesConnectorId,
     ResponsesCustomTool,
+    ResponsesFileSearchHybridWeights,
+    ResponsesFileSearchRankingOptions,
     ResponsesFunctionTool,
     ResponsesGrammar,
     ResponsesMCPApprovalPolicy,
@@ -299,6 +302,47 @@ def test_openai_responses_request_translation_supports_builtin_and_custom_tool_d
     assert rewritten[2]["strict"] is True
     assert alias_to_original["Lookup_Strict"] == "Lookup.Strict"
     assert original_to_alias["Lookup.Strict"] == "Lookup_Strict"
+
+
+def test_openai_responses_request_translation_serializes_typed_file_search_config() -> None:
+    provider = _openai_provider("gpt-5-mini")
+
+    rewritten, _, _ = provider._prepare_openai_tools(
+        [
+            ResponsesBuiltinTool.file_search(
+                vector_store_ids=["vs_123"],
+                filters=ResponsesAttributeFilter.and_(
+                    ResponsesAttributeFilter.eq("scope", "tenant"),
+                    ResponsesAttributeFilter.in_("kind", ["policy", "guide"]),
+                ),
+                ranking_options=ResponsesFileSearchRankingOptions(
+                    ranker="default-2024-11-15",
+                    score_threshold=0.2,
+                    hybrid_search=ResponsesFileSearchHybridWeights(embedding_weight=0.75, text_weight=0.25),
+                ),
+            )
+        ],
+        responses_api=True,
+    )
+
+    assert rewritten == [
+        {
+            "type": "file_search",
+            "vector_store_ids": ["vs_123"],
+            "filters": {
+                "type": "and",
+                "filters": [
+                    {"type": "eq", "key": "scope", "value": "tenant"},
+                    {"type": "in", "key": "kind", "value": ["policy", "guide"]},
+                ],
+            },
+            "ranking_options": {
+                "ranker": "default-2024-11-15",
+                "score_threshold": 0.2,
+                "hybrid_search": {"embedding_weight": 0.75, "text_weight": 0.25},
+            },
+        }
+    ]
 
 
 def test_openai_responses_request_translation_defaults_function_tools_to_strict() -> None:

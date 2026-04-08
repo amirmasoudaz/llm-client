@@ -19,9 +19,12 @@ from llm_client.observability import (
     RuntimeEventType,
 )
 from llm_client.tools import (
+    ResponsesAttributeFilter,
     ResponsesBuiltinTool,
     ResponsesConnectorId,
     ResponsesCustomTool,
+    ResponsesFileSearchHybridWeights,
+    ResponsesFileSearchRankingOptions,
     ResponsesFunctionTool,
     ResponsesGrammar,
     ResponsesMCPApprovalPolicy,
@@ -214,6 +217,15 @@ def test_public_modules_define_explicit_all_contracts() -> None:
 
 def test_tools_namespace_exports_responses_tool_descriptors() -> None:
     builtin = ResponsesBuiltinTool.web_search(search_context_size="low")
+    attribute_filter = ResponsesAttributeFilter.and_(
+        ResponsesAttributeFilter.eq("scope", "tenant"),
+        ResponsesAttributeFilter.gte("score", 0.8),
+    )
+    ranking = ResponsesFileSearchRankingOptions(
+        ranker="default-2024-11-15",
+        score_threshold=0.25,
+        hybrid_search=ResponsesFileSearchHybridWeights(embedding_weight=0.7, text_weight=0.3),
+    )
     tool_search = ResponsesToolSearch.client(parameters={"type": "object", "properties": {"query": {"type": "string"}}})
     custom = ResponsesCustomTool(
         name="planner",
@@ -239,6 +251,8 @@ def test_tools_namespace_exports_responses_tool_descriptors() -> None:
     )
 
     assert builtin.to_dict()["type"] == "web_search"
+    assert attribute_filter.to_dict()["filters"][0]["type"] == "eq"
+    assert ranking.to_dict()["hybrid_search"]["embedding_weight"] == 0.7
     assert tool_search.to_dict()["type"] == "tool_search"
     assert custom.to_dict()["format"]["syntax"] == "lark"
     assert function_tool.to_dict()["defer_loading"] is True
@@ -246,8 +260,11 @@ def test_tools_namespace_exports_responses_tool_descriptors() -> None:
     assert mcp.to_dict()["connector_id"] == "connector_gmail"
     assert mcp.to_dict()["require_approval"] == {"always": {"tool_names": ["read_thread"]}}
     assert "ResponsesBuiltinTool" in tools.__all__
+    assert "ResponsesAttributeFilter" in tools.__all__
     assert "ResponsesToolSearch" in tools.__all__
     assert "ResponsesConnectorId" in tools.__all__
+    assert "ResponsesFileSearchHybridWeights" in tools.__all__
+    assert "ResponsesFileSearchRankingOptions" in tools.__all__
     assert "ResponsesFunctionTool" in tools.__all__
     assert "ResponsesToolNamespace" in tools.__all__
     assert "ResponsesMCPTool" in tools.__all__

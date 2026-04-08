@@ -91,13 +91,17 @@ if TYPE_CHECKING:
     from ..models import ModelProfile
     from ..tools.base import ToolDefinition
 from ..tools.base import (
+    ResponsesAttributeFilter,
     ResponsesBuiltinTool,
+    ResponsesFileSearchRankingOptions,
     ResponsesMCPTool,
     is_provider_native_tool,
 )
 
 
 logger = logging.getLogger("llm_client.providers.openai")
+
+_OPENAI_FILE_SEARCH_RESULTS_INCLUDE = "file_search_call.results"
 
 
 _DEEP_RESEARCH_CLARIFY_INSTRUCTIONS = """
@@ -303,6 +307,48 @@ class OpenAIProvider(BaseProvider):
             params["reasoning_effort"] = effort
 
         return params
+
+    @staticmethod
+    def _serialize_openai_request_value(value: Any) -> Any:
+        if value is None or isinstance(value, (str, int, float, bool)):
+            return value
+        if isinstance(value, dict):
+            return {
+                str(key): OpenAIProvider._serialize_openai_request_value(item)
+                for key, item in value.items()
+            }
+        if isinstance(value, (list, tuple)):
+            return [OpenAIProvider._serialize_openai_request_value(item) for item in value]
+        if hasattr(value, "to_dict"):
+            return OpenAIProvider._serialize_openai_request_value(value.to_dict())
+        if hasattr(value, "model_dump"):
+            return OpenAIProvider._serialize_openai_request_value(value.model_dump())
+        return value
+
+    @staticmethod
+    def _merge_openai_include(
+        include: list[str] | tuple[str, ...] | None,
+        *extra_values: str,
+    ) -> list[str] | None:
+        merged: list[str] = [str(item) for item in (include or []) if str(item)]
+        for item in extra_values:
+            if item and item not in merged:
+                merged.append(item)
+        return merged or None
+
+    @staticmethod
+    def _apply_openai_param_alias(
+        params: dict[str, Any],
+        *,
+        canonical_key: str,
+        alias_value: Any,
+        alias_name: str,
+    ) -> None:
+        if alias_value is None:
+            return
+        if canonical_key in params:
+            raise ValueError(f"Provide only one of `{alias_name}` or `{canonical_key}`.")
+        params[canonical_key] = OpenAIProvider._serialize_openai_request_value(alias_value)
 
     @staticmethod
     def _normalize_response_format(
@@ -3108,10 +3154,39 @@ class OpenAIProvider(BaseProvider):
         vector_store_id: str,
         *,
         query: str | list[str],
+        max_num_results: int | None = None,
+        attribute_filter: ResponsesAttributeFilter | dict[str, Any] | None = None,
+        ranking_options: ResponsesFileSearchRankingOptions | dict[str, Any] | None = None,
+        rewrite_query: bool | None = None,
         **kwargs: Any,
     ) -> VectorStoreSearchResult:
+        params = dict(kwargs)
+        self._apply_openai_param_alias(
+            params,
+            canonical_key="filters",
+            alias_value=attribute_filter,
+            alias_name="attribute_filter",
+        )
+        self._apply_openai_param_alias(
+            params,
+            canonical_key="ranking_options",
+            alias_value=ranking_options,
+            alias_name="ranking_options",
+        )
+        self._apply_openai_param_alias(
+            params,
+            canonical_key="max_num_results",
+            alias_value=max_num_results,
+            alias_name="max_num_results",
+        )
+        self._apply_openai_param_alias(
+            params,
+            canonical_key="rewrite_query",
+            alias_value=rewrite_query,
+            alias_name="rewrite_query",
+        )
         async with self.limiter.limit(tokens=self.count_tokens(query), requests=1):
-            response = await self.client.vector_stores.search(vector_store_id, query=query, **kwargs)
+            response = await self.client.vector_stores.search(vector_store_id, query=query, **params)
         if hasattr(response, "_get_page"):
             page = await response._get_page()
             return self._vector_store_search_result_from_response(page, vector_store_id=vector_store_id, query=query)
@@ -3512,16 +3587,47 @@ class OpenAIProvider(BaseProvider):
         prompt: str,
         *,
         vector_store_ids: list[str] | tuple[str, ...],
+        max_num_results: int | None = None,
+        attribute_filter: ResponsesAttributeFilter | dict[str, Any] | None = None,
+        ranking_options: ResponsesFileSearchRankingOptions | dict[str, Any] | None = None,
+        include_search_results: bool = False,
         **kwargs: Any,
     ) -> CompletionResult:
         model_name = str(kwargs.pop("model", self.model_name))
         tool = kwargs.pop("tool", None)
         tool_config = dict(kwargs.pop("tool_config", {}) or {})
+        include = kwargs.pop("include", None)
+        if tool is not None and any(value is not None for value in (max_num_results, attribute_filter, ranking_options)):
+            raise ValueError(
+                "Provide file-search tuning controls on the explicit `tool` object, or omit `tool` and use helper kwargs."
+            )
+        self._apply_openai_param_alias(
+            tool_config,
+            canonical_key="filters",
+            alias_value=attribute_filter,
+            alias_name="attribute_filter",
+        )
+        self._apply_openai_param_alias(
+            tool_config,
+            canonical_key="ranking_options",
+            alias_value=ranking_options,
+            alias_name="ranking_options",
+        )
+        self._apply_openai_param_alias(
+            tool_config,
+            canonical_key="max_num_results",
+            alias_value=max_num_results,
+            alias_name="max_num_results",
+        )
         if tool is None:
             tool = ResponsesBuiltinTool.file_search(
                 vector_store_ids=list(vector_store_ids),
                 **tool_config,
             )
+        if include_search_results:
+            include = self._merge_openai_include(include, _OPENAI_FILE_SEARCH_RESULTS_INCLUDE)
+        if include is not None:
+            kwargs["include"] = include
         return await self._complete_with_responses_tools(prompt, tools=[tool], model=model_name, **kwargs)
 
     async def respond_with_tool_search(

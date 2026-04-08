@@ -5,7 +5,12 @@ from types import SimpleNamespace
 import pytest
 
 from llm_client.providers.openai import OpenAIProvider
-from llm_client.tools import ResponsesMCPTool
+from llm_client.tools import (
+    ResponsesAttributeFilter,
+    ResponsesFileSearchHybridWeights,
+    ResponsesFileSearchRankingOptions,
+    ResponsesMCPTool,
+)
 from tests.llm_client.fakes import FakeModel
 
 
@@ -216,6 +221,55 @@ async def test_openai_vector_store_and_fine_tuning_surfaces() -> None:
     assert search.results[0]["file_id"] == "file_1"
     assert job.job_id == "ftjob_1"
     assert events.events[0]["id"] == "ftevent_1"
+
+
+@pytest.mark.asyncio
+async def test_openai_vector_store_search_supports_typed_retrieval_controls() -> None:
+    provider = _openai_provider("gpt-4o-mini")
+
+    async def _search_vector_store(vector_store_id: str, **kwargs):
+        assert vector_store_id == "vs_1"
+        assert kwargs["query"] == "hello"
+        assert kwargs["filters"] == {
+            "type": "and",
+            "filters": [
+                {"type": "eq", "key": "scope", "value": "tenant"},
+                {"type": "gte", "key": "priority", "value": 0.8},
+            ],
+        }
+        assert kwargs["ranking_options"] == {
+            "ranker": "default-2024-11-15",
+            "score_threshold": 0.3,
+            "hybrid_search": {"embedding_weight": 0.6, "text_weight": 0.4},
+        }
+        assert kwargs["max_num_results"] == 8
+        assert kwargs["rewrite_query"] is True
+        return _SinglePage({"data": [{"file_id": "file_1", "score": 0.91, "filename": "guide.md"}]})
+
+    provider.client = SimpleNamespace(
+        vector_stores=SimpleNamespace(
+            search=_search_vector_store,
+        )
+    )
+
+    search = await provider.search_vector_store(
+        "vs_1",
+        query="hello",
+        attribute_filter=ResponsesAttributeFilter.and_(
+            ResponsesAttributeFilter.eq("scope", "tenant"),
+            ResponsesAttributeFilter.gte("priority", 0.8),
+        ),
+        ranking_options=ResponsesFileSearchRankingOptions(
+            ranker="default-2024-11-15",
+            score_threshold=0.3,
+            hybrid_search=ResponsesFileSearchHybridWeights(embedding_weight=0.6, text_weight=0.4),
+        ),
+        max_num_results=8,
+        rewrite_query=True,
+    )
+
+    assert search.vector_store_id == "vs_1"
+    assert search.results[0]["file_id"] == "file_1"
 
 
 @pytest.mark.asyncio
@@ -749,6 +803,56 @@ async def test_openai_hosted_tool_workflow_helpers_build_typed_tools() -> None:
             "authorization": "Bearer oauth-token",
         }
     ]
+
+
+@pytest.mark.asyncio
+async def test_openai_file_search_helper_supports_typed_retrieval_controls_and_include() -> None:
+    provider = _openai_provider("gpt-5-mini")
+    provider.use_responses_api = True
+    captured: list[dict[str, object]] = []
+
+    async def _complete(messages, **kwargs):
+        captured.append({"messages": messages, **kwargs})
+        return SimpleNamespace(ok=True, content="done")
+
+    provider.complete = _complete  # type: ignore[method-assign]
+
+    await provider.respond_with_file_search(
+        "Search my files",
+        vector_store_ids=["vs_1"],
+        attribute_filter=ResponsesAttributeFilter.eq("scope", "tenant"),
+        ranking_options=ResponsesFileSearchRankingOptions(score_threshold=0.15),
+        max_num_results=6,
+        include_search_results=True,
+        include=["output_text"],
+    )
+
+    rendered_tools = [tool.to_dict() if hasattr(tool, "to_dict") else tool for tool in captured[0]["tools"]]
+
+    assert rendered_tools == [
+        {
+            "type": "file_search",
+            "vector_store_ids": ["vs_1"],
+            "filters": {"type": "eq", "key": "scope", "value": "tenant"},
+            "ranking_options": {"score_threshold": 0.15},
+            "max_num_results": 6,
+        }
+    ]
+    assert captured[0]["include"] == ["output_text", "file_search_call.results"]
+
+
+@pytest.mark.asyncio
+async def test_openai_file_search_helper_rejects_mixed_explicit_tool_and_helper_controls() -> None:
+    provider = _openai_provider("gpt-5-mini")
+    provider.use_responses_api = True
+
+    with pytest.raises(ValueError, match="Provide file-search tuning controls on the explicit `tool` object"):
+        await provider.respond_with_file_search(
+            "Search my files",
+            vector_store_ids=["vs_1"],
+            tool=ResponsesMCPTool.remote_server("https://mcp.example.com", server_label="Wiki"),
+            attribute_filter=ResponsesAttributeFilter.eq("scope", "tenant"),
+        )
 
 
 @pytest.mark.asyncio

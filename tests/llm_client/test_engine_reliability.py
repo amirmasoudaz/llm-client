@@ -9,6 +9,7 @@ from llm_client.engine import ExecutionEngine, FailoverPolicy, RetryConfig
 from llm_client.hooks import HookManager
 from llm_client.idempotency import IdempotencyTracker
 from llm_client.provider_registry import ProviderCapabilities, ProviderDescriptor, ProviderRegistry
+from llm_client.tools import ResponsesAttributeFilter, ResponsesFileSearchRankingOptions
 from llm_client.providers.types import (
     AudioSpeechResult,
     AudioTranscriptionResult,
@@ -883,3 +884,49 @@ async def test_engine_orchestrates_realtime_webhook_vector_file_and_deep_researc
     assert connector.content == "connector done"
     assert research.content == "research queued"
     assert staged_research.background.completion.content == "research final"
+
+
+@pytest.mark.asyncio
+async def test_engine_passes_through_typed_retrieval_controls() -> None:
+    provider = _WorkflowProvider()
+    engine = ExecutionEngine(provider=provider)
+
+    await engine.search_vector_store(
+        "vs_1",
+        query="cache invalidation",
+        attribute_filter=ResponsesAttributeFilter.eq("scope", "tenant"),
+        ranking_options=ResponsesFileSearchRankingOptions(score_threshold=0.2),
+        max_num_results=7,
+        rewrite_query=True,
+    )
+    await engine.respond_with_file_search(
+        "Find tenant docs",
+        vector_store_ids=["vs_1"],
+        attribute_filter=ResponsesAttributeFilter.eq("scope", "tenant"),
+        ranking_options=ResponsesFileSearchRankingOptions(score_threshold=0.15),
+        max_num_results=4,
+        include_search_results=True,
+    )
+
+    assert provider.workflow_calls[0] == (
+        "search_vector_store",
+        {
+            "vector_store_id": "vs_1",
+            "query": "cache invalidation",
+            "attribute_filter": ResponsesAttributeFilter.eq("scope", "tenant"),
+            "ranking_options": ResponsesFileSearchRankingOptions(score_threshold=0.2),
+            "max_num_results": 7,
+            "rewrite_query": True,
+        },
+    )
+    assert provider.workflow_calls[1] == (
+        "respond_with_file_search",
+        {
+            "prompt": "Find tenant docs",
+            "vector_store_ids": ["vs_1"],
+            "attribute_filter": ResponsesAttributeFilter.eq("scope", "tenant"),
+            "ranking_options": ResponsesFileSearchRankingOptions(score_threshold=0.15),
+            "max_num_results": 4,
+            "include_search_results": True,
+        },
+    )

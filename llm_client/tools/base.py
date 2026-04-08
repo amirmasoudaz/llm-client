@@ -27,6 +27,20 @@ from ..concurrency import run_sync
 from ..validation import validate_against_schema, validate_or_raise, validate_tool_definition
 
 
+def _serialize_provider_config_value(value: Any) -> Any:
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, dict):
+        return {str(key): _serialize_provider_config_value(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_serialize_provider_config_value(item) for item in value]
+    if hasattr(value, "to_dict"):
+        return _serialize_provider_config_value(value.to_dict())
+    if hasattr(value, "model_dump"):
+        return _serialize_provider_config_value(value.model_dump())
+    return value
+
+
 @dataclass(frozen=True)
 class ToolExecutionMetadata:
     """Execution and safety hints attached to a tool definition."""
@@ -64,7 +78,7 @@ class ResponsesBuiltinTool:
     def to_dict(self) -> dict[str, Any]:
         return {
             "type": self.type,
-            **dict(self.config),
+            **{str(key): _serialize_provider_config_value(value) for key, value in self.config.items()},
         }
 
     def to_openai_format(self) -> dict[str, Any]:
@@ -128,7 +142,7 @@ class ResponsesToolSearch:
     def to_dict(self) -> dict[str, Any]:
         return {
             "type": "tool_search",
-            **dict(self.config),
+            **{str(key): _serialize_provider_config_value(value) for key, value in self.config.items()},
         }
 
     def to_openai_format(self) -> dict[str, Any]:
@@ -217,7 +231,7 @@ class ResponsesMCPTool:
         if self.authorization:
             payload["authorization"] = self.authorization
         if self.headers:
-            payload["headers"] = dict(self.headers)
+            payload["headers"] = {str(key): str(value) for key, value in self.headers.items()}
         if self.allowed_tools:
             payload["allowed_tools"] = [name for name in self.allowed_tools if str(name).strip()]
         if self.require_approval is not None:
@@ -227,7 +241,7 @@ class ResponsesMCPTool:
                 payload["require_approval"] = dict(self.require_approval)
             else:
                 payload["require_approval"] = self.require_approval
-        payload.update(dict(self.metadata))
+        payload.update({str(key): _serialize_provider_config_value(value) for key, value in self.metadata.items()})
         return payload
 
     def to_openai_format(self) -> dict[str, Any]:
@@ -342,7 +356,7 @@ class ResponsesCustomTool:
         }
         if self.strict is not None:
             payload["strict"] = self.strict
-        payload.update(dict(self.metadata))
+        payload.update({str(key): _serialize_provider_config_value(value) for key, value in self.metadata.items()})
         return payload
 
     def to_openai_format(self) -> dict[str, Any]:
@@ -371,7 +385,7 @@ class ResponsesFunctionTool:
             payload["strict"] = self.strict
         if self.defer_loading is not None:
             payload["defer_loading"] = self.defer_loading
-        payload.update(dict(self.metadata))
+        payload.update({str(key): _serialize_provider_config_value(value) for key, value in self.metadata.items()})
         return payload
 
     def to_openai_format(self) -> dict[str, Any]:
@@ -412,7 +426,7 @@ class ResponsesToolNamespace:
             "description": self.description,
             "tools": [self._render_namespace_tool(tool) for tool in self.tools],
         }
-        payload.update(dict(self.metadata))
+        payload.update({str(key): _serialize_provider_config_value(value) for key, value in self.metadata.items()})
         return payload
 
     def to_openai_format(self) -> dict[str, Any]:
@@ -455,6 +469,93 @@ class ResponsesToolNamespace:
                     **flattened,
                 }
         return rendered
+
+
+@dataclass(frozen=True)
+class ResponsesAttributeFilter:
+    """Typed OpenAI attribute filter for retrieval and file-search workflows."""
+
+    payload: dict[str, Any]
+
+    def to_dict(self) -> dict[str, Any]:
+        return cast(dict[str, Any], _serialize_provider_config_value(self.payload))
+
+    @classmethod
+    def compare(cls, op: str, *, key: str, value: str | float | bool | list[str | float]) -> ResponsesAttributeFilter:
+        return cls({"type": op, "key": key, "value": value})
+
+    @classmethod
+    def eq(cls, key: str, value: str | float | bool) -> ResponsesAttributeFilter:
+        return cls.compare("eq", key=key, value=value)
+
+    @classmethod
+    def ne(cls, key: str, value: str | float | bool) -> ResponsesAttributeFilter:
+        return cls.compare("ne", key=key, value=value)
+
+    @classmethod
+    def gt(cls, key: str, value: float) -> ResponsesAttributeFilter:
+        return cls.compare("gt", key=key, value=value)
+
+    @classmethod
+    def gte(cls, key: str, value: float) -> ResponsesAttributeFilter:
+        return cls.compare("gte", key=key, value=value)
+
+    @classmethod
+    def lt(cls, key: str, value: float) -> ResponsesAttributeFilter:
+        return cls.compare("lt", key=key, value=value)
+
+    @classmethod
+    def lte(cls, key: str, value: float) -> ResponsesAttributeFilter:
+        return cls.compare("lte", key=key, value=value)
+
+    @classmethod
+    def in_(cls, key: str, values: list[str | float]) -> ResponsesAttributeFilter:
+        return cls.compare("in", key=key, value=list(values))
+
+    @classmethod
+    def nin(cls, key: str, values: list[str | float]) -> ResponsesAttributeFilter:
+        return cls.compare("nin", key=key, value=list(values))
+
+    @classmethod
+    def and_(cls, *filters: Any) -> ResponsesAttributeFilter:
+        return cls({"type": "and", "filters": list(filters)})
+
+    @classmethod
+    def or_(cls, *filters: Any) -> ResponsesAttributeFilter:
+        return cls({"type": "or", "filters": list(filters)})
+
+
+@dataclass(frozen=True)
+class ResponsesFileSearchHybridWeights:
+    """Typed hybrid-search weights for OpenAI file-search ranking."""
+
+    embedding_weight: float
+    text_weight: float
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "embedding_weight": self.embedding_weight,
+            "text_weight": self.text_weight,
+        }
+
+
+@dataclass(frozen=True)
+class ResponsesFileSearchRankingOptions:
+    """Typed ranking options for OpenAI retrieval and file-search workflows."""
+
+    ranker: str | None = None
+    score_threshold: float | None = None
+    hybrid_search: ResponsesFileSearchHybridWeights | dict[str, Any] | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {}
+        if self.ranker is not None:
+            payload["ranker"] = self.ranker
+        if self.score_threshold is not None:
+            payload["score_threshold"] = self.score_threshold
+        if self.hybrid_search is not None:
+            payload["hybrid_search"] = _serialize_provider_config_value(self.hybrid_search)
+        return payload
 
 
 @dataclass
