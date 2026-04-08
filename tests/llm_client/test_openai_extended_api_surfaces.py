@@ -248,6 +248,74 @@ async def test_openai_vector_store_and_fine_tuning_surfaces() -> None:
 
 
 @pytest.mark.asyncio
+async def test_openai_vector_store_polling_and_create_and_poll() -> None:
+    provider = _openai_provider("gpt-4o-mini")
+    retrieved_calls: list[tuple[str, dict[str, object]]] = []
+
+    retrieve_responses = [
+        SimpleNamespace(id="vs_1", status="in_progress", file_counts={"in_progress": 1}),
+        SimpleNamespace(id="vs_1", status="in_progress", file_counts={"in_progress": 0, "completed": 2}),
+        SimpleNamespace(id="vs_1", status="completed", file_counts={"completed": 2}),
+    ]
+
+    async def _create_vector_store(**kwargs):
+        if kwargs["name"] == "Docs":
+            assert kwargs["file_ids"] == ["file_1", "file_2"]
+            return SimpleNamespace(id="vs_1", name="Docs", status="in_progress", file_counts={"in_progress": 2})
+        assert kwargs["name"] == "No files"
+        assert "file_ids" not in kwargs
+        return SimpleNamespace(id="vs_2", name="No files", status="completed", file_counts=None)
+
+    async def _retrieve_vector_store(vector_store_id: str, **kwargs):
+        retrieved_calls.append((vector_store_id, dict(kwargs)))
+        return retrieve_responses.pop(0)
+
+    provider.client = SimpleNamespace(
+        vector_stores=SimpleNamespace(
+            create=_create_vector_store,
+            retrieve=_retrieve_vector_store,
+        )
+    )
+
+    polled = await provider.poll_vector_store("vs_1", poll_interval=0.0, timeout=5.0)
+    created_polled = await provider.create_vector_store_and_poll(
+        name="Docs",
+        file_ids=["file_1", "file_2"],
+        poll_interval=0.0,
+        timeout=5.0,
+    )
+    create_without_files = await provider.create_vector_store_and_poll(name="No files", poll_interval=0.0, timeout=5.0)
+
+    assert polled.vector_store_id == "vs_1"
+    assert polled.file_counts == {"in_progress": 0, "completed": 2}
+    assert created_polled.vector_store_id == "vs_1"
+    assert create_without_files.vector_store_id == "vs_2"
+    assert retrieved_calls == [
+        ("vs_1", {}),
+        ("vs_1", {}),
+        ("vs_1", {}),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_openai_vector_store_polling_times_out() -> None:
+    provider = _openai_provider("gpt-4o-mini")
+
+    async def _retrieve_vector_store(vector_store_id: str, **kwargs):
+        assert vector_store_id == "vs_1"
+        return SimpleNamespace(id="vs_1", status="in_progress", file_counts={"in_progress": 1})
+
+    provider.client = SimpleNamespace(
+        vector_stores=SimpleNamespace(
+            retrieve=_retrieve_vector_store,
+        )
+    )
+
+    with pytest.raises(TimeoutError, match="vector store"):
+        await provider.poll_vector_store("vs_1", poll_interval=0.0, timeout=0.0)
+
+
+@pytest.mark.asyncio
 async def test_openai_vector_store_search_supports_typed_retrieval_controls() -> None:
     provider = _openai_provider("gpt-4o-mini")
 

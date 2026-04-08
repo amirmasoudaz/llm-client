@@ -136,6 +136,24 @@ class _WorkflowProvider(ScriptedProvider):
         self.workflow_calls.append(("create_conversation", {"items": items, "metadata": metadata, **kwargs}))
         return ConversationResource(conversation_id="conv_1", metadata=metadata)
 
+    async def poll_vector_store(self, vector_store_id: str, *, poll_interval: float = 2.0, timeout: float | None = None, **kwargs):
+        self.workflow_calls.append(
+            (
+                "poll_vector_store",
+                {"vector_store_id": vector_store_id, "poll_interval": poll_interval, "timeout": timeout, **kwargs},
+            )
+        )
+        return VectorStoreResource(vector_store_id=vector_store_id, status="completed", file_counts={"completed": 2})
+
+    async def create_vector_store_and_poll(self, *, poll_interval: float = 2.0, timeout: float | None = None, **kwargs):
+        self.workflow_calls.append(
+            (
+                "create_vector_store_and_poll",
+                {"poll_interval": poll_interval, "timeout": timeout, **kwargs},
+            )
+        )
+        return VectorStoreResource(vector_store_id="vs_1", status="completed", file_counts={"completed": 1})
+
     async def create_conversation_items(self, conversation_id: str, *, items, include=None, **kwargs):
         self.workflow_calls.append(
             (
@@ -1000,4 +1018,29 @@ async def test_engine_passes_through_typed_vector_store_resource_controls() -> N
                 )
             ],
         },
+    )
+
+
+@pytest.mark.asyncio
+async def test_engine_orchestrates_vector_store_polling_helpers() -> None:
+    provider = _WorkflowProvider()
+    engine = ExecutionEngine(provider=provider)
+
+    polled = await engine.poll_vector_store("vs_1", poll_interval=0.0, timeout=5.0)
+    created_polled = await engine.create_vector_store_and_poll(
+        name="Docs",
+        file_ids=["file_1"],
+        poll_interval=0.0,
+        timeout=5.0,
+    )
+
+    assert polled.vector_store_id == "vs_1"
+    assert created_polled.vector_store_id == "vs_1"
+    assert provider.workflow_calls[0] == (
+        "poll_vector_store",
+        {"vector_store_id": "vs_1", "poll_interval": 0.0, "timeout": 5.0},
+    )
+    assert provider.workflow_calls[1] == (
+        "create_vector_store_and_poll",
+        {"poll_interval": 0.0, "timeout": 5.0, "name": "Docs", "file_ids": ["file_1"]},
     )

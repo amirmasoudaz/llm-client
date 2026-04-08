@@ -1263,6 +1263,54 @@ class ExecutionEngine:
             call=lambda provider: provider.search_vector_store(vector_store_id, query=query, **kwargs),
         )
 
+    async def poll_vector_store(
+        self,
+        vector_store_id: str,
+        *,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        poll_interval: float = 2.0,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> VectorStoreResource:
+        return await self._run_workflow_operation(
+            "poll_vector_store",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.poll_vector_store(
+                vector_store_id,
+                poll_interval=poll_interval,
+                timeout=timeout,
+                **kwargs,
+            ),
+        )
+
+    async def create_vector_store_and_poll(
+        self,
+        *,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        poll_interval: float = 2.0,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> VectorStoreResource:
+        return await self._run_workflow_operation(
+            "create_vector_store_and_poll",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.create_vector_store_and_poll(
+                poll_interval=poll_interval,
+                timeout=timeout,
+                **kwargs,
+            ),
+        )
+
     async def create_fine_tuning_job(
         self,
         *,

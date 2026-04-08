@@ -258,6 +258,18 @@ class Provider(Protocol):
         """Search a hosted vector store when supported."""
         ...
 
+    async def poll_vector_store(
+        self,
+        vector_store_id: str,
+        **kwargs: Any,
+    ) -> VectorStoreResource:
+        """Poll a hosted vector store until ingestion reaches a terminal state when supported."""
+        ...
+
+    async def create_vector_store_and_poll(self, **kwargs: Any) -> VectorStoreResource:
+        """Create a hosted vector store and poll until ingestion reaches a terminal state when supported."""
+        ...
+
     async def create_fine_tuning_job(self, **kwargs: Any) -> FineTuningJobResult:
         """Create a fine-tuning job when supported."""
         ...
@@ -1001,6 +1013,51 @@ class BaseProvider(Provider, ABC):
     ) -> VectorStoreSearchResult:
         _ = vector_store_id, query, kwargs
         raise NotImplementedError(f"{self.__class__.__name__} does not support vector-store search.")
+
+    @staticmethod
+    def _vector_store_ingestion_terminal(result: VectorStoreResource) -> bool:
+        terminal_statuses = {"completed", "failed", "cancelled", "expired"}
+        if str(result.status or "").lower() in terminal_statuses:
+            return True
+        file_counts = result.file_counts or {}
+        in_progress = file_counts.get("in_progress")
+        return isinstance(in_progress, int) and in_progress == 0
+
+    async def poll_vector_store(
+        self,
+        vector_store_id: str,
+        *,
+        poll_interval: float = 2.0,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> VectorStoreResource:
+        loop = asyncio.get_running_loop()
+        started_at = loop.time()
+
+        while True:
+            result = await self.retrieve_vector_store(vector_store_id, **kwargs)
+            if self._vector_store_ingestion_terminal(result):
+                return result
+            if timeout is not None and (loop.time() - started_at) >= timeout:
+                raise TimeoutError(f"Timed out waiting for vector store {vector_store_id!r}")
+            await asyncio.sleep(poll_interval)
+
+    async def create_vector_store_and_poll(
+        self,
+        *,
+        poll_interval: float = 2.0,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> VectorStoreResource:
+        initial_file_ids = kwargs.get("file_ids")
+        result = await self.create_vector_store(**kwargs)
+        if not initial_file_ids:
+            return result
+        return await self.poll_vector_store(
+            result.vector_store_id,
+            poll_interval=poll_interval,
+            timeout=timeout,
+        )
 
     async def create_fine_tuning_job(self, **kwargs: Any) -> FineTuningJobResult:
         _ = kwargs
