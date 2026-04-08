@@ -514,6 +514,67 @@ async def test_openai_responses_complete_normalizes_refusal_and_hosted_tool_outp
     assert [item.to_dict() for item in roundtrip.output_items] == [item.to_dict() for item in result.output_items]
 
 
+@pytest.mark.asyncio
+async def test_openai_responses_complete_normalizes_tool_search_outputs() -> None:
+    provider = _openai_provider("gpt-5.4")
+    provider.use_responses_api = True
+
+    async def _responses_create(**kwargs):
+        _ = kwargs
+        return SimpleNamespace(
+            model="gpt-5.4",
+            status="completed",
+            output_text="",
+            output=[
+                SimpleNamespace(
+                    type="tool_search_call",
+                    id="tsc_1",
+                    call_id=None,
+                    status="completed",
+                    execution="server",
+                    query="crm refund lookup",
+                ),
+                SimpleNamespace(
+                    type="tool_search_output",
+                    id="tso_1",
+                    call_id="toolsearch_1",
+                    status="completed",
+                    execution="client",
+                    tools=[
+                        {
+                            "type": "function",
+                            "name": "CRM_GetProfile",
+                            "description": "Lookup a customer profile.",
+                            "parameters": {"type": "object", "properties": {"customer_id": {"type": "string"}}},
+                        }
+                    ],
+                ),
+            ],
+            usage=SimpleNamespace(to_dict=lambda: {"input_tokens": 3, "output_tokens": 1, "total_tokens": 4}),
+            incomplete_details=None,
+        )
+
+    provider.client = SimpleNamespace(
+        responses=SimpleNamespace(create=_responses_create, parse=None),
+    )
+
+    result = await provider.complete(
+        [Message.user("hello")],
+        tools=[],
+        model="gpt-5.4",
+    )
+
+    assert result.output_items is not None
+    assert [item.type for item in result.output_items] == [
+        "tool_search_call",
+        "tool_search_output",
+    ]
+    assert result.output_items[0].details["query"] == "crm refund lookup"
+    assert result.output_items[1].call_id == "toolsearch_1"
+    assert result.output_items[1].details["execution"] == "client"
+    assert result.output_items[1].details["tools"][0]["name"] == "CRM_GetProfile"
+
+
 def test_openai_responses_finish_reason_normalizes_incomplete_statuses() -> None:
     provider = _openai_provider()
 

@@ -22,10 +22,13 @@ from llm_client.tools import (
     ResponsesBuiltinTool,
     ResponsesConnectorId,
     ResponsesCustomTool,
+    ResponsesFunctionTool,
     ResponsesGrammar,
     ResponsesMCPApprovalPolicy,
     ResponsesMCPTool,
     ResponsesMCPToolFilter,
+    ResponsesToolNamespace,
+    ResponsesToolSearch,
 )
 from llm_client.types import (
     AudioSpeechResult,
@@ -211,10 +214,22 @@ def test_public_modules_define_explicit_all_contracts() -> None:
 
 def test_tools_namespace_exports_responses_tool_descriptors() -> None:
     builtin = ResponsesBuiltinTool.web_search(search_context_size="low")
+    tool_search = ResponsesToolSearch.client(parameters={"type": "object", "properties": {"query": {"type": "string"}}})
     custom = ResponsesCustomTool(
         name="planner",
         description="Emit a plan.",
         grammar=ResponsesGrammar(syntax="lark", definition='start: "done"'),
+    )
+    function_tool = ResponsesFunctionTool(
+        name="lookup_profile",
+        description="Lookup a profile.",
+        parameters={"type": "object", "properties": {"id": {"type": "string"}}},
+        defer_loading=True,
+    )
+    namespace = ResponsesToolNamespace(
+        name="crm",
+        description="CRM tools",
+        tools=(function_tool,),
     )
     mcp = ResponsesMCPTool.connector(
         ResponsesConnectorId.GMAIL,
@@ -224,11 +239,17 @@ def test_tools_namespace_exports_responses_tool_descriptors() -> None:
     )
 
     assert builtin.to_dict()["type"] == "web_search"
+    assert tool_search.to_dict()["type"] == "tool_search"
     assert custom.to_dict()["format"]["syntax"] == "lark"
+    assert function_tool.to_dict()["defer_loading"] is True
+    assert namespace.to_dict()["tools"][0]["name"] == "lookup_profile"
     assert mcp.to_dict()["connector_id"] == "connector_gmail"
     assert mcp.to_dict()["require_approval"] == {"always": {"tool_names": ["read_thread"]}}
     assert "ResponsesBuiltinTool" in tools.__all__
+    assert "ResponsesToolSearch" in tools.__all__
     assert "ResponsesConnectorId" in tools.__all__
+    assert "ResponsesFunctionTool" in tools.__all__
+    assert "ResponsesToolNamespace" in tools.__all__
     assert "ResponsesMCPTool" in tools.__all__
     assert "ResponsesMCPApprovalPolicy" in tools.__all__
     assert "ResponsesMCPToolFilter" in tools.__all__

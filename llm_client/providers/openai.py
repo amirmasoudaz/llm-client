@@ -90,7 +90,11 @@ from .types import (
 if TYPE_CHECKING:
     from ..models import ModelProfile
     from ..tools.base import ToolDefinition
-from ..tools.base import ResponsesBuiltinTool, ResponsesMCPTool, is_provider_native_tool
+from ..tools.base import (
+    ResponsesBuiltinTool,
+    ResponsesMCPTool,
+    is_provider_native_tool,
+)
 
 
 logger = logging.getLogger("llm_client.providers.openai")
@@ -381,29 +385,42 @@ class OpenAIProvider(BaseProvider):
         used_aliases: set[str] = set()
         rewritten: list[dict[str, Any]] = []
 
-        for item in api_tools:
-            if not isinstance(item, dict):
-                rewritten.append(item)  # defensive passthrough
-                continue
-
+        def _rewrite_tool_dict(item: dict[str, Any], *, nested_in_namespace: bool = False) -> dict[str, Any]:
             item_copy = dict(item)
-            if responses_api and item_copy.get("type") == "function":
+            item_type = str(item_copy.get("type") or "")
+
+            if item_type == "namespace":
+                namespace_tools = item_copy.get("tools")
+                if isinstance(namespace_tools, list):
+                    item_copy["tools"] = [
+                        _rewrite_tool_dict(tool_item, nested_in_namespace=True)
+                        if isinstance(tool_item, dict)
+                        else tool_item
+                        for tool_item in namespace_tools
+                    ]
+                return item_copy
+
+            flatten_function = responses_api or nested_in_namespace
+            if flatten_function and item_type == "function":
                 fn = item_copy.pop("function", None)
                 if isinstance(fn, dict):
-                    for key in ("name", "description", "parameters", "strict"):
+                    for key in ("name", "description", "parameters", "strict", "defer_loading"):
                         if key in fn and key not in item_copy:
                             item_copy[key] = fn[key]
                 fn = item_copy
             else:
                 fn = item_copy.get("function")
-                if item_copy.get("type") == "function" and not isinstance(fn, dict):
-                    flattened = {key: item_copy.pop(key) for key in ("name", "description", "parameters", "strict") if key in item_copy}
+                if item_type == "function" and not isinstance(fn, dict):
+                    flattened = {
+                        key: item_copy.pop(key)
+                        for key in ("name", "description", "parameters", "strict", "defer_loading")
+                        if key in item_copy
+                    }
                     if flattened:
                         fn = flattened
                         item_copy["function"] = fn
             if not isinstance(fn, dict):
-                rewritten.append(item_copy)
-                continue
+                return item_copy
 
             fn_copy = dict(fn)
             original_name = str(fn_copy.get("name") or "")
@@ -412,17 +429,24 @@ class OpenAIProvider(BaseProvider):
             parameters = fn_copy.get("parameters")
             if isinstance(parameters, dict):
                 fn_copy["parameters"] = self._sanitize_openai_function_parameters_schema(parameters)
-            if responses_api and item_copy.get("type") == "function" and "strict" not in fn_copy:
+            if flatten_function and item_copy.get("type") == "function" and "strict" not in fn_copy:
                 fn_copy["strict"] = True
-            if responses_api:
+            if flatten_function:
                 item_copy.update(fn_copy)
             else:
                 item_copy["function"] = fn_copy
-            rewritten.append(item_copy)
 
             if original_name:
                 alias_to_original[alias_name] = original_name
                 original_to_alias[original_name] = alias_name
+
+            return item_copy
+
+        for item in api_tools:
+            if not isinstance(item, dict):
+                rewritten.append(item)  # defensive passthrough
+                continue
+            rewritten.append(_rewrite_tool_dict(item))
 
         return rewritten, alias_to_original, original_to_alias
 
@@ -720,8 +744,64 @@ class OpenAIProvider(BaseProvider):
                 name = str(item_copy.get("name") or "")
                 if name:
                     item_copy["name"] = original_to_alias.get(name, name)
+            elif item_copy.get("type") == "tool_search_output":
+                tools = item_copy.get("tools")
+                if isinstance(tools, list):
+                    item_copy["tools"] = [
+                        OpenAIProvider._rewrite_tool_definition_aliases(tool, original_to_alias=original_to_alias)
+                        if isinstance(tool, dict)
+                        else tool
+                        for tool in tools
+                    ]
             rewritten_items.append(item_copy)
         return rewritten_items
+
+    @staticmethod
+    def _rewrite_tool_definition_aliases(
+        tool: dict[str, Any],
+        *,
+        original_to_alias: dict[str, str] | None = None,
+        alias_to_original: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
+        tool_copy = dict(tool)
+        item_type = str(tool_copy.get("type") or "")
+
+        if item_type == "namespace":
+            namespace_tools = tool_copy.get("tools")
+            if isinstance(namespace_tools, list):
+                tool_copy["tools"] = [
+                    OpenAIProvider._rewrite_tool_definition_aliases(
+                        namespace_tool,
+                        original_to_alias=original_to_alias,
+                        alias_to_original=alias_to_original,
+                    )
+                    if isinstance(namespace_tool, dict)
+                    else namespace_tool
+                    for namespace_tool in namespace_tools
+                ]
+            return tool_copy
+
+        if item_type != "function":
+            return tool_copy
+
+        if isinstance(tool_copy.get("function"), dict):
+            fn_copy = dict(tool_copy["function"])
+            name = str(fn_copy.get("name") or "")
+            if name:
+                if original_to_alias is not None:
+                    fn_copy["name"] = original_to_alias.get(name, name)
+                elif alias_to_original is not None:
+                    fn_copy["name"] = alias_to_original.get(name, name)
+            tool_copy["function"] = fn_copy
+            return tool_copy
+
+        name = str(tool_copy.get("name") or "")
+        if name:
+            if original_to_alias is not None:
+                tool_copy["name"] = original_to_alias.get(name, name)
+            elif alias_to_original is not None:
+                tool_copy["name"] = alias_to_original.get(name, name)
+        return tool_copy
 
     @staticmethod
     def _responses_text_config_and_parser(
@@ -1410,6 +1490,48 @@ class OpenAIProvider(BaseProvider):
                         details={
                             "queries": list(item.get("queries") or []),
                             "results": list(item.get("results") or []),
+                        },
+                    )
+                )
+                continue
+
+            if item_type == "tool_search_call":
+                normalized.append(
+                    NormalizedOutputItem(
+                        type=item_type,
+                        id=item_id,
+                        call_id=str(item.get("call_id") or "") or None,
+                        status=item_status,
+                        details={k: v for k, v in item.items() if k not in {"type", "id", "call_id", "status"}},
+                    )
+                )
+                continue
+
+            if item_type == "tool_search_output":
+                loaded_tools = item.get("tools")
+                if isinstance(loaded_tools, list):
+                    loaded_tools = [
+                        OpenAIProvider._rewrite_tool_definition_aliases(
+                            tool,
+                            alias_to_original=alias_to_original,
+                        )
+                        if isinstance(tool, dict)
+                        else tool
+                        for tool in loaded_tools
+                    ]
+                normalized.append(
+                    NormalizedOutputItem(
+                        type=item_type,
+                        id=item_id,
+                        call_id=str(item.get("call_id") or "") or None,
+                        status=item_status,
+                        details={
+                            **{
+                                k: v
+                                for k, v in item.items()
+                                if k not in {"type", "id", "call_id", "status", "tools"}
+                            },
+                            "tools": loaded_tools if isinstance(loaded_tools, list) else list(item.get("tools") or []),
                         },
                     )
                 )
@@ -3402,6 +3524,25 @@ class OpenAIProvider(BaseProvider):
             )
         return await self._complete_with_responses_tools(prompt, tools=[tool], model=model_name, **kwargs)
 
+    async def respond_with_tool_search(
+        self,
+        prompt: str,
+        *,
+        tools: list[ToolDefinition],
+        **kwargs: Any,
+    ) -> CompletionResult:
+        model_name = str(kwargs.pop("model", self.model_name))
+        tool_search = kwargs.pop("tool_search", None)
+        tool_search_config = dict(kwargs.pop("tool_search_config", {}) or {})
+        if tool_search is None:
+            tool_search = ResponsesBuiltinTool.of("tool_search", **tool_search_config)
+        return await self._complete_with_responses_tools(
+            prompt,
+            tools=[tool_search, *list(tools)],
+            model=model_name,
+            **kwargs,
+        )
+
     async def respond_with_code_interpreter(
         self,
         prompt: str,
@@ -3812,6 +3953,37 @@ class OpenAIProvider(BaseProvider):
             [],
             params,
             alias_to_original={},
+        )
+
+    async def submit_tool_search_output(
+        self,
+        *,
+        previous_response_id: str,
+        call_id: str,
+        tools: list[ToolDefinition],
+        **kwargs: Any,
+    ) -> CompletionResult:
+        if not bool(getattr(self, "use_responses_api", False)):
+            raise NotImplementedError("Tool-search continuation requires use_responses_api=True")
+
+        provider_tools, alias_to_original, _ = self._prepare_openai_tools(tools, responses_api=True)
+        params: dict[str, Any] = {
+            "model": self.model_name,
+            "previous_response_id": previous_response_id,
+            "input": [
+                {
+                    "type": "tool_search_output",
+                    "call_id": call_id,
+                    "tools": provider_tools or [],
+                }
+            ],
+        }
+        params.update(kwargs)
+
+        return await self._complete_responses(
+            [],
+            params,
+            alias_to_original=alias_to_original,
         )
 
     async def delete_response(self, response_id: str, **kwargs: Any) -> DeletionResult:

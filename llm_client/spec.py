@@ -28,7 +28,16 @@ from typing import Any, TYPE_CHECKING
 
 from .cache_keys import request_cache_key
 from .providers.types import Message
-from .tools.base import ResponsesBuiltinTool, ResponsesCustomTool, ResponsesMCPTool, Tool, ToolDefinition
+from .tools.base import (
+    ResponsesBuiltinTool,
+    ResponsesCustomTool,
+    ResponsesFunctionTool,
+    ResponsesMCPTool,
+    ResponsesToolNamespace,
+    ResponsesToolSearch,
+    Tool,
+    ToolDefinition,
+)
 
 if TYPE_CHECKING:
     from .cancellation import CancellationToken
@@ -253,8 +262,14 @@ def _tool_name_for_sorting(tool: Any) -> str:
         return str(tool.name or "")
     if isinstance(tool, ResponsesCustomTool):
         return str(tool.name or "")
+    if isinstance(tool, ResponsesFunctionTool):
+        return str(tool.name or "")
+    if isinstance(tool, ResponsesToolNamespace):
+        return str(tool.name or "")
     if isinstance(tool, ResponsesMCPTool):
         return str(tool.server_label or tool.connector_id or tool.server_url or "mcp")
+    if isinstance(tool, ResponsesToolSearch):
+        return "tool_search"
     if isinstance(tool, ResponsesBuiltinTool):
         return str(tool.config.get("name") or tool.type or "")
     if isinstance(tool, dict):
@@ -281,10 +296,29 @@ def _serialize_tool_for_request_spec(tool: Any) -> dict[str, Any]:
             "description": tool.description,
             "provider_definition": tool.to_dict(),
         }
+    if isinstance(tool, ResponsesFunctionTool):
+        return {
+            "name": tool.name,
+            "description": tool.description,
+            "parameters": tool.parameters,
+            "strict": tool.strict,
+            "provider_definition": tool.to_dict(),
+        }
+    if isinstance(tool, ResponsesToolNamespace):
+        return {
+            "name": tool.name,
+            "description": tool.description,
+            "provider_definition": tool.to_dict(),
+        }
     if isinstance(tool, ResponsesMCPTool):
         return {
             "name": str(tool.server_label or tool.connector_id or tool.server_url or "mcp"),
             "description": tool.server_description,
+            "provider_definition": tool.to_dict(),
+        }
+    if isinstance(tool, ResponsesToolSearch):
+        return {
+            "name": "tool_search",
             "provider_definition": tool.to_dict(),
         }
     if isinstance(tool, ResponsesBuiltinTool):

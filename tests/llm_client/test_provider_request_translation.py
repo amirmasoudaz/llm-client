@@ -12,10 +12,13 @@ from llm_client.tools import (
     ResponsesBuiltinTool,
     ResponsesConnectorId,
     ResponsesCustomTool,
+    ResponsesFunctionTool,
     ResponsesGrammar,
     ResponsesMCPApprovalPolicy,
     ResponsesMCPTool,
     ResponsesMCPToolFilter,
+    ResponsesToolNamespace,
+    ResponsesToolSearch,
 )
 from llm_client.tools.base import Tool
 from tests.llm_client.fakes import FakeModel
@@ -55,6 +58,7 @@ def _tool(name: str = "Conversation.Profile.Requirements") -> Tool:
 def _openai_provider(model_name: str = "gpt-5-mini") -> OpenAIProvider:
     provider = OpenAIProvider.__new__(OpenAIProvider)
     provider._model = FakeModel(key=model_name, model_name=model_name)
+    provider.limiter = _NoopLimiter()
     return provider
 
 
@@ -352,6 +356,88 @@ def test_openai_responses_request_translation_supports_typed_mcp_tools_and_polic
     assert connector_payload["authorization"] == "Bearer oauth-token"
 
 
+def test_openai_responses_request_translation_supports_tool_search_and_namespaces() -> None:
+    provider = _openai_provider("gpt-5.4")
+    crm_lookup = Tool(
+        name="CRM.GetProfile",
+        description="Lookup a customer profile.",
+        parameters={
+            "type": "object",
+            "properties": {"customer_id": {"type": "string"}},
+            "required": ["customer_id"],
+            "additionalProperties": False,
+        },
+        handler=_lookup,
+    )
+    crm_lookup_now = Tool(
+        name="crm_lookup_now",
+        description="Lookup a customer profile.",
+        parameters={
+            "type": "object",
+            "properties": {"customer_id": {"type": "string"}},
+            "required": ["customer_id"],
+            "additionalProperties": False,
+        },
+        handler=_lookup,
+    )
+
+    rewritten, alias_to_original, original_to_alias = provider._prepare_openai_tools(
+        [
+            ResponsesToolSearch.client(parameters={"type": "object", "properties": {"query": {"type": "string"}}}),
+            ResponsesToolNamespace(
+                name="crm",
+                description="CRM tools",
+                tools=(
+                    ResponsesFunctionTool.from_tool(crm_lookup, defer_loading=True),
+                    crm_lookup_now,
+                ),
+            ),
+        ],
+        responses_api=True,
+    )
+
+    assert rewritten is not None
+    assert rewritten[0] == {
+        "type": "tool_search",
+        "execution": "client",
+        "parameters": {"type": "object", "properties": {"query": {"type": "string"}}},
+    }
+    assert rewritten[1] == {
+        "type": "namespace",
+        "name": "crm",
+        "description": "CRM tools",
+        "tools": [
+            {
+                "type": "function",
+                "name": "CRM_GetProfile",
+                "description": "Lookup a customer profile.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {"customer_id": {"type": "string"}},
+                    "required": ["customer_id"],
+                    "additionalProperties": False,
+                },
+                "strict": True,
+                "defer_loading": True,
+            },
+            {
+                "type": "function",
+                "name": "crm_lookup_now",
+                "description": "Lookup a customer profile.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {"customer_id": {"type": "string"}},
+                    "required": ["customer_id"],
+                    "additionalProperties": False,
+                },
+                "strict": True,
+            },
+        ],
+    }
+    assert alias_to_original["CRM_GetProfile"] == "CRM.GetProfile"
+    assert original_to_alias["CRM.GetProfile"] == "CRM_GetProfile"
+
+
 @pytest.mark.asyncio
 async def test_openai_start_deep_research_normalizes_typed_mcp_tools() -> None:
     provider = _openai_provider("o3-deep-research")
@@ -391,6 +477,80 @@ async def test_openai_start_deep_research_normalizes_typed_mcp_tools() -> None:
             "require_approval": "never",
         },
     ]
+
+
+@pytest.mark.asyncio
+async def test_openai_submit_tool_search_output_prepares_loaded_tools() -> None:
+    provider = _openai_provider("gpt-5.4")
+    provider.use_responses_api = True
+
+    captured: dict[str, object] = {}
+
+    async def _responses_create(**kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(
+            model="gpt-5.4",
+            status="completed",
+            output_text="loaded",
+            output=[
+                SimpleNamespace(
+                    type="function_call",
+                    call_id="call_loaded",
+                    id="fc_loaded",
+                    name="CRM_GetProfile",
+                    arguments='{"customer_id":"cus_123"}',
+                )
+            ],
+            usage=SimpleNamespace(to_dict=lambda: {"input_tokens": 2, "output_tokens": 1, "total_tokens": 3}),
+            incomplete_details=None,
+        )
+
+    provider.client = SimpleNamespace(
+        responses=SimpleNamespace(create=_responses_create, parse=None),
+    )
+
+    loaded_tool = Tool(
+        name="CRM.GetProfile",
+        description="Lookup a customer profile.",
+        parameters={
+            "type": "object",
+            "properties": {"customer_id": {"type": "string"}},
+            "required": ["customer_id"],
+            "additionalProperties": False,
+        },
+        handler=_lookup,
+    )
+
+    result = await provider.submit_tool_search_output(
+        previous_response_id="resp_prev",
+        call_id="ts_1",
+        tools=[ResponsesFunctionTool.from_tool(loaded_tool, defer_loading=True)],
+    )
+
+    assert captured["previous_response_id"] == "resp_prev"
+    assert captured["input"] == [
+        {
+            "type": "tool_search_output",
+            "call_id": "ts_1",
+            "tools": [
+                {
+                    "type": "function",
+                    "name": "CRM_GetProfile",
+                    "description": "Lookup a customer profile.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {"customer_id": {"type": "string"}},
+                        "required": ["customer_id"],
+                        "additionalProperties": False,
+                    },
+                    "strict": True,
+                    "defer_loading": True,
+                }
+            ],
+        }
+    ]
+    assert result.tool_calls is not None
+    assert result.tool_calls[0].name == "CRM.GetProfile"
 
 
 def test_openai_responses_native_tool_descriptors_require_responses_api() -> None:

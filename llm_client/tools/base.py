@@ -119,6 +119,36 @@ class ResponsesBuiltinTool:
         return cls.of("apply_patch", **config)
 
 
+@dataclass(frozen=True)
+class ResponsesToolSearch:
+    """Typed OpenAI Responses tool-search descriptor."""
+
+    config: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "type": "tool_search",
+            **dict(self.config),
+        }
+
+    def to_openai_format(self) -> dict[str, Any]:
+        return self.to_dict()
+
+    @classmethod
+    def of(cls, **config: Any) -> ResponsesToolSearch:
+        return cls(config=dict(config))
+
+    @classmethod
+    def hosted(cls, **config: Any) -> ResponsesToolSearch:
+        return cls.of(**config)
+
+    @classmethod
+    def client(cls, **config: Any) -> ResponsesToolSearch:
+        payload = dict(config)
+        payload.setdefault("execution", "client")
+        return cls.of(**payload)
+
+
 class ResponsesConnectorId(str, Enum):
     """Documented OpenAI connector ids for MCP-backed connectors."""
 
@@ -319,6 +349,114 @@ class ResponsesCustomTool:
         return self.to_dict()
 
 
+@dataclass(frozen=True)
+class ResponsesFunctionTool:
+    """Typed OpenAI Responses function descriptor with advanced provider metadata."""
+
+    name: str
+    description: str
+    parameters: dict[str, Any]
+    strict: bool | None = None
+    defer_loading: bool | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "type": "function",
+            "name": self.name,
+            "description": self.description,
+            "parameters": dict(self.parameters),
+        }
+        if self.strict is not None:
+            payload["strict"] = self.strict
+        if self.defer_loading is not None:
+            payload["defer_loading"] = self.defer_loading
+        payload.update(dict(self.metadata))
+        return payload
+
+    def to_openai_format(self) -> dict[str, Any]:
+        return self.to_dict()
+
+    @classmethod
+    def from_tool(
+        cls,
+        tool: Tool,
+        *,
+        strict: bool | None = None,
+        defer_loading: bool | None = None,
+        **metadata: Any,
+    ) -> ResponsesFunctionTool:
+        return cls(
+            name=tool.name,
+            description=tool.description,
+            parameters=dict(tool.parameters),
+            strict=(True if tool.strict else None) if strict is None else strict,
+            defer_loading=defer_loading,
+            metadata=dict(metadata),
+        )
+
+
+@dataclass(frozen=True)
+class ResponsesToolNamespace:
+    """Typed OpenAI Responses namespace descriptor for grouped function tools."""
+
+    name: str
+    description: str
+    tools: tuple[Any, ...]
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "type": "namespace",
+            "name": self.name,
+            "description": self.description,
+            "tools": [self._render_namespace_tool(tool) for tool in self.tools],
+        }
+        payload.update(dict(self.metadata))
+        return payload
+
+    def to_openai_format(self) -> dict[str, Any]:
+        return self.to_dict()
+
+    @staticmethod
+    def _render_namespace_tool(tool: Any) -> dict[str, Any]:
+        if isinstance(tool, dict):
+            rendered = dict(tool)
+        elif hasattr(tool, "to_openai_format"):
+            rendered = tool.to_openai_format()
+            if not isinstance(rendered, dict):
+                raise ValueError("Namespace tools must render to dictionary definitions")
+            rendered = dict(rendered)
+        else:
+            rendered = {
+                "type": "function",
+                "function": {
+                    "name": tool.name,
+                    "description": tool.description,
+                    "parameters": tool.parameters,
+                },
+            }
+            if getattr(tool, "strict", False):
+                rendered["function"]["strict"] = True
+
+        if str(rendered.get("type") or "") != "function":
+            raise ValueError("OpenAI namespaces only support function tool definitions")
+
+        function_payload = rendered.get("function")
+        if isinstance(function_payload, dict):
+            flattened = {
+                key: function_payload[key]
+                for key in ("name", "description", "parameters", "strict", "defer_loading")
+                if key in function_payload
+            }
+            if flattened:
+                rendered = {
+                    "type": "function",
+                    **flattened,
+                }
+        return rendered
+
+
 @dataclass
 class ToolResult:
     """
@@ -460,12 +598,31 @@ class Tool:
             return ToolResult.error_result(f"Invalid JSON arguments: {e}")
 
 
-ToolDefinition: TypeAlias = Tool | ResponsesBuiltinTool | ResponsesMCPTool | ResponsesCustomTool | dict[str, Any]
+ToolDefinition: TypeAlias = (
+    Tool
+    | ResponsesBuiltinTool
+    | ResponsesToolSearch
+    | ResponsesFunctionTool
+    | ResponsesToolNamespace
+    | ResponsesMCPTool
+    | ResponsesCustomTool
+    | dict[str, Any]
+)
 
 
 def is_provider_native_tool(tool: Any) -> bool:
     """Return True for package-native provider tool descriptors."""
-    return isinstance(tool, (ResponsesBuiltinTool, ResponsesMCPTool, ResponsesCustomTool))
+    return isinstance(
+        tool,
+        (
+            ResponsesBuiltinTool,
+            ResponsesToolSearch,
+            ResponsesFunctionTool,
+            ResponsesToolNamespace,
+            ResponsesMCPTool,
+            ResponsesCustomTool,
+        ),
+    )
 
 
 def ensure_function_tools_only(
@@ -866,7 +1023,10 @@ __all__ = [
     "ToolResult",
     "ToolRegistry",
     "ResponsesBuiltinTool",
+    "ResponsesToolSearch",
     "ResponsesConnectorId",
+    "ResponsesFunctionTool",
+    "ResponsesToolNamespace",
     "ResponsesMCPToolFilter",
     "ResponsesMCPApprovalPolicy",
     "ResponsesMCPTool",
