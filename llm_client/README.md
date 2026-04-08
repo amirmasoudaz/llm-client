@@ -1571,6 +1571,10 @@ descriptors. Those are passed directly to the provider on request-time.
 
 ### Creating tools: `tool_from_function`, `@tool`, `sync_tool`
 
+For package-level guidance on when to use local executable tools versus
+OpenAI Responses-native descriptors, see
+[`docs/llm-client-tool-creation-guide.md`](/home/namiral/Projects/Packages/llm-client-v1/docs/llm-client-tool-creation-guide.md).
+
 #### `tool_from_function(func, name=None, description=None, strict=False) -> Tool`
 
 - Converts an async or sync function into a `Tool`.
