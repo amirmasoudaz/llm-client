@@ -41,6 +41,8 @@ examples under [`examples/`](../examples/README.md).
 
 - Installation matrix:
   [llm-client-installation-matrix.md](/home/namiral/Projects/Packages/llm-client-v1/docs/llm-client-installation-matrix.md)
+- Agent version-control policy:
+  [agent-version-control-policy.md](/home/namiral/Projects/Packages/llm-client-v1/docs/agent-version-control-policy.md)
 - Packaging readiness review:
   [llm-client-packaging-readiness.md](/home/namiral/Projects/Packages/llm-client-v1/docs/llm-client-packaging-readiness.md)
 - Changelog process:
