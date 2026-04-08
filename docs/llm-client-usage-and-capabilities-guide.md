@@ -206,6 +206,8 @@ Best for:
 - typed MCP and connector descriptors with `allowed_tools` and approval-policy shaping
 - typed connector-specific allowlists via enums such as `ResponsesGmailTool`
 - MCP and connector deferred loading for `tool_search` workflows
+- hosted workflow helpers for shell, apply-patch, computer-use, and
+  image-generation on top of Responses built-in tools
 - typed hosted retrieval controls for file-search filters and ranking
 - typed hosted vector-store resource controls for expiration, chunking, and
   per-file batch metadata
@@ -219,6 +221,9 @@ Current package boundary:
 - `ResponsesConnectorId` provides docs-aligned connector ids for typed connector requests
 - connector-specific enums provide docs-aligned `allowed_tools` values without
   hand-typed strings
+- provider and engine workflow helpers now cover web search, file search, code
+  interpreter, shell, apply-patch, computer-use, image-generation, remote MCP,
+  and connectors
 - `OpenAIProvider.submit_tool_search_output(...)` continues client-executed
   `tool_search` loops by returning the loaded tool set from your application
 - `ToolRegistry` and the agent tool runtime remain function-tool execution layers

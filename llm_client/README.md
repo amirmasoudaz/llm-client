@@ -856,6 +856,10 @@ A provider implements:
 - `respond_with_web_search(prompt, **kwargs)`
 - `respond_with_file_search(prompt, vector_store_ids, **kwargs)`
 - `respond_with_code_interpreter(prompt, **kwargs)`
+- `respond_with_shell(prompt, **kwargs)`
+- `respond_with_apply_patch(prompt, **kwargs)`
+- `respond_with_computer_use(prompt, **kwargs)`
+- `respond_with_image_generation(prompt, **kwargs)`
 - `respond_with_remote_mcp(prompt, **kwargs)`
 - `respond_with_connector(prompt, **kwargs)`
 - `start_deep_research(prompt, **kwargs)`
@@ -985,6 +989,10 @@ Key methods:
 - `await provider.respond_with_web_search(prompt: str, **kwargs) -> CompletionResult`
 - `await provider.respond_with_file_search(prompt: str, vector_store_ids, **kwargs) -> CompletionResult`
 - `await provider.respond_with_code_interpreter(prompt: str, **kwargs) -> CompletionResult`
+- `await provider.respond_with_shell(prompt: str, **kwargs) -> CompletionResult`
+- `await provider.respond_with_apply_patch(prompt: str, **kwargs) -> CompletionResult`
+- `await provider.respond_with_computer_use(prompt: str, **kwargs) -> CompletionResult`
+- `await provider.respond_with_image_generation(prompt: str, **kwargs) -> CompletionResult`
 - `await provider.respond_with_remote_mcp(prompt: str, **kwargs) -> CompletionResult`
 - `await provider.respond_with_connector(prompt: str, **kwargs) -> CompletionResult`
 - `await provider.start_deep_research(prompt: str, **kwargs) -> CompletionResult`
@@ -1282,6 +1290,10 @@ Key methods:
 - `await engine.respond_with_web_search(prompt, provider_name=None, model=None, ...)`
 - `await engine.respond_with_file_search(prompt, vector_store_ids, provider_name=None, model=None, ...)`
 - `await engine.respond_with_code_interpreter(prompt, provider_name=None, model=None, ...)`
+- `await engine.respond_with_shell(prompt, provider_name=None, model=None, ...)`
+- `await engine.respond_with_apply_patch(prompt, provider_name=None, model=None, ...)`
+- `await engine.respond_with_computer_use(prompt, provider_name=None, model=None, ...)`
+- `await engine.respond_with_image_generation(prompt, provider_name=None, model=None, ...)`
 - `await engine.respond_with_remote_mcp(prompt, provider_name=None, model=None, ...)`
 - `await engine.respond_with_connector(prompt, provider_name=None, model=None, ...)`
 - `await engine.start_deep_research(prompt, provider_name=None, model=None, ...)`

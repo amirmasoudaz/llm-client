@@ -79,7 +79,7 @@ This pass used the docs index as the source-of-truth inventory and then ran a bi
 - The model catalog and provider registry now expose explicit Responses-first capability flags for OpenAI completions models and the OpenAI provider surface.
 - OpenAI provider and engine workflows now expose direct moderation, image generation/editing, speech-to-text, translation, text-to-speech, generic file upload/retrieve/content helpers, hosted vector stores, vector-store files, and fine-tuning job APIs.
 - OpenAI provider and engine workflows now expose realtime websocket connection helpers, client-secret/call-control helpers, webhook verification/unwrapping, and vector-store file polling/batch helpers.
-- OpenAI provider and engine workflows now expose realtime transcription-session helpers plus hosted Responses workflow helpers for web search, file search, code interpreter, remote MCP, and connectors.
+- OpenAI provider and engine workflows now expose realtime transcription-session helpers plus hosted Responses workflow helpers for web search, file search, code interpreter, shell, apply-patch, computer-use, image generation, remote MCP, and connectors.
 - OpenAI retrieval/file-search workflows now expose first-class typed tuning controls for `attribute_filter`, `ranking_options`, `max_num_results`, `rewrite_query`, and `include_search_results`.
 - Deep-research workflows now include first-class clarify, rewrite, kickoff, and staged runner helpers aligned with the docs-ledger guidance.
 
