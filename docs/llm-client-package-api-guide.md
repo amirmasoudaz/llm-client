@@ -190,6 +190,14 @@ The tool layer defines callable runtime capabilities:
 - `ResponsesToolNamespace`
 - `ResponsesVectorStoreFileSpec`
 - `ResponsesConnectorId`
+- `ResponsesDropboxTool`
+- `ResponsesGmailTool`
+- `ResponsesGoogleCalendarTool`
+- `ResponsesGoogleDriveTool`
+- `ResponsesMicrosoftTeamsTool`
+- `ResponsesOutlookCalendarTool`
+- `ResponsesOutlookEmailTool`
+- `ResponsesSharePointTool`
 - `ResponsesMCPTool`
 - `ResponsesMCPApprovalPolicy`
 - `ResponsesMCPToolFilter`
@@ -207,13 +215,17 @@ of raw dicts. That includes convenience aliases such as
 `ResponsesBuiltinTool.remote_mcp(...)`, and
 `ResponsesBuiltinTool.connector(...)`, plus the richer MCP/connector-specific
 descriptor `ResponsesMCPTool`. When you want docs-aligned connector ids without
-hand-typed strings, use `ResponsesConnectorId`.
+hand-typed strings, use `ResponsesConnectorId`. When you want typed
+connector-specific allowlists for `allowed_tools`, use enums such as
+`ResponsesGmailTool`, `ResponsesGoogleCalendarTool`, or `ResponsesDropboxTool`.
 
 For advanced OpenAI-specific deferred-tool workflows, use:
 
 - `ResponsesToolSearch` for hosted or client-executed `tool_search`
 - `ResponsesFunctionTool` when a function needs provider metadata such as
   `defer_loading=True`
+- `ResponsesMCPTool` when an MCP server or connector needs provider metadata
+  such as `allowed_tools`, `require_approval`, or `defer_loading=True`
 - `ResponsesToolNamespace` to group deferred tools under a namespace like
   `crm` or `billing`
 - `ResponsesAttributeFilter`, `ResponsesFileSearchRankingOptions`, and

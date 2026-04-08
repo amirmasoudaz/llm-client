@@ -163,10 +163,13 @@ from llm_client.providers import OpenAIProvider
 from llm_client.tools import (
     ResponsesAttributeFilter,
     ResponsesBuiltinTool,
+    ResponsesConnectorId,
     ResponsesCustomTool,
     ResponsesFileSearchRankingOptions,
     ResponsesFunctionTool,
+    ResponsesGmailTool,
     ResponsesGrammar,
+    ResponsesMCPTool,
     ResponsesToolNamespace,
     ResponsesToolSearch,
 )
@@ -195,6 +198,13 @@ result = await provider.complete(
             ),
         ),
         ResponsesBuiltinTool.web_search(search_context_size="medium"),
+        ResponsesMCPTool.connector(
+            ResponsesConnectorId.GMAIL,
+            server_label="Gmail",
+            allowed_tools=(ResponsesGmailTool.SEARCH_EMAILS,),
+            require_approval="never",
+            defer_loading=True,
+        ),
         ResponsesCustomTool(
             name="planner",
             description="Emit a compact plan.",
@@ -211,6 +221,10 @@ function tools only.
 If you use client-executed `tool_search`, return the loaded tool set with
 `OpenAIProvider.submit_tool_search_output(...)` after the model emits a
 `tool_search_call`.
+
+For typed MCP/connectors, `ResponsesMCPTool` now also supports
+`defer_loading=True` for tool-search workflows, and `allowed_tools` can be
+supplied with connector-specific enums such as `ResponsesGmailTool`.
 
 For hosted retrieval/file-search tuning, the OpenAI provider now also accepts
 typed first-class controls:

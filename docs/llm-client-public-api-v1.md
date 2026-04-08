@@ -193,7 +193,7 @@ Purpose:
 
 Use for:
 - `Tool`, `ToolRegistry`, `ToolResult`
-- `ResponsesBuiltinTool`, `ResponsesAttributeFilter`, `ResponsesChunkingStrategy`, `ResponsesExpirationPolicy`, `ResponsesFileSearchHybridWeights`, `ResponsesFileSearchRankingOptions`, `ResponsesToolSearch`, `ResponsesFunctionTool`, `ResponsesToolNamespace`, `ResponsesVectorStoreFileSpec`, `ResponsesConnectorId`, `ResponsesMCPTool`, `ResponsesMCPApprovalPolicy`, `ResponsesMCPToolFilter`, `ResponsesCustomTool`, `ResponsesGrammar`
+- `ResponsesBuiltinTool`, `ResponsesAttributeFilter`, `ResponsesChunkingStrategy`, `ResponsesExpirationPolicy`, `ResponsesFileSearchHybridWeights`, `ResponsesFileSearchRankingOptions`, `ResponsesToolSearch`, `ResponsesFunctionTool`, `ResponsesToolNamespace`, `ResponsesVectorStoreFileSpec`, `ResponsesConnectorId`, `ResponsesDropboxTool`, `ResponsesGmailTool`, `ResponsesGoogleCalendarTool`, `ResponsesGoogleDriveTool`, `ResponsesMicrosoftTeamsTool`, `ResponsesOutlookCalendarTool`, `ResponsesOutlookEmailTool`, `ResponsesSharePointTool`, `ResponsesMCPTool`, `ResponsesMCPApprovalPolicy`, `ResponsesMCPToolFilter`, `ResponsesCustomTool`, `ResponsesGrammar`
 - `tool`, `sync_tool`, `tool_from_function`
 - tool middleware stack for advanced use
 
@@ -203,8 +203,8 @@ Notes:
   `ResponsesChunkingStrategy`, `ResponsesExpirationPolicy`,
   `ResponsesFileSearchHybridWeights`, `ResponsesFileSearchRankingOptions`,
   `ResponsesToolSearch`, `ResponsesFunctionTool`, `ResponsesToolNamespace`,
-  `ResponsesVectorStoreFileSpec`, `ResponsesMCPTool`, and
-  `ResponsesCustomTool` are provider-native request descriptors for OpenAI
+  `ResponsesVectorStoreFileSpec`, `ResponsesMCPTool`, the connector-tool enums,
+  and `ResponsesCustomTool` are provider-native request descriptors for OpenAI
   Responses workflows, not locally executable tools.
 
 ### `llm_client.cache`

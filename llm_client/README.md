@@ -1524,6 +1524,14 @@ provider-native tool definitions instead of executable local tools:
 - `ResponsesMCPApprovalPolicy`
 - `ResponsesMCPTool`
 - `ResponsesConnectorId`
+- `ResponsesDropboxTool`
+- `ResponsesGmailTool`
+- `ResponsesGoogleCalendarTool`
+- `ResponsesGoogleDriveTool`
+- `ResponsesMicrosoftTeamsTool`
+- `ResponsesOutlookCalendarTool`
+- `ResponsesOutlookEmailTool`
+- `ResponsesSharePointTool`
 - `ResponsesCustomTool`
 - `ResponsesGrammar`
 
@@ -1547,10 +1555,12 @@ descriptor when you need provider metadata such as `defer_loading=True`.
 
 `ResponsesMCPTool` is the typed OpenAI MCP/connector descriptor when you need
 remote-server URLs, documented connector ids, connector authorization,
-`allowed_tools`, or structured `require_approval` policies via
-`ResponsesMCPApprovalPolicy` and `ResponsesMCPToolFilter`. Use
+`allowed_tools`, `defer_loading=True`, or structured `require_approval`
+policies via `ResponsesMCPApprovalPolicy` and `ResponsesMCPToolFilter`. Use
 `ResponsesConnectorId` when you want docs-aligned connector ids without
-hand-typed strings.
+hand-typed strings, and the connector-specific enums such as
+`ResponsesGmailTool` or `ResponsesGoogleCalendarTool` when you want a typed
+allowlist for `allowed_tools`.
 
 `ResponsesCustomTool` is a typed wrapper for grammar-backed custom tools, with
 the grammar supplied via `ResponsesGrammar`.

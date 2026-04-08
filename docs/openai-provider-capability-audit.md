@@ -89,7 +89,7 @@ This pass used the docs index as the source-of-truth inventory and then ran a bi
 - The package now exposes a normalized subset of rich Responses outputs via `CompletionResult.output_items` and `CompletionResult.refusal`, while retaining `provider_items` for exact replay of provider-specific details that are not yet part of the stable normalized shape.
 - Realtime coverage is now materially broader, but it is still not the full OpenAI Realtime product surface.
 - Hosted retrieval now covers the generic Files API, vector stores, vector-store files, polling, file batches, typed filters, ranking options, query rewriting, and hosted file-search result inclusion, but broader file-search product/resource management is still incomplete.
-- MCP/connectors now have typed descriptors and helper workflows, but they still do not cover the full skills/connectors product surface from the docs.
+- MCP/connectors now have typed descriptors, typed connector allowlists, deferred loading for tool-search workflows, and helper workflows, but they still do not cover the full skills/connectors product surface from the docs.
 - Deep research now covers clarify/rewrite/kickoff/staged orchestration, but it is still not the full lifecycle/product surface from the docs.
 - The local docs API remains intermittently unavailable on `127.0.0.1:8000`; live re-audit should be treated as best-effort until `/health` and `/docs/index` stabilize consistently.
 
