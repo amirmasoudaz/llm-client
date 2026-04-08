@@ -440,21 +440,23 @@ async def test_openai_realtime_and_webhook_surfaces() -> None:
     accepted = await provider.accept_realtime_call("rtc_1", session={"type": "realtime"})
     verified = await provider.verify_webhook_signature("{}", {"webhook-signature": "sig"}, secret="whsec", tolerance=42)
     event = await provider.unwrap_webhook("{}", {"webhook-signature": "sig"}, secret="whsec")
-    await connection.update_session({"modalities": ["text"]})
-    await connection.create_response({"modalities": ["text"]})
+    await connection.update_session({"modalities": ["text"]}, event_id="evt_session")
+    await connection.create_response({"modalities": ["text"]}, event_id="evt_response_create")
     await connection.create_conversation_item(
-        {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "hello"}]}
+        {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "hello"}]},
+        event_id="evt_create",
     )
     await connection.retrieve_conversation_item("item_1", event_id="evt_retrieve")
     await connection.delete_conversation_item("item_2", event_id="evt_delete")
     await connection.truncate_conversation_item("item_3", audio_end_ms=1200, event_id="evt_truncate")
-    await connection.append_input_audio(b"abc")
+    await connection.append_input_audio(b"abc", event_id="evt_append")
     await connection.cancel_response(response_id="resp_1", event_id="evt_cancel")
-    await connection.commit_input_audio()
-    await connection.clear_input_audio()
+    await connection.commit_input_audio(event_id="evt_commit")
+    await connection.clear_input_audio(event_id="evt_clear_input")
+    await connection.clear_output_audio(event_id="evt_clear_output")
     received = await connection.recv()
     received_event = await connection.recv_event()
-    received_delta = await connection.recv_event()
+    received_delta = await connection.recv_until_type("response.output_text.delta", timeout=1.0)
     received_bytes = await connection.recv_bytes()
     await connection.close()
     await transcription_stream.close()
@@ -473,11 +475,12 @@ async def test_openai_realtime_and_webhook_surfaces() -> None:
     assert event.event_type == "response.completed"
     assert event.data == {"response_id": "resp_1"}
     assert realtime_connection.sent == [
-        {"type": "session.update", "session": {"modalities": ["text"]}},
-        {"type": "response.create", "response": {"modalities": ["text"]}},
+        {"type": "session.update", "session": {"modalities": ["text"]}, "event_id": "evt_session"},
+        {"type": "response.create", "response": {"modalities": ["text"]}, "event_id": "evt_response_create"},
         {
             "type": "conversation.item.create",
             "item": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "hello"}]},
+            "event_id": "evt_create",
         },
         {"type": "conversation.item.retrieve", "item_id": "item_1", "event_id": "evt_retrieve"},
         {"type": "conversation.item.delete", "item_id": "item_2", "event_id": "evt_delete"},
@@ -488,10 +491,11 @@ async def test_openai_realtime_and_webhook_surfaces() -> None:
             "audio_end_ms": 1200,
             "event_id": "evt_truncate",
         },
-        {"type": "input_audio_buffer.append", "audio": "YWJj"},
+        {"type": "input_audio_buffer.append", "audio": "YWJj", "event_id": "evt_append"},
         {"type": "response.cancel", "response_id": "resp_1", "event_id": "evt_cancel"},
-        {"type": "input_audio_buffer.commit"},
-        {"type": "input_audio_buffer.clear"},
+        {"type": "input_audio_buffer.commit", "event_id": "evt_commit"},
+        {"type": "input_audio_buffer.clear", "event_id": "evt_clear_input"},
+        {"type": "output_audio_buffer.clear", "event_id": "evt_clear_output"},
     ]
     assert received == {"type": "session.updated"}
     assert received_event.event_type == "conversation.item.added"

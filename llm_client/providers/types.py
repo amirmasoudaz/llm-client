@@ -7,6 +7,7 @@ and messages across different providers.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import time
@@ -1020,13 +1021,23 @@ class RealtimeConnection:
         if hasattr(result, "__await__"):
             await result
 
-    async def update_session(self, session: dict[str, Any]) -> None:
-        await self.send({"type": "session.update", "session": dict(session)})
+    async def update_session(self, session: dict[str, Any], *, event_id: str | None = None) -> None:
+        payload: dict[str, Any] = {"type": "session.update", "session": dict(session)}
+        if event_id:
+            payload["event_id"] = event_id
+        await self.send(payload)
 
-    async def create_response(self, response: dict[str, Any] | None = None) -> None:
+    async def create_response(
+        self,
+        response: dict[str, Any] | None = None,
+        *,
+        event_id: str | None = None,
+    ) -> None:
         payload: dict[str, Any] = {"type": "response.create"}
         if response:
             payload["response"] = dict(response)
+        if event_id:
+            payload["event_id"] = event_id
         await self.send(payload)
 
     async def create_conversation_item(
@@ -1092,13 +1103,14 @@ class RealtimeConnection:
             payload["event_id"] = event_id
         await self.send(payload)
 
-    async def append_input_audio(self, audio: bytes) -> None:
-        await self.send(
-            {
-                "type": "input_audio_buffer.append",
-                "audio": base64.b64encode(audio).decode("ascii"),
-            }
-        )
+    async def append_input_audio(self, audio: bytes, *, event_id: str | None = None) -> None:
+        payload: dict[str, Any] = {
+            "type": "input_audio_buffer.append",
+            "audio": base64.b64encode(audio).decode("ascii"),
+        }
+        if event_id:
+            payload["event_id"] = event_id
+        await self.send(payload)
 
     async def cancel_response(
         self,
@@ -1113,11 +1125,23 @@ class RealtimeConnection:
             payload["event_id"] = event_id
         await self.send(payload)
 
-    async def commit_input_audio(self) -> None:
-        await self.send({"type": "input_audio_buffer.commit"})
+    async def commit_input_audio(self, *, event_id: str | None = None) -> None:
+        payload: dict[str, Any] = {"type": "input_audio_buffer.commit"}
+        if event_id:
+            payload["event_id"] = event_id
+        await self.send(payload)
 
-    async def clear_input_audio(self) -> None:
-        await self.send({"type": "input_audio_buffer.clear"})
+    async def clear_input_audio(self, *, event_id: str | None = None) -> None:
+        payload: dict[str, Any] = {"type": "input_audio_buffer.clear"}
+        if event_id:
+            payload["event_id"] = event_id
+        await self.send(payload)
+
+    async def clear_output_audio(self, *, event_id: str | None = None) -> None:
+        payload: dict[str, Any] = {"type": "output_audio_buffer.clear"}
+        if event_id:
+            payload["event_id"] = event_id
+        await self.send(payload)
 
     async def recv(self) -> Any:
         result = self._connection.recv()
@@ -1127,6 +1151,24 @@ class RealtimeConnection:
 
     async def recv_event(self) -> RealtimeEventResult:
         return self._normalize_event(await self.recv_raw())
+
+    async def recv_until_type(
+        self,
+        event_types: str | Sequence[str],
+        *,
+        timeout: float | None = None,
+    ) -> RealtimeEventResult:
+        expected = {event_types} if isinstance(event_types, str) else {str(item) for item in event_types}
+
+        async def _wait() -> RealtimeEventResult:
+            while True:
+                event = await self.recv_event()
+                if str(event.event_type or "") in expected:
+                    return event
+
+        if timeout is None:
+            return await _wait()
+        return await asyncio.wait_for(_wait(), timeout=timeout)
 
     async def recv_raw(self) -> Any:
         result = self._connection.recv()
