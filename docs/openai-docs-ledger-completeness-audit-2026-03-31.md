@@ -147,7 +147,7 @@ The biggest missing or incomplete areas are:
 | MCP and connectors | `guides/tools-remote-mcp.md`, `guides/tools-connectors-mcp.md`, `guides/developer-mode.md` | `ResponsesMCPTool`, `ResponsesConnectorId`, `submit_mcp_approval_response(...)`, `respond_with_remote_mcp(...)`, `respond_with_connector(...)` | Partial | Typed remote-MCP and connector request surfaces, documented connector ids, authorization shaping, approval continuations, and helper workflows exist, but broader connector/skills product management remains outside the package. |
 | Retrieval / file search | `guides/retrieval.md`, `guides/tools-file-search.md`, `guides/deep-research.md` | `create_file(...)`, `retrieve_file(...)`, `list_files(...)`, `delete_file(...)`, `get_file_content(...)`, `ResponsesBuiltinTool.file_search(...)`, `ResponsesAttributeFilter`, `ResponsesFileSearchRankingOptions`; vector-store CRUD/search, vector-store-file CRUD/content/polling, and vector-store file-batch helpers in `llm_client/providers/openai.py` | Partial | Generic Files API plus hosted vector stores, vector-store files, file batches, typed filters/ranking, and hosted file-search result inclusion are implemented, but broader file-search product/resource management is still incomplete. |
 | Agents | `guides/agents.md`, `guides/agents-sdk.md` | `llm_client.agent` package, generic tool runtime, engine | Partial | The package has its own agent layer, but it is not a full implementation of the OpenAI Agents SDK / AgentKit product surface. |
-| Realtime API | `guides/realtime.md`, `guides/realtime-server-controls.md`, `guides/realtime-transcription.md`, `api-reference.md` | `connect_realtime(...)`, `connect_realtime_transcription(...)`, realtime and realtime-transcription session helpers, and call helpers in `llm_client/providers/openai.py` and `llm_client/engine.py` | Partial | Stable websocket/session bootstrap is wrapped for both standard realtime and transcription flows, but the full Realtime product surface still extends beyond the current helper set. |
+| Realtime API | `guides/realtime.md`, `guides/realtime-server-controls.md`, `guides/realtime-transcription.md`, `guides/realtime-conversations.md`, `api-reference.md` | `connect_realtime(...)`, `connect_realtime_transcription(...)`, realtime and realtime-transcription session helpers, call helpers, and `RealtimeConnection` lifecycle/event helpers in `llm_client/providers/openai.py`, `llm_client/providers/types.py`, and `llm_client/engine.py` | Partial | Stable websocket/session bootstrap, conversation-item lifecycle helpers, typed receive-side event wrappers, and call controls are now wrapped, but the full Realtime product surface still extends beyond the current helper set. |
 | Deep Research | `guides/deep-research.md` | `clarify_deep_research_task(...)`, `rewrite_deep_research_prompt(...)`, `start_deep_research(...)`, and `run_deep_research(...)` in `llm_client/providers/openai.py` and `llm_client/engine.py` | Partial | Clarify, rewrite, kickoff, optional background wait, and typed MCP/connectors are implemented, but the broader deep-research lifecycle/product surface is still incomplete. |
 | Model registry | `models.md`, `index.md` models section | `llm_client/assets/model_catalog.json`, `llm_client/models.py`, `llm_client/model_catalog.py` | Partial | The registry now includes a much broader OpenAI set, including GPT-4.1, GPT-5 chat/codex variants, o-series reasoning families, image/audio/realtime families, and deprecated compatibility entries, but it still does not cover the full docs-ledger model corpus. |
 
@@ -202,7 +202,7 @@ This means the package’s current OpenAI strengths are real:
 
 ### Evidence for the remaining 1.2 gaps
 
-- The official realtime conversations docs explicitly enumerate `conversation.item.added` and `conversation.item.done` lifecycle events; the package currently parses Responses streaming events well, but it does not yet model that broader Realtime event surface as a first-class package contract.
+- The official realtime conversations docs explicitly enumerate `conversation.item.added`, `conversation.item.done`, `conversation.item.truncated`, and related response/input-buffer lifecycle events; the package now exposes a typed `RealtimeEventResult` wrapper plus conversation-item retrieve/delete/truncate and `response.cancel` helpers, but broader Realtime product management still extends beyond the current helper set.
 - The official file-search and retrieval docs still extend beyond the current package surface into deeper hosted resource management and broader product lifecycle flows.
 
 ### Evidence that fine-tuned models are not a supported surface
@@ -214,8 +214,8 @@ This means the package’s current OpenAI strengths are real:
 
 ### Priority 0: major remaining platform families
 
-- broader realtime product coverage beyond the current websocket/session wrapper
 - broader hosted retrieval / file-search resource management
+- broader realtime product coverage beyond the current websocket/session/event wrapper
 
 ### Priority 1: breadth and product-surface expansion
 
