@@ -74,7 +74,7 @@ Use for:
 - `FileResource`, `FilesPage`, `FileContentResult`
 - `VectorStoreResource`, `VectorStoresPage`, `VectorStoreSearchResult`, `VectorStoreFileResource`, `VectorStoreFilesPage`, `VectorStoreFileContentResult`, `VectorStoreFileBatchResource`
 - `FineTuningJobResult`, `FineTuningJobsPage`, `FineTuningJobEventsPage`
-- `RealtimeClientSecretResult`, `RealtimeTranscriptionSessionResult`, `RealtimeCallResult`, `RealtimeConnection`, `WebhookEventResult`
+- `RealtimeClientSecretResult`, `RealtimeTranscriptionSessionResult`, `RealtimeCallResult`, `RealtimeEventResult`, `RealtimeConnection`, `WebhookEventResult`
 - `StreamEvent`, `StreamEventType`
 - `CancellationToken`, `CancelledError`
 

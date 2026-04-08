@@ -91,6 +91,7 @@ Provider-level outputs are:
 - `FineTuningJobEventsPage`
 - `RealtimeClientSecretResult`
 - `RealtimeCallResult`
+- `RealtimeEventResult`
 - `RealtimeConnection`
 - `WebhookEventResult`
 - `StreamEvent`
@@ -156,6 +157,11 @@ Use it when:
 - you want caching, retry, failover, hooks, or idempotency
 - you want higher-level flows to be provider-agnostic
 - you want one orchestration surface for provider-native workflows beyond `complete(...)`, including moderation, media APIs, generic file APIs, vector stores, vector-store files and file batches, fine-tuning, realtime connection/call/transcription helpers, hosted Responses tool workflows, webhook verification, and staged deep-research orchestration
+
+`RealtimeConnection` now also exposes first-class lifecycle helpers for
+`conversation.item.retrieve`, `conversation.item.delete`,
+`conversation.item.truncate`, and `response.cancel`, plus typed receive-side
+helpers through `RealtimeEventResult`, `recv_event()`, and `recv_until_type(...)`.
 
 ### Agent
 

@@ -56,7 +56,7 @@ Special note:
 - OpenAI request controls `include`, `prompt_cache_key`, and `prompt_cache_retention` are first-class parameters on the OpenAI provider.
 - Stored OpenAI Responses can now be deleted through `delete_response(...)` without dropping to the raw SDK.
 - OpenAI moderation, direct image generation/editing, speech-to-text, text-to-speech, generic file upload/retrieve/content helpers, hosted vector-store CRUD/search, and fine-tuning job workflows are now available through first-class provider and engine methods instead of raw SDK escape hatches.
-- OpenAI realtime connection plus client-secret/call-control/transcription helpers, webhook verification/unwrapping, vector-store file CRUD/content/polling and file-batch helpers, hosted Responses tool workflows, and staged deep-research orchestration are also available through first-class provider and engine methods.
+- OpenAI realtime connection plus client-secret/call-control/transcription helpers, typed `RealtimeEventResult` receive-side wrappers, conversation-item retrieve/delete/truncate helpers, `response.cancel`, webhook verification/unwrapping, vector-store file CRUD/content/polling and file-batch helpers, hosted Responses tool workflows, and staged deep-research orchestration are also available through first-class provider and engine methods.
 
 ### Engine-managed execution
 

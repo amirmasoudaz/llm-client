@@ -1013,6 +1013,7 @@ Notes:
 - Built-in/custom Responses tools are request-side abstractions only; local execution via `ToolRegistry` remains function-tool only.
 - `CompletionResult.output_items` is the stable rich-output surface. `CompletionResult.provider_items` remains available for exact provider replay/debugging and may evolve with provider payloads.
 - The provider now also exposes direct moderation, image, speech, fine-tuning, realtime connection/call and transcription-session helpers, webhook helpers, vector-store-file polling and batches, hosted Responses tool workflow helpers, and staged deep-research orchestration.
+- `RealtimeConnection` now includes first-class client-event helpers for `conversation.item.retrieve`, `conversation.item.delete`, `conversation.item.truncate`, `response.cancel`, and typed receive-side helpers via `recv_event()` / `recv_until_type(...)`.
 - Additional `**kwargs` are provider-specific and may be forwarded to the underlying OpenAI SDK calls.
 
 Background workflow example:
