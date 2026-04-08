@@ -7,9 +7,12 @@ import pytest
 from llm_client.providers.openai import OpenAIProvider
 from llm_client.tools import (
     ResponsesAttributeFilter,
+    ResponsesChunkingStrategy,
+    ResponsesExpirationPolicy,
     ResponsesFileSearchHybridWeights,
     ResponsesFileSearchRankingOptions,
     ResponsesMCPTool,
+    ResponsesVectorStoreFileSpec,
 )
 from tests.llm_client.fakes import FakeModel
 
@@ -185,6 +188,14 @@ async def test_openai_vector_store_and_fine_tuning_surfaces() -> None:
 
     async def _create_vector_store(**kwargs):
         assert kwargs["name"] == "Docs"
+        assert kwargs["description"] == "Tenant docs"
+        assert kwargs["file_ids"] == ["file_1", "file_2"]
+        assert kwargs["metadata"] == {"scope": "tenant"}
+        assert kwargs["expires_after"] == {"anchor": "last_active_at", "days": 7}
+        assert kwargs["chunking_strategy"] == {
+            "type": "static",
+            "static": {"max_chunk_size_tokens": 1200, "chunk_overlap_tokens": 200},
+        }
         return SimpleNamespace(id="vs_1", name="Docs", status="completed", file_counts={"completed": 1}, usage_bytes=128)
 
     async def _search_vector_store(vector_store_id: str, **kwargs):
@@ -218,7 +229,14 @@ async def test_openai_vector_store_and_fine_tuning_surfaces() -> None:
         ),
     )
 
-    vector_store = await provider.create_vector_store(name="Docs")
+    vector_store = await provider.create_vector_store(
+        name="Docs",
+        description="Tenant docs",
+        file_ids=["file_1", "file_2"],
+        metadata={"scope": "tenant"},
+        expiration_policy=ResponsesExpirationPolicy(days=7),
+        chunking_strategy=ResponsesChunkingStrategy.static(max_chunk_size_tokens=1200, chunk_overlap_tokens=200),
+    )
     search = await provider.search_vector_store("vs_1", query="hello")
     job = await provider.create_fine_tuning_job(model="gpt-4o-mini", training_file="file_train")
     events = await provider.list_fine_tuning_events("ftjob_1")
@@ -559,6 +577,7 @@ async def test_openai_vector_store_file_surfaces() -> None:
         assert vector_store_id == "vs_1"
         assert file_id == "file_1"
         assert kwargs["attributes"] == {"scope": "docs"}
+        assert kwargs["chunking_strategy"] == {"type": "auto"}
         return SimpleNamespace(id=file_id, vector_store_id=vector_store_id, status="completed", usage_bytes=256)
 
     async def _upload(*, vector_store_id: str, file, **kwargs):
@@ -612,6 +631,11 @@ async def test_openai_vector_store_file_surfaces() -> None:
     async def _create_and_poll(file_id: str, *, vector_store_id: str, **kwargs):
         assert file_id == "file_3"
         assert vector_store_id == "vs_1"
+        assert kwargs["attributes"] == {"scope": "ready"}
+        assert kwargs["chunking_strategy"] == {
+            "type": "static",
+            "static": {"max_chunk_size_tokens": 1000, "chunk_overlap_tokens": 250},
+        }
         return SimpleNamespace(id=file_id, vector_store_id=vector_store_id, status="completed")
 
     async def _upload_and_poll(*, vector_store_id: str, file, **kwargs):
@@ -622,6 +646,11 @@ async def test_openai_vector_store_file_surfaces() -> None:
     async def _batch_create(vector_store_id: str, **kwargs):
         assert vector_store_id == "vs_1"
         assert kwargs["file_ids"] == ["file_1", "file_2"]
+        assert kwargs["attributes"] == {"scope": "batch"}
+        assert kwargs["chunking_strategy"] == {
+            "type": "static",
+            "static": {"max_chunk_size_tokens": 900, "chunk_overlap_tokens": 150},
+        }
         return SimpleNamespace(id="vsfb_1", vector_store_id=vector_store_id, status="in_progress", file_counts={"in_progress": 2})
 
     async def _batch_retrieve(batch_id: str, *, vector_store_id: str, **kwargs):
@@ -646,7 +675,13 @@ async def test_openai_vector_store_file_surfaces() -> None:
 
     async def _batch_create_and_poll(vector_store_id: str, **kwargs):
         assert vector_store_id == "vs_1"
-        assert kwargs["file_ids"] == ["file_5"]
+        assert kwargs["files"] == [
+            {
+                "file_id": "file_5",
+                "attributes": {"scope": "per-file"},
+                "chunking_strategy": {"type": "auto"},
+            }
+        ]
         return SimpleNamespace(id="vsfb_3", vector_store_id=vector_store_id, status="completed", file_counts={"completed": 1})
 
     async def _batch_upload_and_poll(vector_store_id: str, *, files, **kwargs):
@@ -681,7 +716,12 @@ async def test_openai_vector_store_file_surfaces() -> None:
         )
     )
 
-    created = await provider.create_vector_store_file("vs_1", file_id="file_1", attributes={"scope": "docs"})
+    created = await provider.create_vector_store_file(
+        "vs_1",
+        file_id="file_1",
+        attributes={"scope": "docs"},
+        chunking_strategy=ResponsesChunkingStrategy.auto(),
+    )
     uploaded = await provider.upload_vector_store_file("vs_1", file="guide.md", attributes={"kind": "upload"})
     listed = await provider.list_vector_store_files("vs_1", limit=10)
     retrieved = await provider.retrieve_vector_store_file("vs_1", "file_1", include=["attributes"])
@@ -689,14 +729,33 @@ async def test_openai_vector_store_file_surfaces() -> None:
     deleted = await provider.delete_vector_store_file("vs_1", "file_2")
     content = await provider.get_vector_store_file_content("vs_1", "file_1")
     polled = await provider.poll_vector_store_file("vs_1", "file_1")
-    created_polled = await provider.create_vector_store_file_and_poll("vs_1", file_id="file_3")
+    created_polled = await provider.create_vector_store_file_and_poll(
+        "vs_1",
+        file_id="file_3",
+        attributes={"scope": "ready"},
+        chunking_strategy=ResponsesChunkingStrategy.static(max_chunk_size_tokens=1000, chunk_overlap_tokens=250),
+    )
     uploaded_polled = await provider.upload_vector_store_file_and_poll("vs_1", file="ready.md")
-    batch = await provider.create_vector_store_file_batch("vs_1", file_ids=["file_1", "file_2"])
+    batch = await provider.create_vector_store_file_batch(
+        "vs_1",
+        file_ids=["file_1", "file_2"],
+        attributes={"scope": "batch"},
+        chunking_strategy=ResponsesChunkingStrategy.static(max_chunk_size_tokens=900, chunk_overlap_tokens=150),
+    )
     retrieved_batch = await provider.retrieve_vector_store_file_batch("vs_1", "vsfb_1")
     cancelled_batch = await provider.cancel_vector_store_file_batch("vs_1", "vsfb_2")
     polled_batch = await provider.poll_vector_store_file_batch("vs_1", "vsfb_1")
     batch_files = await provider.list_vector_store_file_batch_files("vs_1", "vsfb_1")
-    created_batch_polled = await provider.create_vector_store_file_batch_and_poll("vs_1", file_ids=["file_5"])
+    created_batch_polled = await provider.create_vector_store_file_batch_and_poll(
+        "vs_1",
+        files=[
+            ResponsesVectorStoreFileSpec(
+                file_id="file_5",
+                attributes={"scope": "per-file"},
+                chunking_strategy=ResponsesChunkingStrategy.auto(),
+            )
+        ],
+    )
     uploaded_batch_polled = await provider.upload_vector_store_file_batch_and_poll("vs_1", files=["a.txt", "b.txt"])
 
     assert created.file_id == "file_1"
@@ -719,6 +778,19 @@ async def test_openai_vector_store_file_surfaces() -> None:
     assert batch_files.items[0].file_id == "file_10"
     assert created_batch_polled.batch_id == "vsfb_3"
     assert uploaded_batch_polled.batch_id == "vsfb_4"
+
+
+@pytest.mark.asyncio
+async def test_openai_vector_store_batch_rejects_mixed_shared_and_per_file_settings() -> None:
+    provider = _openai_provider("gpt-4o-mini")
+    provider.client = SimpleNamespace(vector_stores=SimpleNamespace(file_batches=SimpleNamespace(create=lambda *args, **kwargs: None)))
+
+    with pytest.raises(ValueError, match="attach per-file attributes and chunking"):
+        await provider.create_vector_store_file_batch(
+            "vs_1",
+            files=[ResponsesVectorStoreFileSpec(file_id="file_1")],
+            attributes={"scope": "shared"},
+        )
 
 
 @pytest.mark.asyncio

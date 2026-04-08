@@ -558,6 +558,71 @@ class ResponsesFileSearchRankingOptions:
         return payload
 
 
+@dataclass(frozen=True)
+class ResponsesExpirationPolicy:
+    """Typed OpenAI vector-store expiration policy."""
+
+    days: int
+    anchor: str = "last_active_at"
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "anchor": self.anchor,
+            "days": self.days,
+        }
+
+
+@dataclass(frozen=True)
+class ResponsesChunkingStrategy:
+    """Typed OpenAI vector-store chunking strategy."""
+
+    payload: dict[str, Any]
+
+    def to_dict(self) -> dict[str, Any]:
+        return cast(dict[str, Any], _serialize_provider_config_value(self.payload))
+
+    @classmethod
+    def auto(cls) -> ResponsesChunkingStrategy:
+        return cls({"type": "auto"})
+
+    @classmethod
+    def static(
+        cls,
+        *,
+        max_chunk_size_tokens: int,
+        chunk_overlap_tokens: int,
+    ) -> ResponsesChunkingStrategy:
+        return cls(
+            {
+                "type": "static",
+                "static": {
+                    "max_chunk_size_tokens": int(max_chunk_size_tokens),
+                    "chunk_overlap_tokens": int(chunk_overlap_tokens),
+                },
+            }
+        )
+
+
+@dataclass(frozen=True)
+class ResponsesVectorStoreFileSpec:
+    """Typed OpenAI per-file vector-store batch/file configuration."""
+
+    file_id: str
+    attributes: dict[str, str | float | bool] | None = None
+    chunking_strategy: ResponsesChunkingStrategy | dict[str, Any] | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {"file_id": self.file_id}
+        if self.attributes is not None:
+            payload["attributes"] = {
+                str(key): cast(str | float | bool, value)
+                for key, value in self.attributes.items()
+            }
+        if self.chunking_strategy is not None:
+            payload["chunking_strategy"] = _serialize_provider_config_value(self.chunking_strategy)
+        return payload
+
+
 @dataclass
 class ToolResult:
     """

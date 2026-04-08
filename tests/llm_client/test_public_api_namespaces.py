@@ -21,8 +21,10 @@ from llm_client.observability import (
 from llm_client.tools import (
     ResponsesAttributeFilter,
     ResponsesBuiltinTool,
+    ResponsesChunkingStrategy,
     ResponsesConnectorId,
     ResponsesCustomTool,
+    ResponsesExpirationPolicy,
     ResponsesFileSearchHybridWeights,
     ResponsesFileSearchRankingOptions,
     ResponsesFunctionTool,
@@ -32,6 +34,7 @@ from llm_client.tools import (
     ResponsesMCPToolFilter,
     ResponsesToolNamespace,
     ResponsesToolSearch,
+    ResponsesVectorStoreFileSpec,
 )
 from llm_client.types import (
     AudioSpeechResult,
@@ -176,6 +179,27 @@ def test_observability_namespace_exports_runtime_and_replay_primitives() -> None
     assert isinstance(LifecycleLoggingHook(), LifecycleLoggingHook)
     assert isinstance(RedactionPolicy(), RedactionPolicy)
     assert diagnostics.request_id == "req-1"
+
+
+def test_tools_namespace_exports_vector_store_resource_helpers() -> None:
+    expiration = ResponsesExpirationPolicy(days=7)
+    chunking = ResponsesChunkingStrategy.static(max_chunk_size_tokens=1200, chunk_overlap_tokens=200)
+    file_spec = ResponsesVectorStoreFileSpec(
+        file_id="file_1",
+        attributes={"scope": "tenant"},
+        chunking_strategy=ResponsesChunkingStrategy.auto(),
+    )
+
+    assert expiration.to_dict() == {"anchor": "last_active_at", "days": 7}
+    assert chunking.to_dict() == {
+        "type": "static",
+        "static": {"max_chunk_size_tokens": 1200, "chunk_overlap_tokens": 200},
+    }
+    assert file_spec.to_dict() == {
+        "file_id": "file_1",
+        "attributes": {"scope": "tenant"},
+        "chunking_strategy": {"type": "auto"},
+    }
 
 
 def test_compat_namespace_exposes_legacy_client_api() -> None:

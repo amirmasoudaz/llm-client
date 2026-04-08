@@ -58,6 +58,11 @@ from .retry_policy import DEFAULT_RETRYABLE_STATUSES, compute_backoff_delay, is_
 from .resilience import CircuitBreaker, CircuitBreakerConfig
 from .routing import ProviderRouter
 from .spec import RequestContext, RequestSpec
+from .tools.base import (
+    ResponsesChunkingStrategy,
+    ResponsesExpirationPolicy,
+    ResponsesVectorStoreFileSpec,
+)
 
 
 @dataclass
@@ -1130,12 +1135,30 @@ class ExecutionEngine:
     async def create_vector_store(
         self,
         *,
+        name: str | None = None,
+        description: str | None = None,
+        file_ids: list[str] | tuple[str, ...] | None = None,
+        metadata: dict[str, Any] | None = None,
+        expiration_policy: ResponsesExpirationPolicy | dict[str, Any] | None = None,
+        chunking_strategy: ResponsesChunkingStrategy | dict[str, Any] | None = None,
         provider_name: str | None = None,
         model: str | None = None,
         context: RequestContext | None = None,
         timeout: float | None = None,
         **kwargs: Any,
     ) -> VectorStoreResource:
+        if name is not None:
+            kwargs["name"] = name
+        if description is not None:
+            kwargs["description"] = description
+        if file_ids is not None:
+            kwargs["file_ids"] = list(file_ids)
+        if metadata is not None:
+            kwargs["metadata"] = metadata
+        if expiration_policy is not None:
+            kwargs["expiration_policy"] = expiration_policy
+        if chunking_strategy is not None:
+            kwargs["chunking_strategy"] = chunking_strategy
         return await self._run_workflow_operation(
             "create_vector_store",
             provider_name=provider_name,
@@ -1552,12 +1575,18 @@ class ExecutionEngine:
         vector_store_id: str,
         *,
         file_id: str,
+        attributes: dict[str, str | float | bool] | None = None,
+        chunking_strategy: ResponsesChunkingStrategy | dict[str, Any] | None = None,
         provider_name: str | None = None,
         model: str | None = None,
         context: RequestContext | None = None,
         timeout: float | None = None,
         **kwargs: Any,
     ) -> VectorStoreFileResource:
+        if attributes is not None:
+            kwargs["attributes"] = attributes
+        if chunking_strategy is not None:
+            kwargs["chunking_strategy"] = chunking_strategy
         return await self._run_workflow_operation(
             "create_vector_store_file",
             provider_name=provider_name,
@@ -1711,12 +1740,18 @@ class ExecutionEngine:
         vector_store_id: str,
         *,
         file_id: str,
+        attributes: dict[str, str | float | bool] | None = None,
+        chunking_strategy: ResponsesChunkingStrategy | dict[str, Any] | None = None,
         provider_name: str | None = None,
         model: str | None = None,
         context: RequestContext | None = None,
         timeout: float | None = None,
         **kwargs: Any,
     ) -> VectorStoreFileResource:
+        if attributes is not None:
+            kwargs["attributes"] = attributes
+        if chunking_strategy is not None:
+            kwargs["chunking_strategy"] = chunking_strategy
         return await self._run_workflow_operation(
             "create_vector_store_file_and_poll",
             provider_name=provider_name,
@@ -1750,12 +1785,24 @@ class ExecutionEngine:
         self,
         vector_store_id: str,
         *,
+        file_ids: list[str] | tuple[str, ...] | None = None,
+        files: list[ResponsesVectorStoreFileSpec | dict[str, Any]] | tuple[ResponsesVectorStoreFileSpec | dict[str, Any], ...] | None = None,
+        attributes: dict[str, str | float | bool] | None = None,
+        chunking_strategy: ResponsesChunkingStrategy | dict[str, Any] | None = None,
         provider_name: str | None = None,
         model: str | None = None,
         context: RequestContext | None = None,
         timeout: float | None = None,
         **kwargs: Any,
     ) -> VectorStoreFileBatchResource:
+        if file_ids is not None:
+            kwargs["file_ids"] = list(file_ids)
+        if files is not None:
+            kwargs["files"] = list(files)
+        if attributes is not None:
+            kwargs["attributes"] = attributes
+        if chunking_strategy is not None:
+            kwargs["chunking_strategy"] = chunking_strategy
         return await self._run_workflow_operation(
             "create_vector_store_file_batch",
             provider_name=provider_name,
@@ -1849,12 +1896,24 @@ class ExecutionEngine:
         self,
         vector_store_id: str,
         *,
+        file_ids: list[str] | tuple[str, ...] | None = None,
+        files: list[ResponsesVectorStoreFileSpec | dict[str, Any]] | tuple[ResponsesVectorStoreFileSpec | dict[str, Any], ...] | None = None,
+        attributes: dict[str, str | float | bool] | None = None,
+        chunking_strategy: ResponsesChunkingStrategy | dict[str, Any] | None = None,
         provider_name: str | None = None,
         model: str | None = None,
         context: RequestContext | None = None,
         timeout: float | None = None,
         **kwargs: Any,
     ) -> VectorStoreFileBatchResource:
+        if file_ids is not None:
+            kwargs["file_ids"] = list(file_ids)
+        if files is not None:
+            kwargs["files"] = list(files)
+        if attributes is not None:
+            kwargs["attributes"] = attributes
+        if chunking_strategy is not None:
+            kwargs["chunking_strategy"] = chunking_strategy
         return await self._run_workflow_operation(
             "create_vector_store_file_batch_and_poll",
             provider_name=provider_name,

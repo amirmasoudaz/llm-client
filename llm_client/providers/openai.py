@@ -93,8 +93,11 @@ if TYPE_CHECKING:
 from ..tools.base import (
     ResponsesAttributeFilter,
     ResponsesBuiltinTool,
+    ResponsesChunkingStrategy,
+    ResponsesExpirationPolicy,
     ResponsesFileSearchRankingOptions,
     ResponsesMCPTool,
+    ResponsesVectorStoreFileSpec,
     is_provider_native_tool,
 )
 
@@ -349,6 +352,31 @@ class OpenAIProvider(BaseProvider):
         if canonical_key in params:
             raise ValueError(f"Provide only one of `{alias_name}` or `{canonical_key}`.")
         params[canonical_key] = OpenAIProvider._serialize_openai_request_value(alias_value)
+
+    @staticmethod
+    def _normalize_vector_store_batch_inputs(
+        *,
+        file_ids: list[str] | tuple[str, ...] | None,
+        files: list[ResponsesVectorStoreFileSpec | dict[str, Any]] | tuple[ResponsesVectorStoreFileSpec | dict[str, Any], ...] | None,
+        attributes: dict[str, str | float | bool] | None,
+        chunking_strategy: ResponsesChunkingStrategy | dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        params: dict[str, Any] = {}
+        if file_ids is not None and files is not None:
+            raise ValueError("Provide only one of `file_ids` or `files` for vector-store batch creation.")
+        if files is not None and (attributes is not None or chunking_strategy is not None):
+            raise ValueError(
+                "When `files` is provided, attach per-file attributes and chunking on each file spec instead of using shared batch settings."
+            )
+        if file_ids is not None:
+            params["file_ids"] = [str(file_id) for file_id in file_ids]
+        if files is not None:
+            params["files"] = [OpenAIProvider._serialize_openai_request_value(file_spec) for file_spec in files]
+        if attributes is not None:
+            params["attributes"] = OpenAIProvider._serialize_openai_request_value(attributes)
+        if chunking_strategy is not None:
+            params["chunking_strategy"] = OpenAIProvider._serialize_openai_request_value(chunking_strategy)
+        return params
 
     @staticmethod
     def _normalize_response_format(
@@ -3113,9 +3141,38 @@ class OpenAIProvider(BaseProvider):
             raw_response=response,
         )
 
-    async def create_vector_store(self, **kwargs: Any) -> VectorStoreResource:
+    async def create_vector_store(
+        self,
+        *,
+        name: str | None = None,
+        description: str | None = None,
+        file_ids: list[str] | tuple[str, ...] | None = None,
+        metadata: dict[str, Any] | None = None,
+        expiration_policy: ResponsesExpirationPolicy | dict[str, Any] | None = None,
+        chunking_strategy: ResponsesChunkingStrategy | dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> VectorStoreResource:
+        params = dict(kwargs)
+        if name is not None:
+            params["name"] = name
+        if description is not None:
+            params["description"] = description
+        if file_ids is not None:
+            params["file_ids"] = [str(file_id) for file_id in file_ids]
+        if metadata is not None:
+            params["metadata"] = metadata
+        self._apply_openai_param_alias(
+            params,
+            canonical_key="expires_after",
+            alias_value=expiration_policy,
+            alias_name="expiration_policy",
+        )
+        if chunking_strategy is not None and "chunking_strategy" in params:
+            raise ValueError("Provide only one `chunking_strategy` value when creating a vector store.")
+        if chunking_strategy is not None:
+            params["chunking_strategy"] = self._serialize_openai_request_value(chunking_strategy)
         async with self.limiter.limit(tokens=0, requests=1):
-            response = await self.client.vector_stores.create(**kwargs)
+            response = await self.client.vector_stores.create(**params)
         return self._vector_store_resource_from_response(response)
 
     async def retrieve_vector_store(self, vector_store_id: str, **kwargs: Any) -> VectorStoreResource:
@@ -3352,10 +3409,19 @@ class OpenAIProvider(BaseProvider):
         vector_store_id: str,
         *,
         file_id: str,
+        attributes: dict[str, str | float | bool] | None = None,
+        chunking_strategy: ResponsesChunkingStrategy | dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> VectorStoreFileResource:
+        params = dict(kwargs)
+        if attributes is not None:
+            params["attributes"] = attributes
+        if chunking_strategy is not None and "chunking_strategy" in params:
+            raise ValueError("Provide only one `chunking_strategy` value when creating a vector-store file.")
+        if chunking_strategy is not None:
+            params["chunking_strategy"] = self._serialize_openai_request_value(chunking_strategy)
         async with self.limiter.limit(tokens=0, requests=1):
-            response = await self.client.vector_stores.files.create(vector_store_id, file_id=file_id, **kwargs)
+            response = await self.client.vector_stores.files.create(vector_store_id, file_id=file_id, **params)
         return self._vector_store_file_resource_from_response(response, vector_store_id=vector_store_id)
 
     async def upload_vector_store_file(
@@ -3449,10 +3515,23 @@ class OpenAIProvider(BaseProvider):
         vector_store_id: str,
         *,
         file_id: str,
+        attributes: dict[str, str | float | bool] | None = None,
+        chunking_strategy: ResponsesChunkingStrategy | dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> VectorStoreFileResource:
+        params = dict(kwargs)
+        if attributes is not None:
+            params["attributes"] = attributes
+        if chunking_strategy is not None and "chunking_strategy" in params:
+            raise ValueError("Provide only one `chunking_strategy` value when creating and polling a vector-store file.")
+        if chunking_strategy is not None:
+            params["chunking_strategy"] = self._serialize_openai_request_value(chunking_strategy)
         async with self.limiter.limit(tokens=0, requests=1):
-            response = await self.client.vector_stores.files.create_and_poll(file_id, vector_store_id=vector_store_id, **kwargs)
+            response = await self.client.vector_stores.files.create_and_poll(
+                file_id,
+                vector_store_id=vector_store_id,
+                **params,
+            )
         return self._vector_store_file_resource_from_response(response, vector_store_id=vector_store_id)
 
     async def upload_vector_store_file_and_poll(
@@ -3469,10 +3548,24 @@ class OpenAIProvider(BaseProvider):
     async def create_vector_store_file_batch(
         self,
         vector_store_id: str,
+        *,
+        file_ids: list[str] | tuple[str, ...] | None = None,
+        files: list[ResponsesVectorStoreFileSpec | dict[str, Any]] | tuple[ResponsesVectorStoreFileSpec | dict[str, Any], ...] | None = None,
+        attributes: dict[str, str | float | bool] | None = None,
+        chunking_strategy: ResponsesChunkingStrategy | dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> VectorStoreFileBatchResource:
+        params = dict(kwargs)
+        params.update(
+            self._normalize_vector_store_batch_inputs(
+                file_ids=file_ids,
+                files=files,
+                attributes=attributes,
+                chunking_strategy=chunking_strategy,
+            )
+        )
         async with self.limiter.limit(tokens=0, requests=1):
-            response = await self.client.vector_stores.file_batches.create(vector_store_id, **kwargs)
+            response = await self.client.vector_stores.file_batches.create(vector_store_id, **params)
         return self._vector_store_file_batch_resource_from_response(response, vector_store_id=vector_store_id)
 
     async def retrieve_vector_store_file_batch(
@@ -3528,10 +3621,24 @@ class OpenAIProvider(BaseProvider):
     async def create_vector_store_file_batch_and_poll(
         self,
         vector_store_id: str,
+        *,
+        file_ids: list[str] | tuple[str, ...] | None = None,
+        files: list[ResponsesVectorStoreFileSpec | dict[str, Any]] | tuple[ResponsesVectorStoreFileSpec | dict[str, Any], ...] | None = None,
+        attributes: dict[str, str | float | bool] | None = None,
+        chunking_strategy: ResponsesChunkingStrategy | dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> VectorStoreFileBatchResource:
+        params = dict(kwargs)
+        params.update(
+            self._normalize_vector_store_batch_inputs(
+                file_ids=file_ids,
+                files=files,
+                attributes=attributes,
+                chunking_strategy=chunking_strategy,
+            )
+        )
         async with self.limiter.limit(tokens=0, requests=1):
-            response = await self.client.vector_stores.file_batches.create_and_poll(vector_store_id, **kwargs)
+            response = await self.client.vector_stores.file_batches.create_and_poll(vector_store_id, **params)
         return self._vector_store_file_batch_resource_from_response(response, vector_store_id=vector_store_id)
 
     async def upload_vector_store_file_batch_and_poll(

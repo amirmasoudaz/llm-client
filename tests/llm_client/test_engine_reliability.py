@@ -9,7 +9,13 @@ from llm_client.engine import ExecutionEngine, FailoverPolicy, RetryConfig
 from llm_client.hooks import HookManager
 from llm_client.idempotency import IdempotencyTracker
 from llm_client.provider_registry import ProviderCapabilities, ProviderDescriptor, ProviderRegistry
-from llm_client.tools import ResponsesAttributeFilter, ResponsesFileSearchRankingOptions
+from llm_client.tools import (
+    ResponsesAttributeFilter,
+    ResponsesChunkingStrategy,
+    ResponsesExpirationPolicy,
+    ResponsesFileSearchRankingOptions,
+    ResponsesVectorStoreFileSpec,
+)
 from llm_client.providers.types import (
     AudioSpeechResult,
     AudioTranscriptionResult,
@@ -928,5 +934,70 @@ async def test_engine_passes_through_typed_retrieval_controls() -> None:
             "ranking_options": ResponsesFileSearchRankingOptions(score_threshold=0.15),
             "max_num_results": 4,
             "include_search_results": True,
+        },
+    )
+
+
+@pytest.mark.asyncio
+async def test_engine_passes_through_typed_vector_store_resource_controls() -> None:
+    provider = _WorkflowProvider()
+    engine = ExecutionEngine(provider=provider)
+
+    await engine.create_vector_store(
+        name="Docs",
+        description="Tenant docs",
+        file_ids=["file_1"],
+        metadata={"scope": "tenant"},
+        expiration_policy=ResponsesExpirationPolicy(days=14),
+        chunking_strategy=ResponsesChunkingStrategy.auto(),
+    )
+    await engine.create_vector_store_file(
+        "vs_1",
+        file_id="file_1",
+        attributes={"scope": "docs"},
+        chunking_strategy=ResponsesChunkingStrategy.static(max_chunk_size_tokens=1000, chunk_overlap_tokens=200),
+    )
+    await engine.create_vector_store_file_batch(
+        "vs_1",
+        files=[
+            ResponsesVectorStoreFileSpec(
+                file_id="file_2",
+                attributes={"scope": "batch"},
+                chunking_strategy=ResponsesChunkingStrategy.auto(),
+            )
+        ],
+    )
+
+    assert provider.workflow_calls[0] == (
+        "create_vector_store",
+        {
+            "name": "Docs",
+            "description": "Tenant docs",
+            "file_ids": ["file_1"],
+            "metadata": {"scope": "tenant"},
+            "expiration_policy": ResponsesExpirationPolicy(days=14),
+            "chunking_strategy": ResponsesChunkingStrategy.auto(),
+        },
+    )
+    assert provider.workflow_calls[1] == (
+        "create_vector_store_file",
+        {
+            "vector_store_id": "vs_1",
+            "file_id": "file_1",
+            "attributes": {"scope": "docs"},
+            "chunking_strategy": ResponsesChunkingStrategy.static(max_chunk_size_tokens=1000, chunk_overlap_tokens=200),
+        },
+    )
+    assert provider.workflow_calls[2] == (
+        "create_vector_store_file_batch",
+        {
+            "vector_store_id": "vs_1",
+            "files": [
+                ResponsesVectorStoreFileSpec(
+                    file_id="file_2",
+                    attributes={"scope": "batch"},
+                    chunking_strategy=ResponsesChunkingStrategy.auto(),
+                )
+            ],
         },
     )
