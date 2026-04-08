@@ -181,11 +181,14 @@ The tool layer defines callable runtime capabilities:
 - `ToolRegistry`
 - `ResponsesBuiltinTool`
 - `ResponsesAttributeFilter`
+- `ResponsesChunkingStrategy`
+- `ResponsesExpirationPolicy`
 - `ResponsesFileSearchHybridWeights`
 - `ResponsesFileSearchRankingOptions`
 - `ResponsesToolSearch`
 - `ResponsesFunctionTool`
 - `ResponsesToolNamespace`
+- `ResponsesVectorStoreFileSpec`
 - `ResponsesConnectorId`
 - `ResponsesMCPTool`
 - `ResponsesMCPApprovalPolicy`
@@ -216,6 +219,10 @@ For advanced OpenAI-specific deferred-tool workflows, use:
 - `ResponsesAttributeFilter`, `ResponsesFileSearchRankingOptions`, and
   `ResponsesFileSearchHybridWeights` when hosted retrieval or file-search needs
   typed filtering and ranking controls instead of raw provider dicts
+- `ResponsesExpirationPolicy`, `ResponsesChunkingStrategy`, and
+  `ResponsesVectorStoreFileSpec` when hosted vector-store creation or file
+  ingestion needs typed expiration, chunking, or per-file metadata instead of
+  raw provider dicts
 
 Provider-native Responses tools are request-side descriptors, not executable
 runtime tools. Keep using `ToolRegistry` for locally executed function tools.
@@ -224,7 +231,13 @@ On the provider/engine workflow side, the OpenAI retrieval helpers now expose
 first-class `attribute_filter`, `ranking_options`, `max_num_results`, and
 `rewrite_query` controls on `search_vector_store(...)`, plus
 `include_search_results=True` on `respond_with_file_search(...)` for requesting
-`file_search_call.results` in the Responses payload.
+`file_search_call.results` in the Responses payload. Vector-store resource
+helpers also expose typed `expiration_policy`, `chunking_strategy`, and
+per-file `files=[ResponsesVectorStoreFileSpec(...)]` inputs on
+`create_vector_store(...)`, `create_vector_store_file(...)`,
+`create_vector_store_file_and_poll(...)`,
+`create_vector_store_file_batch(...)`, and
+`create_vector_store_file_batch_and_poll(...)`.
 
 ### Service Adaptors
 

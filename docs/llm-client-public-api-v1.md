@@ -193,17 +193,19 @@ Purpose:
 
 Use for:
 - `Tool`, `ToolRegistry`, `ToolResult`
-- `ResponsesBuiltinTool`, `ResponsesAttributeFilter`, `ResponsesFileSearchHybridWeights`, `ResponsesFileSearchRankingOptions`, `ResponsesToolSearch`, `ResponsesFunctionTool`, `ResponsesToolNamespace`, `ResponsesConnectorId`, `ResponsesMCPTool`, `ResponsesMCPApprovalPolicy`, `ResponsesMCPToolFilter`, `ResponsesCustomTool`, `ResponsesGrammar`
+- `ResponsesBuiltinTool`, `ResponsesAttributeFilter`, `ResponsesChunkingStrategy`, `ResponsesExpirationPolicy`, `ResponsesFileSearchHybridWeights`, `ResponsesFileSearchRankingOptions`, `ResponsesToolSearch`, `ResponsesFunctionTool`, `ResponsesToolNamespace`, `ResponsesVectorStoreFileSpec`, `ResponsesConnectorId`, `ResponsesMCPTool`, `ResponsesMCPApprovalPolicy`, `ResponsesMCPToolFilter`, `ResponsesCustomTool`, `ResponsesGrammar`
 - `tool`, `sync_tool`, `tool_from_function`
 - tool middleware stack for advanced use
 
 Notes:
 - `ToolRegistry` remains the execution/runtime surface for local function tools.
 - `ResponsesBuiltinTool`, `ResponsesAttributeFilter`,
+  `ResponsesChunkingStrategy`, `ResponsesExpirationPolicy`,
   `ResponsesFileSearchHybridWeights`, `ResponsesFileSearchRankingOptions`,
   `ResponsesToolSearch`, `ResponsesFunctionTool`, `ResponsesToolNamespace`,
-  `ResponsesMCPTool`, and `ResponsesCustomTool` are provider-native request
-  descriptors for OpenAI Responses workflows, not locally executable tools.
+  `ResponsesVectorStoreFileSpec`, `ResponsesMCPTool`, and
+  `ResponsesCustomTool` are provider-native request descriptors for OpenAI
+  Responses workflows, not locally executable tools.
 
 ### `llm_client.cache`
 

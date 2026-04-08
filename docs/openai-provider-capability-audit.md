@@ -130,7 +130,7 @@ This pass used the docs index as the source-of-truth inventory and then ran a bi
 | OpenAI `tool_search` | Official docs MCP `guides/function-calling#tool-search` | Implemented | Important | Added first-class advanced `ResponsesToolSearch` plus `respond_with_tool_search(...)` and `submit_tool_search_output(...)` helpers for hosted and client-executed workflows. |
 | OpenAI-specific tool namespaces | Official docs MCP `guides/function-calling#tool-search` best-practices section | Implemented | Important | Added `ResponsesToolNamespace` and `ResponsesFunctionTool`, plus recursive alias sanitization and output normalization so namespace intent is preserved on the OpenAI path. |
 | Realtime conversation item lifecycle events | Official docs MCP `guides/realtime-conversations#text-inputs-and-outputs`, `guides/realtime-conversations#interruption-and-truncation` | Implemented | Important | `RealtimeConnection` now exposes `conversation.item.retrieve`, `conversation.item.delete`, `conversation.item.truncate`, `response.cancel`, and typed `RealtimeEventResult` receive-side helpers via `recv_event()` / `recv_until_type(...)`. |
-| Retrieval attributes and attribute filtering ergonomics | Official docs MCP `guides/tools-file-search#metadata-filtering`, `guides/retrieval#attributes`, `guides/retrieval#attribute-filtering` | Implemented | Important | Added typed `ResponsesAttributeFilter`, `ResponsesFileSearchRankingOptions`, `ResponsesFileSearchHybridWeights`, direct `search_vector_store(...)` tuning controls, and `include_search_results=True` for hosted file-search workflows. |
+| Retrieval attributes, chunking, and ingestion ergonomics | Official docs MCP `guides/tools-file-search#metadata-filtering`, `guides/retrieval#attributes`, `guides/retrieval#attribute-filtering`, `guides/retrieval#batch-operations`, `assistants/tools/file-search#creating-vector-stores-and-adding-files` | Implemented | Important | Added typed `ResponsesAttributeFilter`, `ResponsesFileSearchRankingOptions`, `ResponsesFileSearchHybridWeights`, `ResponsesExpirationPolicy`, `ResponsesChunkingStrategy`, and `ResponsesVectorStoreFileSpec`, plus direct `search_vector_store(...)`, `create_vector_store(...)`, vector-store file, and vector-store batch controls for typed retrieval tuning, expiration, chunking, and per-file ingestion metadata. |
 
 ## Implementation roadmap
 
@@ -143,7 +143,7 @@ The next bounded `1.2` implementation slice should be:
 
 Why this order:
 
-- `tool_search`, namespaces, retrieval tuning ergonomics, and the first Realtime lifecycle/event wrapper slice are now closed as the early advanced OpenAI-specific `1.2` slices
+- `tool_search`, namespaces, retrieval tuning/ingestion ergonomics, and the first Realtime lifecycle/event wrapper slice are now closed as the early advanced OpenAI-specific `1.2` slices
 - deeper connectors/MCP and hosted file-search product management now represent the clearest remaining high-value gaps
 - broader Realtime product-management work still remains, but the connection-level lifecycle contract is materially stronger than before
 

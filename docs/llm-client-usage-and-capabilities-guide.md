@@ -194,8 +194,9 @@ Use:
 - specifically `ResponsesBuiltinTool`, `ResponsesToolSearch`,
   `ResponsesFunctionTool`, `ResponsesToolNamespace`, `ResponsesCustomTool`,
   `ResponsesGrammar`, `ResponsesAttributeFilter`,
-  `ResponsesFileSearchRankingOptions`, and
-  `ResponsesFileSearchHybridWeights`
+  `ResponsesChunkingStrategy`, `ResponsesExpirationPolicy`,
+  `ResponsesFileSearchRankingOptions`,
+  `ResponsesFileSearchHybridWeights`, and `ResponsesVectorStoreFileSpec`
 
 Best for:
 
@@ -204,6 +205,8 @@ Best for:
 - namespaced OpenAI function tools with deferred loading
 - typed MCP and connector descriptors with `allowed_tools` and approval-policy shaping
 - typed hosted retrieval controls for file-search filters and ranking
+- typed hosted vector-store resource controls for expiration, chunking, and
+  per-file batch metadata
 - grammar-backed custom tools on `OpenAIProvider(..., use_responses_api=True)`
 - request-time tool descriptors that should stay in the stable package surface
 
@@ -219,6 +222,9 @@ Current package boundary:
 - OpenAI retrieval helpers now expose typed `attribute_filter`,
   `ranking_options`, `max_num_results`, and `rewrite_query` controls, plus
   `include_search_results=True` on `respond_with_file_search(...)`
+- OpenAI vector-store helpers now expose typed `expiration_policy`,
+  `chunking_strategy`, and `files=[ResponsesVectorStoreFileSpec(...)]`
+  controls on the vector-store creation and file-batch workflows
 
 ### Rich Responses output items
 

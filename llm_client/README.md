@@ -1506,11 +1506,14 @@ provider-native tool definitions instead of executable local tools:
 
 - `ResponsesBuiltinTool`
 - `ResponsesAttributeFilter`
+- `ResponsesChunkingStrategy`
+- `ResponsesExpirationPolicy`
 - `ResponsesFileSearchHybridWeights`
 - `ResponsesFileSearchRankingOptions`
 - `ResponsesToolSearch`
 - `ResponsesFunctionTool`
 - `ResponsesToolNamespace`
+- `ResponsesVectorStoreFileSpec`
 - `ResponsesMCPToolFilter`
 - `ResponsesMCPApprovalPolicy`
 - `ResponsesMCPTool`
@@ -1556,6 +1559,14 @@ first-class `attribute_filter`, `ranking_options`, `max_num_results`, and
 `rewrite_query` controls, and `respond_with_file_search(...)` also supports
 `include_search_results=True` to request `file_search_call.results` in the
 Responses payload.
+
+For hosted vector-store resource management, use `ResponsesExpirationPolicy`,
+`ResponsesChunkingStrategy`, and `ResponsesVectorStoreFileSpec` with
+`create_vector_store(...)`, `create_vector_store_file(...)`,
+`create_vector_store_file_and_poll(...)`,
+`create_vector_store_file_batch(...)`, and
+`create_vector_store_file_batch_and_poll(...)` when you need typed expiration,
+chunking, or per-file batch metadata instead of raw OpenAI request dicts.
 
 Example:
 
