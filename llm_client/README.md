@@ -1504,6 +1504,9 @@ Use these when calling `OpenAIProvider(..., use_responses_api=True)` with
 provider-native tool definitions instead of executable local tools:
 
 - `ResponsesBuiltinTool`
+- `ResponsesAttributeFilter`
+- `ResponsesFileSearchHybridWeights`
+- `ResponsesFileSearchRankingOptions`
 - `ResponsesToolSearch`
 - `ResponsesFunctionTool`
 - `ResponsesToolNamespace`
@@ -1541,6 +1544,17 @@ hand-typed strings.
 
 `ResponsesCustomTool` is a typed wrapper for grammar-backed custom tools, with
 the grammar supplied via `ResponsesGrammar`.
+
+For hosted retrieval and file-search tuning, use `ResponsesAttributeFilter`,
+`ResponsesFileSearchRankingOptions`, and
+`ResponsesFileSearchHybridWeights` inside
+`ResponsesBuiltinTool.file_search(...)`, or pass the same typed values to
+`OpenAIProvider.search_vector_store(...)` and
+`OpenAIProvider.respond_with_file_search(...)`. The helper methods now expose
+first-class `attribute_filter`, `ranking_options`, `max_num_results`, and
+`rewrite_query` controls, and `respond_with_file_search(...)` also supports
+`include_search_results=True` to request `file_search_call.results` in the
+Responses payload.
 
 Example:
 

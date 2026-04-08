@@ -80,16 +80,15 @@ This pass used the docs index as the source-of-truth inventory and then ran a bi
 - OpenAI provider and engine workflows now expose direct moderation, image generation/editing, speech-to-text, translation, text-to-speech, generic file upload/retrieve/content helpers, hosted vector stores, vector-store files, and fine-tuning job APIs.
 - OpenAI provider and engine workflows now expose realtime websocket connection helpers, client-secret/call-control helpers, webhook verification/unwrapping, and vector-store file polling/batch helpers.
 - OpenAI provider and engine workflows now expose realtime transcription-session helpers plus hosted Responses workflow helpers for web search, file search, code interpreter, remote MCP, and connectors.
+- OpenAI retrieval/file-search workflows now expose first-class typed tuning controls for `attribute_filter`, `ranking_options`, `max_num_results`, `rewrite_query`, and `include_search_results`.
 - Deep-research workflows now include first-class clarify, rewrite, kickoff, and staged runner helpers aligned with the docs-ledger guidance.
 
 ### Still partial or deferred
 
 - `CompletionResult.provider_items` should remain available as a low-level replay/debug escape hatch, but not as a documented stable provider-agnostic contract. The stable surface is `output_items` plus the typed result objects.
 - The package now exposes a normalized subset of rich Responses outputs via `CompletionResult.output_items` and `CompletionResult.refusal`, while retaining `provider_items` for exact replay of provider-specific details that are not yet part of the stable normalized shape.
-- `tool_search` is still absent as a first-class OpenAI-specific advanced feature; only raw dict passthrough can carry it indirectly today.
-- OpenAI-specific tool namespaces are still absent as a semantic package feature; package-defined function tools are sanitized to flat names on the OpenAI path today.
 - Realtime coverage is now materially broader, but it is still not the full OpenAI Realtime product surface.
-- Hosted retrieval now covers the generic Files API, vector stores, vector-store files, polling, and file batches, but it still does not expose the newer retrieval customization surface as a first-class package contract.
+- Hosted retrieval now covers the generic Files API, vector stores, vector-store files, polling, file batches, typed filters, ranking options, query rewriting, and hosted file-search result inclusion, but broader file-search product/resource management is still incomplete.
 - MCP/connectors now have typed descriptors and helper workflows, but they still do not cover the full skills/connectors product surface from the docs.
 - Deep research now covers clarify/rewrite/kickoff/staged orchestration, but it is still not the full lifecycle/product surface from the docs.
 - The local docs API remains intermittently unavailable on `127.0.0.1:8000`; live re-audit should be treated as best-effort until `/health` and `/docs/index` stabilize consistently.
@@ -131,7 +130,7 @@ This pass used the docs index as the source-of-truth inventory and then ran a bi
 | OpenAI `tool_search` | Official docs MCP `guides/function-calling#tool-search` | Implemented | Important | Added first-class advanced `ResponsesToolSearch` plus `respond_with_tool_search(...)` and `submit_tool_search_output(...)` helpers for hosted and client-executed workflows. |
 | OpenAI-specific tool namespaces | Official docs MCP `guides/function-calling#tool-search` best-practices section | Implemented | Important | Added `ResponsesToolNamespace` and `ResponsesFunctionTool`, plus recursive alias sanitization and output normalization so namespace intent is preserved on the OpenAI path. |
 | Realtime conversation item lifecycle events | Official docs MCP `guides/realtime-conversations#text-inputs-and-outputs` | Partial | Important | Current Realtime wrappers cover sessions, calls, and connections, but the package does not yet expose the broader conversation-item event surface as a first-class contract. |
-| Retrieval attributes and attribute filtering ergonomics | Official docs MCP `guides/tools-file-search#metadata-filtering`, `guides/retrieval#attributes`, `guides/retrieval#attribute-filtering` | Partial | Important | Vector-store file primitives already exist, but the package has not yet promoted retrieval attributes, filters, ranking, or richer hosted-RAG ergonomics into a clearly typed/tested surface. |
+| Retrieval attributes and attribute filtering ergonomics | Official docs MCP `guides/tools-file-search#metadata-filtering`, `guides/retrieval#attributes`, `guides/retrieval#attribute-filtering` | Implemented | Important | Added typed `ResponsesAttributeFilter`, `ResponsesFileSearchRankingOptions`, `ResponsesFileSearchHybridWeights`, direct `search_vector_store(...)` tuning controls, and `include_search_results=True` for hosted file-search workflows. |
 
 ## Implementation roadmap
 
@@ -139,15 +138,14 @@ This pass used the docs index as the source-of-truth inventory and then ran a bi
 
 The next bounded `1.2` implementation slice should be:
 
-1. retrieval/file-search customization and hosted-RAG ergonomics
-2. then the broader Realtime follow-up work
+1. broader Realtime follow-up work
+2. then deeper connectors/MCP and hosted file-search product management
 
 Why this order:
 
-- `tool_search` and namespaces are now closed as the first advanced OpenAI-specific `1.2` slice
-- retrieval/file-search now has the clearest remaining docs-backed gap with lower volatility than deeper Realtime expansion
-- it builds directly on the already implemented vector-store, file-search, and hosted-tool base
-- retrieval already has a stronger base than the older audit summary implied, so its remaining gap is a second-step ergonomics and workflow problem, not missing foundational APIs
+- `tool_search`, namespaces, and retrieval tuning ergonomics are now closed as the early advanced OpenAI-specific `1.2` slices
+- Realtime is now the clearest remaining high-value gap with a stable enough documented base to expand next
+- broader connectors/MCP and hosted file-search product management remain important, but they sit above the now-implemented retrieval primitives and tuning surface
 
 This roadmap covers the remaining work needed to extend `llm_client` toward broader official-docs parity. It is ordered by package impact: fix compliance gaps first, then add missing capabilities that need package-contract expansion, then harden metadata, tests, and user-facing docs.
 

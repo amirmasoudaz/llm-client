@@ -161,8 +161,10 @@ Example:
 ```python
 from llm_client.providers import OpenAIProvider
 from llm_client.tools import (
+    ResponsesAttributeFilter,
     ResponsesBuiltinTool,
     ResponsesCustomTool,
+    ResponsesFileSearchRankingOptions,
     ResponsesFunctionTool,
     ResponsesGrammar,
     ResponsesToolNamespace,
@@ -209,6 +211,17 @@ function tools only.
 If you use client-executed `tool_search`, return the loaded tool set with
 `OpenAIProvider.submit_tool_search_output(...)` after the model emits a
 `tool_search_call`.
+
+For hosted retrieval/file-search tuning, the OpenAI provider now also accepts
+typed first-class controls:
+
+- `ResponsesAttributeFilter`
+- `ResponsesFileSearchRankingOptions`
+
+Use them either inside `ResponsesBuiltinTool.file_search(...)` or directly on
+`search_vector_store(...)` / `respond_with_file_search(...)`. The file-search
+helper also supports `include_search_results=True`, which requests
+`file_search_call.results` in the Responses output.
 
 ## OpenAI Responses request controls
 

@@ -174,6 +174,9 @@ The tool layer defines callable runtime capabilities:
 - `Tool`
 - `ToolRegistry`
 - `ResponsesBuiltinTool`
+- `ResponsesAttributeFilter`
+- `ResponsesFileSearchHybridWeights`
+- `ResponsesFileSearchRankingOptions`
 - `ResponsesToolSearch`
 - `ResponsesFunctionTool`
 - `ResponsesToolNamespace`
@@ -204,9 +207,18 @@ For advanced OpenAI-specific deferred-tool workflows, use:
   `defer_loading=True`
 - `ResponsesToolNamespace` to group deferred tools under a namespace like
   `crm` or `billing`
+- `ResponsesAttributeFilter`, `ResponsesFileSearchRankingOptions`, and
+  `ResponsesFileSearchHybridWeights` when hosted retrieval or file-search needs
+  typed filtering and ranking controls instead of raw provider dicts
 
 Provider-native Responses tools are request-side descriptors, not executable
 runtime tools. Keep using `ToolRegistry` for locally executed function tools.
+
+On the provider/engine workflow side, the OpenAI retrieval helpers now expose
+first-class `attribute_filter`, `ranking_options`, `max_num_results`, and
+`rewrite_query` controls on `search_vector_store(...)`, plus
+`include_search_results=True` on `respond_with_file_search(...)` for requesting
+`file_search_call.results` in the Responses payload.
 
 ### Service Adaptors
 

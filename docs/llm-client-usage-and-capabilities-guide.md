@@ -192,8 +192,10 @@ Use:
 
 - `llm_client.tools`
 - specifically `ResponsesBuiltinTool`, `ResponsesToolSearch`,
-  `ResponsesFunctionTool`, `ResponsesToolNamespace`, `ResponsesCustomTool`, and
-  `ResponsesGrammar`
+  `ResponsesFunctionTool`, `ResponsesToolNamespace`, `ResponsesCustomTool`,
+  `ResponsesGrammar`, `ResponsesAttributeFilter`,
+  `ResponsesFileSearchRankingOptions`, and
+  `ResponsesFileSearchHybridWeights`
 
 Best for:
 
@@ -201,6 +203,7 @@ Best for:
 - OpenAI-specific deferred-tool workflows using `tool_search`
 - namespaced OpenAI function tools with deferred loading
 - typed MCP and connector descriptors with `allowed_tools` and approval-policy shaping
+- typed hosted retrieval controls for file-search filters and ranking
 - grammar-backed custom tools on `OpenAIProvider(..., use_responses_api=True)`
 - request-time tool descriptors that should stay in the stable package surface
 
@@ -213,6 +216,9 @@ Current package boundary:
   `tool_search` loops by returning the loaded tool set from your application
 - `ToolRegistry` and the agent tool runtime remain function-tool execution layers
 - the package now exposes a normalized subset of rich Responses output items and retains raw `provider_items` for exact replay
+- OpenAI retrieval helpers now expose typed `attribute_filter`,
+  `ranking_options`, `max_num_results`, and `rewrite_query` controls, plus
+  `include_search_results=True` on `respond_with_file_search(...)`
 
 ### Rich Responses output items
 

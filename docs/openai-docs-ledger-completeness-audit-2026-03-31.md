@@ -145,7 +145,7 @@ The biggest missing or incomplete areas are:
 | Audio understanding | `guides/audio.md` | `llm_client/content.py` supports `AudioBlock` / `input_audio`; speech APIs plus realtime transcription session helpers live in `llm_client/providers/openai.py` | Partial | Input-audio transport, speech endpoints, and realtime transcription session/bootstrap helpers are implemented, but the broader realtime-audio product surface is still incomplete. |
 | Built-in tools | `guides/tools.md`, `guides/tools-*.md` | `ResponsesBuiltinTool` / `ResponsesMCPTool` in `llm_client/tools/base.py`; workflow helpers in `llm_client/providers/openai.py` and `llm_client/engine.py` | Partial | Typed request descriptors and helper workflows now exist for web search, file search, code interpreter, remote MCP, and connectors, but there are still no full management APIs around every hosted tool family. |
 | MCP and connectors | `guides/tools-remote-mcp.md`, `guides/tools-connectors-mcp.md`, `guides/developer-mode.md` | `ResponsesMCPTool`, `ResponsesConnectorId`, `submit_mcp_approval_response(...)`, `respond_with_remote_mcp(...)`, `respond_with_connector(...)` | Partial | Typed remote-MCP and connector request surfaces, documented connector ids, authorization shaping, approval continuations, and helper workflows exist, but broader connector/skills product management remains outside the package. |
-| Retrieval / file search | `guides/retrieval.md`, `guides/tools-file-search.md`, `guides/deep-research.md` | `create_file(...)`, `retrieve_file(...)`, `list_files(...)`, `delete_file(...)`, `get_file_content(...)`, `ResponsesBuiltinTool.file_search(...)`; vector-store CRUD/search, vector-store-file CRUD/content/polling, and vector-store file-batch helpers in `llm_client/providers/openai.py` | Partial | Generic Files API plus hosted vector stores, vector-store files, and file batches are implemented, but broader file-search product/resource management is still incomplete. |
+| Retrieval / file search | `guides/retrieval.md`, `guides/tools-file-search.md`, `guides/deep-research.md` | `create_file(...)`, `retrieve_file(...)`, `list_files(...)`, `delete_file(...)`, `get_file_content(...)`, `ResponsesBuiltinTool.file_search(...)`, `ResponsesAttributeFilter`, `ResponsesFileSearchRankingOptions`; vector-store CRUD/search, vector-store-file CRUD/content/polling, and vector-store file-batch helpers in `llm_client/providers/openai.py` | Partial | Generic Files API plus hosted vector stores, vector-store files, file batches, typed filters/ranking, and hosted file-search result inclusion are implemented, but broader file-search product/resource management is still incomplete. |
 | Agents | `guides/agents.md`, `guides/agents-sdk.md` | `llm_client.agent` package, generic tool runtime, engine | Partial | The package has its own agent layer, but it is not a full implementation of the OpenAI Agents SDK / AgentKit product surface. |
 | Realtime API | `guides/realtime.md`, `guides/realtime-server-controls.md`, `guides/realtime-transcription.md`, `api-reference.md` | `connect_realtime(...)`, `connect_realtime_transcription(...)`, realtime and realtime-transcription session helpers, and call helpers in `llm_client/providers/openai.py` and `llm_client/engine.py` | Partial | Stable websocket/session bootstrap is wrapped for both standard realtime and transcription flows, but the full Realtime product surface still extends beyond the current helper set. |
 | Deep Research | `guides/deep-research.md` | `clarify_deep_research_task(...)`, `rewrite_deep_research_prompt(...)`, `start_deep_research(...)`, and `run_deep_research(...)` in `llm_client/providers/openai.py` and `llm_client/engine.py` | Partial | Clarify, rewrite, kickoff, optional background wait, and typed MCP/connectors are implemented, but the broader deep-research lifecycle/product surface is still incomplete. |
@@ -164,6 +164,7 @@ The biggest missing or incomplete areas are:
 | --- | --- | --- | --- | --- |
 | OpenAI `tool_search` | Official docs MCP `guides/function-calling#tool-search` | `ResponsesToolSearch` in `llm_client/tools/base.py`; `respond_with_tool_search(...)` and `submit_tool_search_output(...)` in `llm_client/providers/openai.py` | Implemented | The package now supports hosted and client-executed `tool_search` as an OpenAI-specific advanced surface. |
 | OpenAI-specific tool namespaces | Official docs MCP `guides/function-calling#defining-namespaces` | `ResponsesToolNamespace` and `ResponsesFunctionTool` in `llm_client/tools/base.py`; recursive tool aliasing/normalization in `llm_client/providers/openai.py` | Implemented | Namespace tool definitions now preserve deferred-tool intent instead of flattening everything to raw dict passthrough. |
+| Retrieval tuning ergonomics | Official docs MCP `guides/tools-file-search#metadata-filtering`, `guides/retrieval#attribute-filtering`, `guides/retrieval#relevance-tuning` | `ResponsesAttributeFilter`, `ResponsesFileSearchRankingOptions`, and `ResponsesFileSearchHybridWeights` in `llm_client/tools/base.py`; `search_vector_store(...)` and `respond_with_file_search(...)` in `llm_client/providers/openai.py` | Implemented | The package now exposes typed retrieval filters/ranking, explicit `max_num_results`/`rewrite_query` controls, and `include_search_results=True` for hosted file-search responses. |
 
 ## Correctness notes for implemented areas
 
@@ -199,14 +200,10 @@ This means the package’s current OpenAI strengths are real:
 - `llm_client/providers/openai.py` normalizes `file_search_call`, `web_search_call`, `code_interpreter_call`, `image_generation_call`, and MCP-related output items, which proves hosted-tool awareness.
 - That same file now exposes direct image APIs, speech APIs, moderation, fine-tuning jobs, vector stores, vector-store files, vector-store file batches, webhook helpers, realtime connection/call/transcription helpers, hosted Responses tool workflow helpers, and staged deep-research helpers, but it does not yet expose the full remaining hosted-resource or broader product-management surface.
 
-### Evidence for the newly confirmed 1.2 gaps
+### Evidence for the remaining 1.2 gaps
 
-- The official function-calling docs now explicitly document `tool_search` and recommend it for deferring large or infrequently used tool surfaces.
-- The same function-calling guidance now references namespace descriptions for deferred tools.
-- Repo inspection confirms there is no first-class `tool_search` abstraction in `llm_client/tools/base.py`, `llm_client/providers/openai.py`, or `llm_client/engine.py`.
-- Repo inspection also confirms package-defined function tools are sanitized to flat OpenAI-safe names in `llm_client/providers/openai.py`, and the existing request-translation tests assert the flattened behavior for dotted names.
 - The official realtime conversations docs explicitly enumerate `conversation.item.added` and `conversation.item.done` lifecycle events; the package currently parses Responses streaming events well, but it does not yet model that broader Realtime event surface as a first-class package contract.
-- The official file-search and retrieval docs now explicitly call out vector-store-file `attributes` and `attribute_filter`-based filtering; the package already exposes vector-store file creation/update/search primitives, but the audit still needs to close the gap between those primitives and a clearer higher-level retrieval/file-search contract.
+- The official file-search and retrieval docs still extend beyond the current package surface into deeper hosted resource management and broader product lifecycle flows.
 
 ### Evidence that fine-tuned models are not a supported surface
 
@@ -217,10 +214,8 @@ This means the package’s current OpenAI strengths are real:
 
 ### Priority 0: major remaining platform families
 
-- first-class OpenAI `tool_search`
-- first-class OpenAI-specific tool namespaces
-- broader hosted retrieval / file-search resource management
 - broader realtime product coverage beyond the current websocket/session wrapper
+- broader hosted retrieval / file-search resource management
 
 ### Priority 1: breadth and product-surface expansion
 
@@ -236,23 +231,19 @@ This means the package’s current OpenAI strengths are real:
 
 ### Phase 1: Add the newly confirmed tool-surface gaps
 
-Deliverables:
+Completed in this branch:
 
-- Add OpenAI-specific advanced support for `tool_search`.
-- Add OpenAI-specific tool namespace support without promoting namespaces into the stable generic tool contract.
-- Add focused docs/tests for the new advanced OpenAI-only surfaces.
+- OpenAI-specific advanced support for `tool_search`.
+- OpenAI-specific tool namespace support without promoting namespaces into the stable generic tool contract.
+- Typed retrieval/file-search filters, ranking controls, and hosted search-result inclusion helpers.
 
-Exit criteria:
-
-- `tool_search` is modeled through a typed or clearly namespaced OpenAI-specific package surface instead of raw dict passthrough.
-- Package-defined OpenAI function tools can preserve namespace intent where the OpenAI-specific path is used.
-- The audit can mark the two newly confirmed gaps as implemented or intentionally deferred with code-level evidence.
+The next active phase is broader Realtime and product-surface follow-up work.
 
 ### Phase 2: Close the remaining research and retrieval gaps
 
 Deliverables:
 
-- Expand hosted retrieval/file-search management beyond vector stores, files, and file batches.
+- Expand hosted retrieval/file-search management beyond vector stores, files, file batches, and the newly added tuning ergonomics.
 - Add examples covering realtime transcription, connector/MCP helpers, and the staged deep-research workflow.
 
 Exit criteria:
