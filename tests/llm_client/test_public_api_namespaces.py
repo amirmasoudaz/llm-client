@@ -24,14 +24,22 @@ from llm_client.tools import (
     ResponsesChunkingStrategy,
     ResponsesConnectorId,
     ResponsesCustomTool,
+    ResponsesDropboxTool,
     ResponsesExpirationPolicy,
     ResponsesFileSearchHybridWeights,
     ResponsesFileSearchRankingOptions,
     ResponsesFunctionTool,
+    ResponsesGmailTool,
+    ResponsesGoogleCalendarTool,
+    ResponsesGoogleDriveTool,
     ResponsesGrammar,
     ResponsesMCPApprovalPolicy,
     ResponsesMCPTool,
     ResponsesMCPToolFilter,
+    ResponsesMicrosoftTeamsTool,
+    ResponsesOutlookCalendarTool,
+    ResponsesOutlookEmailTool,
+    ResponsesSharePointTool,
     ResponsesToolNamespace,
     ResponsesToolSearch,
     ResponsesVectorStoreFileSpec,
@@ -272,8 +280,10 @@ def test_tools_namespace_exports_responses_tool_descriptors() -> None:
     )
     mcp = ResponsesMCPTool.connector(
         ResponsesConnectorId.GMAIL,
+        allowed_tools=(ResponsesGmailTool.SEARCH_EMAILS, ResponsesGmailTool.READ_EMAIL),
+        defer_loading=True,
         require_approval=ResponsesMCPApprovalPolicy(
-            always=ResponsesMCPToolFilter(tool_names=("read_thread",)),
+            always=ResponsesMCPToolFilter.of(ResponsesGmailTool.READ_EMAIL),
         ),
     )
 
@@ -285,18 +295,28 @@ def test_tools_namespace_exports_responses_tool_descriptors() -> None:
     assert function_tool.to_dict()["defer_loading"] is True
     assert namespace.to_dict()["tools"][0]["name"] == "lookup_profile"
     assert mcp.to_dict()["connector_id"] == "connector_gmail"
-    assert mcp.to_dict()["require_approval"] == {"always": {"tool_names": ["read_thread"]}}
+    assert mcp.to_dict()["allowed_tools"] == ["search_emails", "read_email"]
+    assert mcp.to_dict()["defer_loading"] is True
+    assert mcp.to_dict()["require_approval"] == {"always": {"tool_names": ["read_email"]}}
     assert "ResponsesBuiltinTool" in tools.__all__
     assert "ResponsesAttributeFilter" in tools.__all__
     assert "ResponsesToolSearch" in tools.__all__
     assert "ResponsesConnectorId" in tools.__all__
+    assert "ResponsesDropboxTool" in tools.__all__
     assert "ResponsesFileSearchHybridWeights" in tools.__all__
     assert "ResponsesFileSearchRankingOptions" in tools.__all__
     assert "ResponsesFunctionTool" in tools.__all__
+    assert "ResponsesGmailTool" in tools.__all__
+    assert "ResponsesGoogleCalendarTool" in tools.__all__
+    assert "ResponsesGoogleDriveTool" in tools.__all__
+    assert "ResponsesMicrosoftTeamsTool" in tools.__all__
     assert "ResponsesToolNamespace" in tools.__all__
     assert "ResponsesMCPTool" in tools.__all__
     assert "ResponsesMCPApprovalPolicy" in tools.__all__
     assert "ResponsesMCPToolFilter" in tools.__all__
+    assert "ResponsesOutlookCalendarTool" in tools.__all__
+    assert "ResponsesOutlookEmailTool" in tools.__all__
+    assert "ResponsesSharePointTool" in tools.__all__
     assert "ResponsesCustomTool" in tools.__all__
     assert "ResponsesGrammar" in tools.__all__
 

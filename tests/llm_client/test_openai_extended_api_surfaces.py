@@ -11,6 +11,7 @@ from llm_client.tools import (
     ResponsesExpirationPolicy,
     ResponsesFileSearchHybridWeights,
     ResponsesFileSearchRankingOptions,
+    ResponsesGmailTool,
     ResponsesMCPTool,
     ResponsesVectorStoreFileSpec,
 )
@@ -987,6 +988,8 @@ async def test_openai_hosted_tool_workflow_helpers_build_typed_tools() -> None:
         connector_id="connector_gmail",
         server_label="Gmail",
         authorization="Bearer oauth-token",
+        allowed_tools=(ResponsesGmailTool.SEARCH_EMAILS,),
+        defer_loading=True,
     )
 
     rendered_calls = [
@@ -1011,6 +1014,8 @@ async def test_openai_hosted_tool_workflow_helpers_build_typed_tools() -> None:
             "connector_id": "connector_gmail",
             "server_label": "Gmail",
             "authorization": "Bearer oauth-token",
+            "allowed_tools": ["search_emails"],
+            "defer_loading": True,
         }
     ]
 

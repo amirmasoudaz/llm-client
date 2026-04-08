@@ -3788,6 +3788,7 @@ class OpenAIProvider(BaseProvider):
                 headers=kwargs.pop("headers", None),
                 allowed_tools=kwargs.pop("allowed_tools", None),
                 require_approval=kwargs.pop("require_approval", None),
+                defer_loading=kwargs.pop("defer_loading", None),
                 **dict(kwargs.pop("tool_metadata", {}) or {}),
             )
         return await self._complete_with_responses_tools(prompt, tools=[tool], model=model_name, **kwargs)
@@ -3807,6 +3808,7 @@ class OpenAIProvider(BaseProvider):
                 authorization=kwargs.pop("authorization", None),
                 allowed_tools=kwargs.pop("allowed_tools", None),
                 require_approval=kwargs.pop("require_approval", None),
+                defer_loading=kwargs.pop("defer_loading", None),
                 **dict(kwargs.pop("tool_metadata", {}) or {}),
             )
         return await self._complete_with_responses_tools(prompt, tools=[tool], model=model_name, **kwargs)

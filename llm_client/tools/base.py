@@ -176,6 +176,78 @@ class ResponsesConnectorId(str, Enum):
     SHAREPOINT = "connector_sharepoint"
 
 
+class ResponsesDropboxTool(str, Enum):
+    SEARCH = "search"
+    FETCH = "fetch"
+    SEARCH_FILES = "search_files"
+    FETCH_FILE = "fetch_file"
+    LIST_RECENT_FILES = "list_recent_files"
+    GET_PROFILE = "get_profile"
+
+
+class ResponsesGmailTool(str, Enum):
+    GET_PROFILE = "get_profile"
+    SEARCH_EMAILS = "search_emails"
+    SEARCH_EMAIL_IDS = "search_email_ids"
+    GET_RECENT_EMAILS = "get_recent_emails"
+    READ_EMAIL = "read_email"
+    BATCH_READ_EMAIL = "batch_read_email"
+
+
+class ResponsesGoogleCalendarTool(str, Enum):
+    GET_PROFILE = "get_profile"
+    SEARCH = "search"
+    FETCH = "fetch"
+    SEARCH_EVENTS = "search_events"
+    READ_EVENT = "read_event"
+
+
+class ResponsesGoogleDriveTool(str, Enum):
+    GET_PROFILE = "get_profile"
+    LIST_DRIVES = "list_drives"
+    SEARCH = "search"
+    RECENT_DOCUMENTS = "recent_documents"
+    FETCH = "fetch"
+
+
+class ResponsesMicrosoftTeamsTool(str, Enum):
+    SEARCH = "search"
+    FETCH = "fetch"
+    GET_CHAT_MEMBERS = "get_chat_members"
+    GET_PROFILE = "get_profile"
+
+
+class ResponsesOutlookCalendarTool(str, Enum):
+    SEARCH_EVENTS = "search_events"
+    FETCH_EVENT = "fetch_event"
+    FETCH_EVENTS_BATCH = "fetch_events_batch"
+    LIST_EVENTS = "list_events"
+    GET_PROFILE = "get_profile"
+
+
+class ResponsesOutlookEmailTool(str, Enum):
+    GET_PROFILE = "get_profile"
+    LIST_MESSAGES = "list_messages"
+    SEARCH_MESSAGES = "search_messages"
+    GET_RECENT_EMAILS = "get_recent_emails"
+    FETCH_MESSAGE = "fetch_message"
+    FETCH_MESSAGES_BATCH = "fetch_messages_batch"
+
+
+class ResponsesSharePointTool(str, Enum):
+    GET_SITE = "get_site"
+    SEARCH = "search"
+    LIST_RECENT_DOCUMENTS = "list_recent_documents"
+    FETCH = "fetch"
+    GET_PROFILE = "get_profile"
+
+
+def _normalize_allowed_tool_name(tool_name: Any) -> str:
+    if isinstance(tool_name, Enum):
+        return str(tool_name.value)
+    return str(tool_name)
+
+
 @dataclass(frozen=True)
 class ResponsesMCPToolFilter:
     """Allowed-tool filter for OpenAI MCP and connector tools."""
@@ -186,6 +258,16 @@ class ResponsesMCPToolFilter:
         return {
             "tool_names": [name for name in self.tool_names if str(name).strip()],
         }
+
+    @classmethod
+    def of(cls, *tool_names: Any) -> ResponsesMCPToolFilter:
+        return cls(
+            tool_names=tuple(
+                normalized
+                for normalized in (_normalize_allowed_tool_name(tool_name) for tool_name in tool_names)
+                if normalized.strip()
+            )
+        )
 
 
 @dataclass(frozen=True)
@@ -216,6 +298,7 @@ class ResponsesMCPTool:
     headers: dict[str, str] | None = None
     allowed_tools: tuple[str, ...] | None = None
     require_approval: str | ResponsesMCPApprovalPolicy | dict[str, Any] | None = None
+    defer_loading: bool | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -241,6 +324,8 @@ class ResponsesMCPTool:
                 payload["require_approval"] = dict(self.require_approval)
             else:
                 payload["require_approval"] = self.require_approval
+        if self.defer_loading is not None:
+            payload["defer_loading"] = self.defer_loading
         payload.update({str(key): _serialize_provider_config_value(value) for key, value in self.metadata.items()})
         return payload
 
@@ -256,8 +341,9 @@ class ResponsesMCPTool:
         server_description: str | None = None,
         authorization: str | None = None,
         headers: dict[str, str] | None = None,
-        allowed_tools: list[str] | tuple[str, ...] | None = None,
+        allowed_tools: list[Any] | tuple[Any, ...] | None = None,
         require_approval: str | ResponsesMCPApprovalPolicy | dict[str, Any] | None = None,
+        defer_loading: bool | None = None,
         **metadata: Any,
     ) -> ResponsesMCPTool:
         return cls(
@@ -266,8 +352,14 @@ class ResponsesMCPTool:
             server_description=server_description,
             authorization=authorization,
             headers=dict(headers or {}) or None,
-            allowed_tools=tuple(allowed_tools or ()) or None,
+            allowed_tools=tuple(
+                normalized
+                for normalized in (_normalize_allowed_tool_name(tool_name) for tool_name in (allowed_tools or ()))
+                if normalized.strip()
+            )
+            or None,
             require_approval=require_approval,
+            defer_loading=defer_loading,
             metadata=dict(metadata),
         )
 
@@ -278,8 +370,9 @@ class ResponsesMCPTool:
         *,
         server_label: str | None = None,
         authorization: str | None = None,
-        allowed_tools: list[str] | tuple[str, ...] | None = None,
+        allowed_tools: list[Any] | tuple[Any, ...] | None = None,
         require_approval: str | ResponsesMCPApprovalPolicy | dict[str, Any] | None = None,
+        defer_loading: bool | None = None,
         **metadata: Any,
     ) -> ResponsesMCPTool:
         resolved_connector_id = (
@@ -289,8 +382,14 @@ class ResponsesMCPTool:
             connector_id=resolved_connector_id,
             server_label=server_label,
             authorization=authorization,
-            allowed_tools=tuple(allowed_tools or ()) or None,
+            allowed_tools=tuple(
+                normalized
+                for normalized in (_normalize_allowed_tool_name(tool_name) for tool_name in (allowed_tools or ()))
+                if normalized.strip()
+            )
+            or None,
             require_approval=require_approval,
+            defer_loading=defer_loading,
             metadata=dict(metadata),
         )
 
@@ -303,7 +402,8 @@ class ResponsesMCPTool:
         server_description: str | None = None,
         authorization: str | None = None,
         headers: dict[str, str] | None = None,
-        allowed_tools: list[str] | tuple[str, ...] | None = None,
+        allowed_tools: list[Any] | tuple[Any, ...] | None = None,
+        defer_loading: bool | None = None,
         **metadata: Any,
     ) -> ResponsesMCPTool:
         return cls.remote_server(
@@ -314,6 +414,7 @@ class ResponsesMCPTool:
             headers=headers,
             allowed_tools=allowed_tools,
             require_approval="never",
+            defer_loading=defer_loading,
             **metadata,
         )
 
@@ -324,7 +425,8 @@ class ResponsesMCPTool:
         *,
         server_label: str | None = None,
         authorization: str | None = None,
-        allowed_tools: list[str] | tuple[str, ...] | None = None,
+        allowed_tools: list[Any] | tuple[Any, ...] | None = None,
+        defer_loading: bool | None = None,
         **metadata: Any,
     ) -> ResponsesMCPTool:
         return cls.connector(
@@ -333,6 +435,7 @@ class ResponsesMCPTool:
             authorization=authorization,
             allowed_tools=allowed_tools,
             require_approval="never",
+            defer_loading=defer_loading,
             **metadata,
         )
 
@@ -1191,11 +1294,19 @@ __all__ = [
     "ResponsesBuiltinTool",
     "ResponsesToolSearch",
     "ResponsesConnectorId",
+    "ResponsesDropboxTool",
     "ResponsesFunctionTool",
+    "ResponsesGmailTool",
+    "ResponsesGoogleCalendarTool",
+    "ResponsesGoogleDriveTool",
+    "ResponsesMicrosoftTeamsTool",
     "ResponsesToolNamespace",
     "ResponsesMCPToolFilter",
     "ResponsesMCPApprovalPolicy",
     "ResponsesMCPTool",
+    "ResponsesOutlookCalendarTool",
+    "ResponsesOutlookEmailTool",
+    "ResponsesSharePointTool",
     "ResponsesCustomTool",
     "ResponsesGrammar",
     "ToolDefinition",

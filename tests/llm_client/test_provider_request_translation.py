@@ -16,6 +16,7 @@ from llm_client.tools import (
     ResponsesFileSearchHybridWeights,
     ResponsesFileSearchRankingOptions,
     ResponsesFunctionTool,
+    ResponsesGmailTool,
     ResponsesGrammar,
     ResponsesMCPApprovalPolicy,
     ResponsesMCPTool,
@@ -362,7 +363,7 @@ def test_openai_responses_request_translation_defaults_function_tools_to_strict(
 def test_openai_responses_request_translation_supports_typed_mcp_tools_and_policies() -> None:
     provider = _openai_provider("gpt-5-mini")
     policy = ResponsesMCPApprovalPolicy(
-        never=ResponsesMCPToolFilter(tool_names=("read_wiki_structure", "ask_question")),
+        never=ResponsesMCPToolFilter.of("read_wiki_structure", "ask_question"),
     )
 
     rewritten, _, _ = provider._prepare_openai_tools(
@@ -373,6 +374,7 @@ def test_openai_responses_request_translation_supports_typed_mcp_tools_and_polic
                 authorization="Bearer token",
                 allowed_tools=["read_wiki_structure", "ask_question"],
                 require_approval=policy,
+                defer_loading=True,
             )
         ],
         responses_api=True,
@@ -388,16 +390,21 @@ def test_openai_responses_request_translation_supports_typed_mcp_tools_and_polic
             "require_approval": {
                 "never": {"tool_names": ["read_wiki_structure", "ask_question"]},
             },
+            "defer_loading": True,
         }
     ]
 
     connector = ResponsesMCPTool.connector(
         ResponsesConnectorId.GMAIL,
         authorization="Bearer oauth-token",
+        allowed_tools=(ResponsesGmailTool.SEARCH_EMAILS, ResponsesGmailTool.READ_EMAIL),
+        defer_loading=True,
     )
     connector_payload = connector.to_dict()
     assert connector_payload["connector_id"] == "connector_gmail"
     assert connector_payload["authorization"] == "Bearer oauth-token"
+    assert connector_payload["allowed_tools"] == ["search_emails", "read_email"]
+    assert connector_payload["defer_loading"] is True
 
 
 def test_openai_responses_request_translation_supports_tool_search_and_namespaces() -> None:
