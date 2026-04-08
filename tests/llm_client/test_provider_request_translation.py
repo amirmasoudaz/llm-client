@@ -9,6 +9,7 @@ from llm_client.providers.google import GoogleProvider
 from llm_client.providers.openai import OpenAIProvider
 from llm_client.providers.types import CompletionResult, Message, ToolCall
 from llm_client.tools import (
+    ResponsesApplyPatchCallOutput,
     ResponsesAttributeFilter,
     ResponsesBuiltinTool,
     ResponsesConnectorId,
@@ -21,6 +22,7 @@ from llm_client.tools import (
     ResponsesMCPApprovalPolicy,
     ResponsesMCPTool,
     ResponsesMCPToolFilter,
+    ResponsesShellCallChunk,
     ResponsesToolNamespace,
     ResponsesToolSearch,
 )
@@ -602,6 +604,96 @@ async def test_openai_submit_tool_search_output_prepares_loaded_tools() -> None:
     ]
     assert result.tool_calls is not None
     assert result.tool_calls[0].name == "CRM.GetProfile"
+
+
+@pytest.mark.asyncio
+async def test_openai_submit_shell_call_output_serializes_chunks() -> None:
+    provider = _openai_provider("gpt-5.4")
+    provider.use_responses_api = True
+
+    captured: dict[str, object] = {}
+
+    async def _responses_create(**kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(
+            model="gpt-5.4",
+            status="completed",
+            output_text="shell continued",
+            output=[],
+            usage=SimpleNamespace(to_dict=lambda: {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2}),
+            incomplete_details=None,
+        )
+
+    provider.client = SimpleNamespace(
+        responses=SimpleNamespace(create=_responses_create, parse=None),
+    )
+
+    result = await provider.submit_shell_call_output(
+        previous_response_id="resp_prev",
+        call_id="shell_1",
+        output=[
+            ResponsesShellCallChunk.exit(stdout="ok", stderr="", exit_code=0),
+            ResponsesShellCallChunk.timeout(stdout="partial", stderr=""),
+        ],
+        max_output_length=2048,
+        status="completed",
+    )
+
+    assert captured["input"] == [
+        {
+            "type": "shell_call_output",
+            "call_id": "shell_1",
+            "output": [
+                {"stdout": "ok", "stderr": "", "outcome": {"type": "exit", "exit_code": 0}},
+                {"stdout": "partial", "stderr": "", "outcome": {"type": "timeout"}},
+            ],
+            "max_output_length": 2048,
+            "status": "completed",
+        }
+    ]
+    assert result.content == "shell continued"
+
+
+@pytest.mark.asyncio
+async def test_openai_submit_apply_patch_call_output_accepts_typed_payload() -> None:
+    provider = _openai_provider("gpt-5.4")
+    provider.use_responses_api = True
+
+    captured: dict[str, object] = {}
+
+    async def _responses_create(**kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(
+            model="gpt-5.4",
+            status="completed",
+            output_text="patch continued",
+            output=[],
+            usage=SimpleNamespace(to_dict=lambda: {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2}),
+            incomplete_details=None,
+        )
+
+    provider.client = SimpleNamespace(
+        responses=SimpleNamespace(create=_responses_create, parse=None),
+    )
+
+    result = await provider.submit_apply_patch_call_output(
+        previous_response_id="resp_prev",
+        output=ResponsesApplyPatchCallOutput(
+            call_id="patch_1",
+            status="completed",
+            output="Patched src/app.py",
+        ),
+    )
+
+    assert captured["input"] == [
+        {
+            "type": "apply_patch_call_output",
+            "call_id": "patch_1",
+            "status": "completed",
+            "output": "Patched src/app.py",
+        }
+    ]
+    assert result.content == "patch continued"
 
 
 def test_openai_responses_native_tool_descriptors_require_responses_api() -> None:

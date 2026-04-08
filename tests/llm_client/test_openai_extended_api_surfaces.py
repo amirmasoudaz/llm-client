@@ -1034,6 +1034,58 @@ async def test_openai_hosted_tool_workflow_helpers_build_typed_tools() -> None:
 
 
 @pytest.mark.asyncio
+async def test_openai_hosted_tool_continuation_helpers_build_response_input_items() -> None:
+    provider = _openai_provider("gpt-5-mini")
+    provider.use_responses_api = True
+    captured: list[dict[str, object]] = []
+
+    async def _responses_create(**kwargs):
+        captured.append(dict(kwargs))
+        return SimpleNamespace(
+            model="gpt-5-mini",
+            status="completed",
+            output_text="continued",
+            output=[],
+            usage=SimpleNamespace(to_dict=lambda: {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2}),
+            incomplete_details=None,
+        )
+
+    provider.client = SimpleNamespace(
+        responses=SimpleNamespace(create=_responses_create, parse=None),
+    )
+
+    await provider.submit_shell_call_output(
+        previous_response_id="resp_shell",
+        call_id="shell_1",
+        output=[{"stdout": "done", "stderr": "", "outcome": {"type": "exit", "exit_code": 0}}],
+    )
+    await provider.submit_apply_patch_call_output(
+        previous_response_id="resp_patch",
+        call_id="patch_1",
+        status="failed",
+        output="Patch rejected",
+    )
+
+    assert captured[0]["previous_response_id"] == "resp_shell"
+    assert captured[0]["input"] == [
+        {
+            "type": "shell_call_output",
+            "call_id": "shell_1",
+            "output": [{"stdout": "done", "stderr": "", "outcome": {"type": "exit", "exit_code": 0}}],
+        }
+    ]
+    assert captured[1]["previous_response_id"] == "resp_patch"
+    assert captured[1]["input"] == [
+        {
+            "type": "apply_patch_call_output",
+            "call_id": "patch_1",
+            "status": "failed",
+            "output": "Patch rejected",
+        }
+    ]
+
+
+@pytest.mark.asyncio
 async def test_openai_file_search_helper_supports_typed_retrieval_controls_and_include() -> None:
     provider = _openai_provider("gpt-5-mini")
     provider.use_responses_api = True

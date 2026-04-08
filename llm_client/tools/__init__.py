@@ -6,6 +6,7 @@ that LLM agents can use.
 """
 
 from .base import (
+    ResponsesApplyPatchCallOutput,
     ResponsesAttributeFilter,
     ResponsesBuiltinTool,
     ResponsesChunkingStrategy,
@@ -26,6 +27,9 @@ from .base import (
     ResponsesGrammar,
     ResponsesOutlookCalendarTool,
     ResponsesOutlookEmailTool,
+    ResponsesShellCallChunk,
+    ResponsesShellCallOutcome,
+    ResponsesShellCallOutput,
     ResponsesSharePointTool,
     ResponsesToolNamespace,
     ResponsesToolSearch,
@@ -81,7 +85,11 @@ __all__ = [
     "ResponsesGmailTool",
     "ResponsesGoogleCalendarTool",
     "ResponsesGoogleDriveTool",
+    "ResponsesApplyPatchCallOutput",
     "ResponsesMicrosoftTeamsTool",
+    "ResponsesShellCallChunk",
+    "ResponsesShellCallOutcome",
+    "ResponsesShellCallOutput",
     "ResponsesToolNamespace",
     "ResponsesVectorStoreFileSpec",
     "ResponsesMCPToolFilter",

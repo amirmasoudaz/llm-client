@@ -10,10 +10,12 @@ from llm_client.hooks import HookManager
 from llm_client.idempotency import IdempotencyTracker
 from llm_client.provider_registry import ProviderCapabilities, ProviderDescriptor, ProviderRegistry
 from llm_client.tools import (
+    ResponsesApplyPatchCallOutput,
     ResponsesAttributeFilter,
     ResponsesChunkingStrategy,
     ResponsesExpirationPolicy,
     ResponsesFileSearchRankingOptions,
+    ResponsesShellCallChunk,
     ResponsesVectorStoreFileSpec,
 )
 from llm_client.providers.types import (
@@ -233,6 +235,39 @@ class _WorkflowProvider(ScriptedProvider):
             )
         )
         return ok_result("approved", model=self.model_name)
+
+    async def submit_shell_call_output(self, *, previous_response_id: str, call_id: str | None = None, output=None, max_output_length: int | None = None, status: str | None = None, tools=None, **kwargs):
+        self.workflow_calls.append(
+            (
+                "submit_shell_call_output",
+                {
+                    "previous_response_id": previous_response_id,
+                    "call_id": call_id,
+                    "output": output,
+                    "max_output_length": max_output_length,
+                    "status": status,
+                    "tools": tools,
+                    **kwargs,
+                },
+            )
+        )
+        return ok_result("shell output submitted", model=self.model_name)
+
+    async def submit_apply_patch_call_output(self, *, previous_response_id: str, call_id: str | None = None, status: str | None = None, output=None, tools=None, **kwargs):
+        self.workflow_calls.append(
+            (
+                "submit_apply_patch_call_output",
+                {
+                    "previous_response_id": previous_response_id,
+                    "call_id": call_id,
+                    "status": status,
+                    "output": output,
+                    "tools": tools,
+                    **kwargs,
+                },
+            )
+        )
+        return ok_result("apply patch output submitted", model=self.model_name)
 
     async def delete_response(self, response_id: str, **kwargs):
         self.workflow_calls.append(("delete_response", {"response_id": response_id, **kwargs}))
@@ -893,6 +928,15 @@ async def test_engine_orchestrates_realtime_webhook_vector_file_and_deep_researc
     code_interpreter = await engine.respond_with_code_interpreter("Run analysis")
     shell = await engine.respond_with_shell("List files")
     apply_patch = await engine.respond_with_apply_patch("Rename helper")
+    shell_output = await engine.submit_shell_call_output(
+        previous_response_id="resp_shell",
+        call_id="shell_1",
+        output=[ResponsesShellCallChunk.exit(stdout="done", exit_code=0)],
+    )
+    patch_output = await engine.submit_apply_patch_call_output(
+        previous_response_id="resp_patch",
+        output=ResponsesApplyPatchCallOutput(call_id="patch_1", status="completed", output="Applied"),
+    )
     computer_use = await engine.respond_with_computer_use("Open the dashboard")
     image_generation = await engine.respond_with_image_generation("Draw a chart mascot")
     remote_mcp = await engine.respond_with_remote_mcp("Inspect wiki", server_url="https://mcp.example.com")
@@ -926,12 +970,16 @@ async def test_engine_orchestrates_realtime_webhook_vector_file_and_deep_researc
     assert code_interpreter.content == "code interpreter done"
     assert shell.content == "shell done"
     assert apply_patch.content == "apply patch done"
+    assert shell_output.content == "shell output submitted"
+    assert patch_output.content == "apply patch output submitted"
     assert computer_use.content == "computer use done"
     assert image_generation.content == "image generation done"
     assert remote_mcp.content == "remote mcp done"
     assert connector.content == "connector done"
     assert research.content == "research queued"
     assert staged_research.background.completion.content == "research final"
+    assert any(name == "submit_shell_call_output" for name, _ in provider.workflow_calls)
+    assert any(name == "submit_apply_patch_call_output" for name, _ in provider.workflow_calls)
 
 
 @pytest.mark.asyncio

@@ -91,12 +91,14 @@ if TYPE_CHECKING:
     from ..models import ModelProfile
     from ..tools.base import ToolDefinition
 from ..tools.base import (
+    ResponsesApplyPatchCallOutput,
     ResponsesAttributeFilter,
     ResponsesBuiltinTool,
     ResponsesChunkingStrategy,
     ResponsesExpirationPolicy,
     ResponsesFileSearchRankingOptions,
     ResponsesMCPTool,
+    ResponsesShellCallOutput,
     ResponsesVectorStoreFileSpec,
     is_provider_native_tool,
 )
@@ -4251,6 +4253,88 @@ class OpenAIProvider(BaseProvider):
             params,
             alias_to_original=alias_to_original,
         )
+
+    async def submit_shell_call_output(
+        self,
+        *,
+        previous_response_id: str,
+        call_id: str | None = None,
+        output: ResponsesShellCallOutput | list[dict[str, Any] | Any] | tuple[dict[str, Any] | Any, ...] | None = None,
+        max_output_length: int | None = None,
+        status: str | None = None,
+        tools: list[ToolDefinition] | None = None,
+        **kwargs: Any,
+    ) -> CompletionResult:
+        if not bool(getattr(self, "use_responses_api", False)):
+            raise NotImplementedError("Shell continuation requires use_responses_api=True")
+
+        if isinstance(output, ResponsesShellCallOutput):
+            input_item = output.to_dict()
+        else:
+            if not call_id:
+                raise ValueError("submit_shell_call_output requires call_id when output is not pre-rendered")
+            if output is None:
+                raise ValueError("submit_shell_call_output requires at least one output chunk")
+            input_item = ResponsesShellCallOutput(
+                call_id=call_id,
+                output=tuple(output),
+                max_output_length=max_output_length,
+                status=status if status in {"in_progress", "completed", "incomplete"} else None,
+            ).to_dict()
+
+        params: dict[str, Any] = {
+            "model": self.model_name,
+            "previous_response_id": previous_response_id,
+            "input": [input_item],
+        }
+        alias_to_original: dict[str, str] = {}
+        if tools:
+            provider_tools, alias_to_original, _ = self._prepare_openai_tools(tools, responses_api=True)
+            if provider_tools:
+                params["tools"] = provider_tools
+        params.update(kwargs)
+
+        return await self._complete_responses([], params, alias_to_original=alias_to_original)
+
+    async def submit_apply_patch_call_output(
+        self,
+        *,
+        previous_response_id: str,
+        call_id: str | None = None,
+        status: str | None = None,
+        output: ResponsesApplyPatchCallOutput | str | None = None,
+        tools: list[ToolDefinition] | None = None,
+        **kwargs: Any,
+    ) -> CompletionResult:
+        if not bool(getattr(self, "use_responses_api", False)):
+            raise NotImplementedError("Apply-patch continuation requires use_responses_api=True")
+
+        if isinstance(output, ResponsesApplyPatchCallOutput):
+            input_item = output.to_dict()
+        else:
+            if not call_id:
+                raise ValueError("submit_apply_patch_call_output requires call_id when output is not pre-rendered")
+            if status not in {"completed", "failed"}:
+                raise ValueError("submit_apply_patch_call_output requires status='completed' or status='failed'")
+            input_item = ResponsesApplyPatchCallOutput(
+                call_id=call_id,
+                status=status,
+                output=output,
+            ).to_dict()
+
+        params: dict[str, Any] = {
+            "model": self.model_name,
+            "previous_response_id": previous_response_id,
+            "input": [input_item],
+        }
+        alias_to_original: dict[str, str] = {}
+        if tools:
+            provider_tools, alias_to_original, _ = self._prepare_openai_tools(tools, responses_api=True)
+            if provider_tools:
+                params["tools"] = provider_tools
+        params.update(kwargs)
+
+        return await self._complete_responses([], params, alias_to_original=alias_to_original)
 
     async def delete_response(self, response_id: str, **kwargs: Any) -> DeletionResult:
         if not bool(getattr(self, "use_responses_api", False)):

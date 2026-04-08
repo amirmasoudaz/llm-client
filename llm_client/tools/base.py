@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import (
     Any,
+    Literal,
     TypeAlias,
     Union,
     cast,
@@ -511,6 +512,95 @@ class ResponsesFunctionTool:
             defer_loading=defer_loading,
             metadata=dict(metadata),
         )
+
+
+@dataclass(frozen=True)
+class ResponsesShellCallOutcome:
+    """Typed OpenAI Responses shell-call outcome descriptor."""
+
+    type: Literal["exit", "timeout"]
+    exit_code: int | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {"type": self.type}
+        if self.type == "exit":
+            if self.exit_code is None:
+                raise ValueError("Shell exit outcomes require an exit_code")
+            payload["exit_code"] = self.exit_code
+        return payload
+
+    @classmethod
+    def exit(cls, exit_code: int) -> ResponsesShellCallOutcome:
+        return cls(type="exit", exit_code=int(exit_code))
+
+    @classmethod
+    def timeout(cls) -> ResponsesShellCallOutcome:
+        return cls(type="timeout")
+
+
+@dataclass(frozen=True)
+class ResponsesShellCallChunk:
+    """Captured stdout/stderr chunk for an OpenAI shell-call continuation."""
+
+    stdout: str
+    stderr: str
+    outcome: ResponsesShellCallOutcome | dict[str, Any]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "stdout": self.stdout,
+            "stderr": self.stderr,
+            "outcome": _serialize_provider_config_value(self.outcome),
+        }
+
+    @classmethod
+    def exit(cls, *, stdout: str = "", stderr: str = "", exit_code: int = 0) -> ResponsesShellCallChunk:
+        return cls(stdout=stdout, stderr=stderr, outcome=ResponsesShellCallOutcome.exit(exit_code))
+
+    @classmethod
+    def timeout(cls, *, stdout: str = "", stderr: str = "") -> ResponsesShellCallChunk:
+        return cls(stdout=stdout, stderr=stderr, outcome=ResponsesShellCallOutcome.timeout())
+
+
+@dataclass(frozen=True)
+class ResponsesShellCallOutput:
+    """Typed OpenAI shell-call output item for Responses continuation."""
+
+    call_id: str
+    output: tuple[ResponsesShellCallChunk | dict[str, Any], ...]
+    max_output_length: int | None = None
+    status: Literal["in_progress", "completed", "incomplete"] | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "type": "shell_call_output",
+            "call_id": self.call_id,
+            "output": [_serialize_provider_config_value(item) for item in self.output],
+        }
+        if self.max_output_length is not None:
+            payload["max_output_length"] = int(self.max_output_length)
+        if self.status is not None:
+            payload["status"] = self.status
+        return payload
+
+
+@dataclass(frozen=True)
+class ResponsesApplyPatchCallOutput:
+    """Typed OpenAI apply-patch output item for Responses continuation."""
+
+    call_id: str
+    status: Literal["completed", "failed"]
+    output: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "type": "apply_patch_call_output",
+            "call_id": self.call_id,
+            "status": self.status,
+        }
+        if self.output is not None:
+            payload["output"] = self.output
+        return payload
 
 
 @dataclass(frozen=True)
@@ -1295,6 +1385,10 @@ __all__ = [
     "ResponsesToolSearch",
     "ResponsesConnectorId",
     "ResponsesDropboxTool",
+    "ResponsesShellCallOutcome",
+    "ResponsesShellCallChunk",
+    "ResponsesShellCallOutput",
+    "ResponsesApplyPatchCallOutput",
     "ResponsesFunctionTool",
     "ResponsesGmailTool",
     "ResponsesGoogleCalendarTool",

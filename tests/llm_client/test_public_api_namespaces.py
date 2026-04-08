@@ -19,6 +19,7 @@ from llm_client.observability import (
     RuntimeEventType,
 )
 from llm_client.tools import (
+    ResponsesApplyPatchCallOutput,
     ResponsesAttributeFilter,
     ResponsesBuiltinTool,
     ResponsesChunkingStrategy,
@@ -39,6 +40,9 @@ from llm_client.tools import (
     ResponsesMicrosoftTeamsTool,
     ResponsesOutlookCalendarTool,
     ResponsesOutlookEmailTool,
+    ResponsesShellCallChunk,
+    ResponsesShellCallOutcome,
+    ResponsesShellCallOutput,
     ResponsesSharePointTool,
     ResponsesToolNamespace,
     ResponsesToolSearch,
@@ -207,6 +211,28 @@ def test_tools_namespace_exports_vector_store_resource_helpers() -> None:
         "file_id": "file_1",
         "attributes": {"scope": "tenant"},
         "chunking_strategy": {"type": "auto"},
+    }
+
+
+def test_tools_namespace_exports_hosted_tool_output_helpers() -> None:
+    outcome = ResponsesShellCallOutcome.exit(0)
+    chunk = ResponsesShellCallChunk.exit(stdout="done", exit_code=0)
+    shell_output = ResponsesShellCallOutput(call_id="shell_1", output=(chunk,), status="completed")
+    patch_output = ResponsesApplyPatchCallOutput(call_id="patch_1", status="completed", output="Applied")
+
+    assert outcome.to_dict() == {"type": "exit", "exit_code": 0}
+    assert chunk.to_dict() == {"stdout": "done", "stderr": "", "outcome": {"type": "exit", "exit_code": 0}}
+    assert shell_output.to_dict() == {
+        "type": "shell_call_output",
+        "call_id": "shell_1",
+        "output": [{"stdout": "done", "stderr": "", "outcome": {"type": "exit", "exit_code": 0}}],
+        "status": "completed",
+    }
+    assert patch_output.to_dict() == {
+        "type": "apply_patch_call_output",
+        "call_id": "patch_1",
+        "status": "completed",
+        "output": "Applied",
     }
 
 

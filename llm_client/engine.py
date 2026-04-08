@@ -2566,6 +2566,68 @@ class ExecutionEngine:
             ),
         )
 
+    async def submit_shell_call_output(
+        self,
+        *,
+        previous_response_id: str,
+        call_id: str | None = None,
+        output: Any = None,
+        max_output_length: int | None = None,
+        status: str | None = None,
+        tools: list[Any] | None = None,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> CompletionResult:
+        return await self._run_workflow_operation(
+            "submit_shell_call_output",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.submit_shell_call_output(
+                previous_response_id=previous_response_id,
+                call_id=call_id,
+                output=output,
+                max_output_length=max_output_length,
+                status=status,
+                tools=tools,
+                **kwargs,
+            ),
+        )
+
+    async def submit_apply_patch_call_output(
+        self,
+        *,
+        previous_response_id: str,
+        call_id: str | None = None,
+        status: str | None = None,
+        output: Any = None,
+        tools: list[Any] | None = None,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> CompletionResult:
+        return await self._run_workflow_operation(
+            "submit_apply_patch_call_output",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.submit_apply_patch_call_output(
+                previous_response_id=previous_response_id,
+                call_id=call_id,
+                status=status,
+                output=output,
+                tools=tools,
+                **kwargs,
+            ),
+        )
+
     async def delete_response(
         self,
         response_id: str,

@@ -701,6 +701,33 @@ class Provider(Protocol):
         """Submit an MCP approval response and continue the provider workflow."""
         ...
 
+    async def submit_shell_call_output(
+        self,
+        *,
+        previous_response_id: str,
+        call_id: str | None = None,
+        output: Any = None,
+        max_output_length: int | None = None,
+        status: str | None = None,
+        tools: list[ToolDefinition] | None = None,
+        **kwargs: Any,
+    ) -> CompletionResult:
+        """Submit a shell tool output item and continue the provider workflow."""
+        ...
+
+    async def submit_apply_patch_call_output(
+        self,
+        *,
+        previous_response_id: str,
+        call_id: str | None = None,
+        status: str | None = None,
+        output: Any = None,
+        tools: list[ToolDefinition] | None = None,
+        **kwargs: Any,
+    ) -> CompletionResult:
+        """Submit an apply_patch tool output item and continue the provider workflow."""
+        ...
+
     async def delete_response(self, response_id: str, **kwargs: Any) -> DeletionResult:
         """Delete a stored provider response when supported."""
         ...
@@ -1604,6 +1631,33 @@ class BaseProvider(Provider, ABC):
     ) -> CompletionResult:
         _ = (previous_response_id, approval_request_id, approve, tools, kwargs)
         raise NotImplementedError(f"{self.__class__.__name__} does not support MCP approval flows")
+
+    async def submit_shell_call_output(
+        self,
+        *,
+        previous_response_id: str,
+        call_id: str | None = None,
+        output: Any = None,
+        max_output_length: int | None = None,
+        status: str | None = None,
+        tools: list[ToolDefinition] | None = None,
+        **kwargs: Any,
+    ) -> CompletionResult:
+        _ = (previous_response_id, call_id, output, max_output_length, status, tools, kwargs)
+        raise NotImplementedError(f"{self.__class__.__name__} does not support shell call continuation")
+
+    async def submit_apply_patch_call_output(
+        self,
+        *,
+        previous_response_id: str,
+        call_id: str | None = None,
+        status: str | None = None,
+        output: Any = None,
+        tools: list[ToolDefinition] | None = None,
+        **kwargs: Any,
+    ) -> CompletionResult:
+        _ = (previous_response_id, call_id, status, output, tools, kwargs)
+        raise NotImplementedError(f"{self.__class__.__name__} does not support apply_patch continuation")
 
     async def delete_response(self, response_id: str, **kwargs: Any) -> DeletionResult:
         _ = (response_id, kwargs)
