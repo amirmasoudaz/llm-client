@@ -13,8 +13,6 @@ The base install currently includes:
 - `numpy`
 - `httpx`
 - `aiohttp`
-- `asyncpg`
-- `redis`
 - `blake3`
 - `jsonschema`
 - `pydantic`
@@ -38,6 +36,8 @@ Optional extras currently cover:
 
 - Anthropic provider support
 - Google provider support
+- PostgreSQL-backed cache/persistence support
+- Redis-backed hot-cache support
 - telemetry integrations
 - performance helpers
 - server examples
@@ -56,8 +56,9 @@ The package currently treats these as accepted for a standalone install:
 
 ### Notable Consequences
 
-- cache-related dependencies remain part of the base install because
-  `llm_client.cache` is a stable namespace, not an optional plugin surface
+- `llm_client.cache` remains a stable namespace, but the `pg_redis` backend is
+  now isolated behind lazy imports so PostgreSQL and Redis dependencies are not
+  required for a base install
 - OpenAI support remains part of the base install because it is the baseline
   provider path and the current compatibility layer depends on it
 - Anthropic and Google remain optional because their adapters are present but

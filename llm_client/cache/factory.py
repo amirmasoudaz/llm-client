@@ -11,7 +11,6 @@ from pathlib import Path
 from .base import CacheBackendName
 from .core import CacheCore
 from .fs import FSCache, FSCacheConfig
-from .postgres_redis import HybridCacheConfig, HybridRedisPostgreSQLCache
 from .qdrant import QdrantCache
 
 
@@ -62,6 +61,8 @@ def build_cache_core(settings: CacheSettings) -> CacheCore:
         return CacheCore(q, default_collection=default_coll)
 
     if backend == "pg_redis":
+        from .postgres_redis import HybridCacheConfig, HybridRedisPostgreSQLCache
+
         pg_dsn = settings.pg_dsn or os.getenv("PG_DSN") or ""
         redis_url = settings.redis_url or os.getenv("REDIS_URL") or "redis://localhost:6379/0"
         h = HybridRedisPostgreSQLCache(

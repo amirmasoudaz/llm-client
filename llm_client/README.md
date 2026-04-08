@@ -1801,9 +1801,11 @@ Hybrid behavior:
 
 External dependencies:
 
-- `asyncpg`
-- `redis` (async)
-- a running Postgres and Redis service
+- `asyncpg` via `llm-client[postgres]`
+- `redis` (async) via `llm-client[redis]` for the hot-cache layer
+- a running Postgres service
+- a running Redis service if you want the hot-cache layer; without the Redis
+  package/service, this backend degrades to PostgreSQL-backed durable cache only
 
 ### Qdrant backend (`llm_client.cache.qdrant.QdrantCache`)
 

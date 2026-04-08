@@ -11,9 +11,10 @@ import asyncio
 import json
 import re
 import zlib
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-import asyncpg
+if TYPE_CHECKING:
+    import asyncpg
 
 
 class PostgresRepository:
