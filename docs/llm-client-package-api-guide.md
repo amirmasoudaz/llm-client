@@ -235,6 +235,9 @@ For advanced OpenAI-specific deferred-tool workflows, use:
   `ResponsesVectorStoreFileSpec` when hosted vector-store creation or file
   ingestion needs typed expiration, chunking, or per-file metadata instead of
   raw provider dicts
+- `ResponsesShellCallChunk`, `ResponsesShellCallOutput`, and
+  `ResponsesApplyPatchCallOutput` when hosted `shell` or `apply_patch` tool
+  calls need typed continuation payloads instead of raw provider dicts
 
 Provider-native Responses tools are request-side descriptors, not executable
 runtime tools. Keep using `ToolRegistry` for locally executed function tools.
@@ -253,6 +256,11 @@ per-file `files=[ResponsesVectorStoreFileSpec(...)]` inputs on
 with initial `file_ids`, use `poll_vector_store(...)` or
 `create_vector_store_and_poll(...)` to wait for hosted ingestion to settle
 based on terminal `status` or `file_counts`.
+
+For hosted built-in tool continuations, the OpenAI provider and engine now also
+expose `submit_shell_call_output(...)` and
+`submit_apply_patch_call_output(...)` so shell/apply-patch loops can continue
+without falling back to raw Responses input items.
 
 ### Service Adaptors
 

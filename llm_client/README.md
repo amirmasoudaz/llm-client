@@ -874,6 +874,8 @@ A provider implements:
 - `delete_conversation(conversation_id, **kwargs)`
 - `compact_response_context(messages=None, model=None, instructions=None, previous_response_id=None, **kwargs)`
 - `submit_mcp_approval_response(previous_response_id, approval_request_id, approve, tools=None, **kwargs)`
+- `submit_shell_call_output(previous_response_id, call_id=None, output=..., tools=None, **kwargs)`
+- `submit_apply_patch_call_output(previous_response_id, call_id=None, status=None, output=None, tools=None, **kwargs)`
 - `count_tokens(content)`
 - `parse_usage(raw_usage)`
 - `close()`
@@ -1011,6 +1013,8 @@ Key methods:
 - `await provider.delete_conversation_item(conversation_id: str, item_id: str, **kwargs) -> ConversationResource`
 - `await provider.compact_response_context(messages=None, model=None, instructions=None, previous_response_id=None, **kwargs) -> CompactionResult`
 - `await provider.submit_mcp_approval_response(previous_response_id: str, approval_request_id: str, approve: bool, tools=None, **kwargs) -> CompletionResult`
+- `await provider.submit_shell_call_output(previous_response_id: str, call_id=None, output=..., tools=None, **kwargs) -> CompletionResult`
+- `await provider.submit_apply_patch_call_output(previous_response_id: str, call_id=None, status=None, output=None, tools=None, **kwargs) -> CompletionResult`
 - `await provider.delete_response(response_id: str, **kwargs) -> DeletionResult`
 - `await provider.warm_cache() -> None`
 - `await provider.close() -> None`
@@ -1232,6 +1236,8 @@ Key methods:
 - `await engine.delete_conversation_item(conversation_id, item_id, provider_name=None, model=None, ...)`
 - `await engine.compact_response_context(provider_name=None, model=None, ...)`
 - `await engine.submit_mcp_approval_response(provider_name=None, model=None, ...)`
+- `await engine.submit_shell_call_output(provider_name=None, model=None, ...)`
+- `await engine.submit_apply_patch_call_output(provider_name=None, model=None, ...)`
 - `await engine.delete_response(response_id, provider_name=None, model=None, ...)`
 - `await engine.moderate(inputs, provider_name=None, model=None, ...)`
 - `await engine.generate_image(prompt, provider_name=None, model=None, ...)`
@@ -1648,6 +1654,13 @@ result = await provider.complete(
 For client-executed tool search, use
 `OpenAIProvider.submit_tool_search_output(...)` to return a loaded tool set
 after the model emits a `tool_search_call`.
+
+For hosted shell/apply-patch continuations, use
+`ResponsesShellCallChunk`, `ResponsesShellCallOutput`, and
+`ResponsesApplyPatchCallOutput`, then call
+`OpenAIProvider.submit_shell_call_output(...)` or
+`OpenAIProvider.submit_apply_patch_call_output(...)` after your host executes
+the requested work.
 
 ### `ToolRegistry`
 

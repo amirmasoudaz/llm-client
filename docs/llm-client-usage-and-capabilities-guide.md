@@ -53,6 +53,7 @@ Special note:
 - OpenAI Responses background workflows now live at the provider layer via `retrieve_background_response`, `cancel_background_response`, `wait_background_response`, and `stream_background_response`.
 - OpenAI Responses conversation-state workflows now also live at the provider layer via `create_conversation`, `retrieve_conversation`, `update_conversation`, `delete_conversation`, `create_conversation_items`, `list_conversation_items`, `retrieve_conversation_item`, `delete_conversation_item`, and `compact_response_context`.
 - MCP approval workflows can now continue through `submit_mcp_approval_response(...)` without raw provider-shaped request payloads.
+- Hosted shell and apply-patch tool loops can now continue through `submit_shell_call_output(...)` and `submit_apply_patch_call_output(...)` without raw provider-shaped request payloads.
 - OpenAI request controls `include`, `prompt_cache_key`, and `prompt_cache_retention` are first-class parameters on the OpenAI provider.
 - Stored OpenAI Responses can now be deleted through `delete_response(...)` without dropping to the raw SDK.
 - OpenAI moderation, direct image generation/editing, speech-to-text, text-to-speech, generic file upload/retrieve/content helpers, hosted vector-store CRUD/search, and fine-tuning job workflows are now available through first-class provider and engine methods instead of raw SDK escape hatches.
@@ -196,7 +197,9 @@ Use:
   `ResponsesGrammar`, `ResponsesAttributeFilter`,
   `ResponsesChunkingStrategy`, `ResponsesExpirationPolicy`,
   `ResponsesFileSearchRankingOptions`,
-  `ResponsesFileSearchHybridWeights`, and `ResponsesVectorStoreFileSpec`
+  `ResponsesFileSearchHybridWeights`, `ResponsesVectorStoreFileSpec`,
+  `ResponsesShellCallChunk`, `ResponsesShellCallOutput`, and
+  `ResponsesApplyPatchCallOutput`
 
 Best for:
 
@@ -226,6 +229,9 @@ Current package boundary:
   and connectors
 - `OpenAIProvider.submit_tool_search_output(...)` continues client-executed
   `tool_search` loops by returning the loaded tool set from your application
+- `OpenAIProvider.submit_shell_call_output(...)` and
+  `OpenAIProvider.submit_apply_patch_call_output(...)` continue hosted shell
+  and apply-patch loops after your application executes the requested work
 - `ToolRegistry` and the agent tool runtime remain function-tool execution layers
 - the package now exposes a normalized subset of rich Responses output items and retains raw `provider_items` for exact replay
 - OpenAI retrieval helpers now expose typed `attribute_filter`,

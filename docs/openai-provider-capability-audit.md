@@ -11,8 +11,7 @@ This document was refreshed against both the local docs-ledger inventory and the
 Refresh findings:
 
 - the local docs-ledger is still the better inventory source, but localhost reachability remains inconsistent from the default sandbox namespace
-- the official docs MCP confirmed `tool_search` as a current documented surface that is still absent from the repo as a first-class feature
-- the same function-calling guidance now references deferred-tool namespaces, while package-defined OpenAI function tools are still flattened through `_sanitize_tool_name(...)`
+- the official docs MCP confirmed the `tool_search` and namespace work completed earlier on this branch, and the next missing hosted-tool gap was output-side continuation helpers for `shell` and `apply_patch`
 - the official Realtime conversations guidance now explicitly enumerates `conversation.item.added` and `conversation.item.done`, confirming the current Realtime base is useful but still narrower than the latest documented event surface
 - the official retrieval/file-search guidance now explicitly calls out vector-store-file `attributes` and `attribute_filter`-based filtering, which reframes the remaining retrieval gap as ergonomics and first-class workflow support rather than missing vector-store CRUD
 
@@ -80,6 +79,7 @@ This pass used the docs index as the source-of-truth inventory and then ran a bi
 - OpenAI provider and engine workflows now expose direct moderation, image generation/editing, speech-to-text, translation, text-to-speech, generic file upload/retrieve/content helpers, hosted vector stores, vector-store files, and fine-tuning job APIs.
 - OpenAI provider and engine workflows now expose realtime websocket connection helpers, client-secret/call-control helpers, webhook verification/unwrapping, and vector-store file polling/batch helpers.
 - OpenAI provider and engine workflows now expose realtime transcription-session helpers plus hosted Responses workflow helpers for web search, file search, code interpreter, shell, apply-patch, computer-use, image generation, remote MCP, and connectors.
+- OpenAI provider and engine workflows now expose first-class `submit_shell_call_output(...)` and `submit_apply_patch_call_output(...)` helpers, plus typed continuation payload helpers in `llm_client.tools`, so hosted shell/apply-patch loops no longer require raw provider dicts.
 - OpenAI retrieval/file-search workflows now expose first-class typed tuning controls for `attribute_filter`, `ranking_options`, `max_num_results`, `rewrite_query`, and `include_search_results`.
 - Deep-research workflows now include first-class clarify, rewrite, kickoff, and staged runner helpers aligned with the docs-ledger guidance.
 
@@ -129,6 +129,7 @@ This pass used the docs index as the source-of-truth inventory and then ran a bi
 | Responses function-tool strict defaults | `guides/function-calling.md` | Implemented | Important | Responses function tools now default `strict=True` unless the caller sets it explicitly. |
 | OpenAI `tool_search` | Official docs MCP `guides/function-calling#tool-search` | Implemented | Important | Added first-class advanced `ResponsesToolSearch` plus `respond_with_tool_search(...)` and `submit_tool_search_output(...)` helpers for hosted and client-executed workflows. |
 | OpenAI-specific tool namespaces | Official docs MCP `guides/function-calling#tool-search` best-practices section | Implemented | Important | Added `ResponsesToolNamespace` and `ResponsesFunctionTool`, plus recursive alias sanitization and output normalization so namespace intent is preserved on the OpenAI path. |
+| Hosted shell/apply-patch continuation helpers | Official docs MCP `guides/tools-shell.md`, `guides/tools-apply-patch.md` | Implemented | Important | Added typed `ResponsesShellCallChunk`, `ResponsesShellCallOutput`, and `ResponsesApplyPatchCallOutput`, plus `submit_shell_call_output(...)` and `submit_apply_patch_call_output(...)` on the provider and engine. |
 | Realtime conversation item lifecycle events | Official docs MCP `guides/realtime-conversations#text-inputs-and-outputs`, `guides/realtime-conversations#interruption-and-truncation` | Implemented | Important | `RealtimeConnection` now exposes `conversation.item.retrieve`, `conversation.item.delete`, `conversation.item.truncate`, `response.cancel`, and typed `RealtimeEventResult` receive-side helpers via `recv_event()` / `recv_until_type(...)`. |
 | Retrieval attributes, chunking, and ingestion ergonomics | Official docs MCP `guides/tools-file-search#metadata-filtering`, `guides/retrieval#attributes`, `guides/retrieval#attribute-filtering`, `guides/retrieval#batch-operations`, `assistants/tools/file-search#creating-vector-stores-and-adding-files` | Implemented | Important | Added typed `ResponsesAttributeFilter`, `ResponsesFileSearchRankingOptions`, `ResponsesFileSearchHybridWeights`, `ResponsesExpirationPolicy`, `ResponsesChunkingStrategy`, and `ResponsesVectorStoreFileSpec`, plus direct `search_vector_store(...)`, `create_vector_store(...)`, `poll_vector_store(...)`, `create_vector_store_and_poll(...)`, vector-store file, and vector-store batch controls for typed retrieval tuning, expiration, chunking, per-file ingestion metadata, and store-level ingestion waits. |
 
@@ -143,7 +144,7 @@ The next bounded `1.2` implementation slice should be:
 
 Why this order:
 
-- `tool_search`, namespaces, retrieval tuning/ingestion ergonomics, store-level vector-store polling, and the first Realtime lifecycle/event wrapper slice are now closed as the early advanced OpenAI-specific `1.2` slices
+- `tool_search`, namespaces, hosted shell/apply-patch continuation, retrieval tuning/ingestion ergonomics, store-level vector-store polling, and the first Realtime lifecycle/event wrapper slice are now closed as the early advanced OpenAI-specific `1.2` slices
 - deeper connectors/MCP and hosted file-search product management now represent the clearest remaining high-value gaps
 - broader Realtime product-management work still remains, but the connection-level lifecycle contract is materially stronger than before
 

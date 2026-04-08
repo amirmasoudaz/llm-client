@@ -92,6 +92,8 @@ When you construct `OpenAIProvider(..., use_responses_api=True)`, the provider n
 - `delete_conversation_item(conversation_id, item_id, **kwargs)`
 - `compact_response_context(messages=None, model=None, instructions=None, previous_response_id=None, **kwargs)`
 - `submit_mcp_approval_response(previous_response_id, approval_request_id, approve, tools=None, **kwargs)`
+- `submit_shell_call_output(previous_response_id, call_id=None, output=..., tools=None, **kwargs)`
+- `submit_apply_patch_call_output(previous_response_id, call_id=None, status=None, output=None, tools=None, **kwargs)`
 - `delete_response(response_id, **kwargs)`
 
 Minimal polling example:
@@ -221,6 +223,13 @@ function tools only.
 If you use client-executed `tool_search`, return the loaded tool set with
 `OpenAIProvider.submit_tool_search_output(...)` after the model emits a
 `tool_search_call`.
+
+If you use hosted `shell` or `apply_patch`, return your host-side execution
+results with `OpenAIProvider.submit_shell_call_output(...)` or
+`OpenAIProvider.submit_apply_patch_call_output(...)`. The typed helpers
+`ResponsesShellCallChunk`, `ResponsesShellCallOutput`, and
+`ResponsesApplyPatchCallOutput` are available from `llm_client.tools` so you do
+not need to build raw provider dicts for those continuation items.
 
 For typed MCP/connectors, `ResponsesMCPTool` now also supports
 `defer_loading=True` for tool-search workflows, and `allowed_tools` can be
