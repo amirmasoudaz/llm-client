@@ -58,6 +58,7 @@ from llm_client.types import (
     RealtimeCallResult,
     RealtimeConnection,
     RealtimeClientSecretResult,
+    RealtimeEventResult,
     RealtimeTranscriptionSessionResult,
     RequestContext,
     RequestSpec,
@@ -115,6 +116,7 @@ def test_types_namespace_exports_shared_request_and_result_types() -> None:
     realtime_secret = RealtimeClientSecretResult(value="secret_1")
     realtime_transcription = RealtimeTranscriptionSessionResult(value="tx_secret_1")
     realtime_call = RealtimeCallResult(call_id="rtc_1", action="create")
+    realtime_event = RealtimeEventResult(event_type="conversation.item.added", event_id="evt_1")
     realtime_connection = RealtimeConnection(connection=object(), model="gpt-realtime", call_id="rtc_1")
     webhook = WebhookEventResult(event_id="wh_1", event_type="realtime.call.incoming", data={"call_id": "rtc_1"})
     vector_store_batch = VectorStoreFileBatchResource(batch_id="vsfb_1", vector_store_id="vs_1", status="in_progress")
@@ -150,6 +152,7 @@ def test_types_namespace_exports_shared_request_and_result_types() -> None:
     assert realtime_secret.value == "secret_1"
     assert realtime_transcription.value == "tx_secret_1"
     assert realtime_call.call_id == "rtc_1"
+    assert realtime_event.event_type == "conversation.item.added"
     assert realtime_connection.call_id == "rtc_1"
     assert webhook.event_type == "realtime.call.incoming"
     assert vector_store_batch.batch_id == "vsfb_1"

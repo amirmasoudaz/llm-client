@@ -37,17 +37,23 @@ class _SinglePage:
 
 
 class _FakeRealtimeConnection:
-    def __init__(self) -> None:
+    def __init__(self, *, recv_events: list[object] | None = None, recv_bytes_values: list[bytes] | None = None) -> None:
         self.sent: list[object] = []
         self.closed = False
+        self._recv_events = list(recv_events or [SimpleNamespace(to_dict=lambda: {"type": "session.updated"})])
+        self._recv_bytes_values = list(recv_bytes_values or [b"audio"])
 
     async def send(self, event) -> None:
         self.sent.append(event)
 
     async def recv(self):
+        if self._recv_events:
+            return self._recv_events.pop(0)
         return SimpleNamespace(to_dict=lambda: {"type": "session.updated"})
 
     async def recv_bytes(self) -> bytes:
+        if self._recv_bytes_values:
+            return self._recv_bytes_values.pop(0)
         return b"audio"
 
     async def close(self) -> None:
@@ -333,7 +339,29 @@ async def test_openai_generic_file_surfaces() -> None:
 @pytest.mark.asyncio
 async def test_openai_realtime_and_webhook_surfaces() -> None:
     provider = _openai_provider("gpt-realtime")
-    realtime_connection = _FakeRealtimeConnection()
+    realtime_connection = _FakeRealtimeConnection(
+        recv_events=[
+            SimpleNamespace(to_dict=lambda: {"type": "session.updated"}),
+            SimpleNamespace(
+                to_dict=lambda: {
+                    "type": "conversation.item.added",
+                    "event_id": "evt_1",
+                    "item": {"id": "item_1", "type": "message", "status": "in_progress"},
+                    "previous_item_id": "item_0",
+                }
+            ),
+            SimpleNamespace(
+                to_dict=lambda: {
+                    "type": "response.output_text.delta",
+                    "event_id": "evt_2",
+                    "response_id": "resp_1",
+                    "item_id": "item_1",
+                    "delta": "hello",
+                    "content_index": 0,
+                }
+            ),
+        ]
+    )
     realtime_manager = _FakeRealtimeManager(realtime_connection)
     transcription_connection = _FakeRealtimeConnection()
     transcription_manager = _FakeRealtimeManager(transcription_connection)
@@ -417,10 +445,16 @@ async def test_openai_realtime_and_webhook_surfaces() -> None:
     await connection.create_conversation_item(
         {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "hello"}]}
     )
+    await connection.retrieve_conversation_item("item_1", event_id="evt_retrieve")
+    await connection.delete_conversation_item("item_2", event_id="evt_delete")
+    await connection.truncate_conversation_item("item_3", audio_end_ms=1200, event_id="evt_truncate")
     await connection.append_input_audio(b"abc")
+    await connection.cancel_response(response_id="resp_1", event_id="evt_cancel")
     await connection.commit_input_audio()
     await connection.clear_input_audio()
     received = await connection.recv()
+    received_event = await connection.recv_event()
+    received_delta = await connection.recv_event()
     received_bytes = await connection.recv_bytes()
     await connection.close()
     await transcription_stream.close()
@@ -445,11 +479,30 @@ async def test_openai_realtime_and_webhook_surfaces() -> None:
             "type": "conversation.item.create",
             "item": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "hello"}]},
         },
+        {"type": "conversation.item.retrieve", "item_id": "item_1", "event_id": "evt_retrieve"},
+        {"type": "conversation.item.delete", "item_id": "item_2", "event_id": "evt_delete"},
+        {
+            "type": "conversation.item.truncate",
+            "item_id": "item_3",
+            "content_index": 0,
+            "audio_end_ms": 1200,
+            "event_id": "evt_truncate",
+        },
         {"type": "input_audio_buffer.append", "audio": "YWJj"},
+        {"type": "response.cancel", "response_id": "resp_1", "event_id": "evt_cancel"},
         {"type": "input_audio_buffer.commit"},
         {"type": "input_audio_buffer.clear"},
     ]
     assert received == {"type": "session.updated"}
+    assert received_event.event_type == "conversation.item.added"
+    assert received_event.event_id == "evt_1"
+    assert received_event.item == {"id": "item_1", "type": "message", "status": "in_progress"}
+    assert received_event.previous_item_id == "item_0"
+    assert received_delta.event_type == "response.output_text.delta"
+    assert received_delta.response_id == "resp_1"
+    assert received_delta.item_id == "item_1"
+    assert received_delta.delta == "hello"
+    assert received_delta.details["content_index"] == 0
     assert received_bytes == b"audio"
     assert realtime_manager.exited is True
     assert transcription_manager.exited is True

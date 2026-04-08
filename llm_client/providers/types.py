@@ -894,6 +894,49 @@ class RealtimeTranscriptionSessionResult:
         }
 
 
+@dataclass
+class RealtimeEventResult:
+    """Normalized wrapper for server events received from a realtime connection."""
+
+    event_type: str | None = None
+    event_id: str | None = None
+    item_id: str | None = None
+    response_id: str | None = None
+    sequence_number: int | None = None
+    previous_item_id: str | None = None
+    delta: str | None = None
+    transcript: str | None = None
+    status: str | None = None
+    item: dict[str, Any] | None = None
+    response: dict[str, Any] | None = None
+    session: dict[str, Any] | None = None
+    rate_limits: list[dict[str, Any]] | None = None
+    details: dict[str, Any] = field(default_factory=dict)
+    raw_event: Any | None = field(default=None, repr=False)
+
+    @property
+    def ok(self) -> bool:
+        return bool(self.event_type)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "event_type": self.event_type,
+            "event_id": self.event_id,
+            "item_id": self.item_id,
+            "response_id": self.response_id,
+            "sequence_number": self.sequence_number,
+            "previous_item_id": self.previous_item_id,
+            "delta": self.delta,
+            "transcript": self.transcript,
+            "status": self.status,
+            "item": dict(self.item or {}) if self.item is not None else None,
+            "response": dict(self.response or {}) if self.response is not None else None,
+            "session": dict(self.session or {}) if self.session is not None else None,
+            "rate_limits": [dict(limit) for limit in self.rate_limits] if self.rate_limits is not None else None,
+            "details": dict(self.details),
+        }
+
+
 class RealtimeConnection:
     """Stable wrapper around a provider realtime connection."""
 
@@ -931,6 +974,47 @@ class RealtimeConnection:
             return event.dict()
         return event
 
+    @classmethod
+    def _normalize_event(cls, event: Any) -> RealtimeEventResult:
+        serialized = cls._serialize_event(event)
+        if not isinstance(serialized, dict):
+            return RealtimeEventResult(details={"value": serialized}, raw_event=event)
+
+        reserved = {
+            "type",
+            "event_id",
+            "item_id",
+            "response_id",
+            "sequence_number",
+            "previous_item_id",
+            "delta",
+            "transcript",
+            "status",
+            "item",
+            "response",
+            "session",
+            "rate_limits",
+        }
+        return RealtimeEventResult(
+            event_type=str(serialized.get("type") or "") or None,
+            event_id=str(serialized.get("event_id") or "") or None,
+            item_id=str(serialized.get("item_id") or "") or None,
+            response_id=str(serialized.get("response_id") or "") or None,
+            sequence_number=int(serialized["sequence_number"]) if isinstance(serialized.get("sequence_number"), int) else None,
+            previous_item_id=str(serialized.get("previous_item_id") or "") or None,
+            delta=str(serialized.get("delta") or "") or None,
+            transcript=str(serialized.get("transcript") or "") or None,
+            status=str(serialized.get("status") or "") or None,
+            item=dict(serialized["item"]) if isinstance(serialized.get("item"), dict) else None,
+            response=dict(serialized["response"]) if isinstance(serialized.get("response"), dict) else None,
+            session=dict(serialized["session"]) if isinstance(serialized.get("session"), dict) else None,
+            rate_limits=[dict(limit) for limit in serialized.get("rate_limits", []) if isinstance(limit, dict)]
+            if isinstance(serialized.get("rate_limits"), list)
+            else None,
+            details={key: value for key, value in serialized.items() if key not in reserved},
+            raw_event=event,
+        )
+
     async def send(self, event: Any) -> None:
         result = self._connection.send(event)
         if hasattr(result, "__await__"):
@@ -950,6 +1034,7 @@ class RealtimeConnection:
         item: dict[str, Any],
         *,
         previous_item_id: str | None = None,
+        event_id: str | None = None,
     ) -> None:
         payload: dict[str, Any] = {
             "type": "conversation.item.create",
@@ -957,6 +1042,54 @@ class RealtimeConnection:
         }
         if previous_item_id:
             payload["previous_item_id"] = previous_item_id
+        if event_id:
+            payload["event_id"] = event_id
+        await self.send(payload)
+
+    async def retrieve_conversation_item(
+        self,
+        item_id: str,
+        *,
+        event_id: str | None = None,
+    ) -> None:
+        payload: dict[str, Any] = {
+            "type": "conversation.item.retrieve",
+            "item_id": item_id,
+        }
+        if event_id:
+            payload["event_id"] = event_id
+        await self.send(payload)
+
+    async def delete_conversation_item(
+        self,
+        item_id: str,
+        *,
+        event_id: str | None = None,
+    ) -> None:
+        payload: dict[str, Any] = {
+            "type": "conversation.item.delete",
+            "item_id": item_id,
+        }
+        if event_id:
+            payload["event_id"] = event_id
+        await self.send(payload)
+
+    async def truncate_conversation_item(
+        self,
+        item_id: str,
+        *,
+        audio_end_ms: int,
+        content_index: int = 0,
+        event_id: str | None = None,
+    ) -> None:
+        payload: dict[str, Any] = {
+            "type": "conversation.item.truncate",
+            "item_id": item_id,
+            "content_index": content_index,
+            "audio_end_ms": int(audio_end_ms),
+        }
+        if event_id:
+            payload["event_id"] = event_id
         await self.send(payload)
 
     async def append_input_audio(self, audio: bytes) -> None:
@@ -966,6 +1099,19 @@ class RealtimeConnection:
                 "audio": base64.b64encode(audio).decode("ascii"),
             }
         )
+
+    async def cancel_response(
+        self,
+        *,
+        response_id: str | None = None,
+        event_id: str | None = None,
+    ) -> None:
+        payload: dict[str, Any] = {"type": "response.cancel"}
+        if response_id:
+            payload["response_id"] = response_id
+        if event_id:
+            payload["event_id"] = event_id
+        await self.send(payload)
 
     async def commit_input_audio(self) -> None:
         await self.send({"type": "input_audio_buffer.commit"})
@@ -978,6 +1124,9 @@ class RealtimeConnection:
         if hasattr(result, "__await__"):
             result = await result
         return self._serialize_event(result)
+
+    async def recv_event(self) -> RealtimeEventResult:
+        return self._normalize_event(await self.recv_raw())
 
     async def recv_raw(self) -> Any:
         result = self._connection.recv()
@@ -1306,6 +1455,7 @@ __all__ = [
     "RealtimeClientSecretResult",
     "RealtimeCallResult",
     "RealtimeTranscriptionSessionResult",
+    "RealtimeEventResult",
     "RealtimeConnection",
     "WebhookEventResult",
     "FileResource",
