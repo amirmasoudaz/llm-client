@@ -96,6 +96,14 @@ When you construct `OpenAIProvider(..., use_responses_api=True)`, the provider n
 - `submit_apply_patch_call_output(previous_response_id, call_id=None, status=None, output=None, tools=None, **kwargs)`
 - `delete_response(response_id, **kwargs)`
 
+For OpenAI MCP and connector approval loops, `submit_mcp_approval_response(...)`
+accepts the same convenience kwargs as `respond_with_remote_mcp(...)` and
+`respond_with_connector(...)`, including `server_url`, `connector_id`,
+`authorization`, `allowed_tools`, `require_approval`, and `defer_loading`.
+This matters because OpenAI does not persist MCP/connector authorization on
+stored Responses objects, so continuation requests must resend the tool
+definition when approval is granted or denied.
+
 Minimal polling example:
 
 ```python

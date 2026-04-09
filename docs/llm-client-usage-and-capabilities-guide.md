@@ -53,6 +53,7 @@ Special note:
 - OpenAI Responses background workflows now live at the provider layer via `retrieve_background_response`, `cancel_background_response`, `wait_background_response`, and `stream_background_response`.
 - OpenAI Responses conversation-state workflows now also live at the provider layer via `create_conversation`, `retrieve_conversation`, `update_conversation`, `delete_conversation`, `create_conversation_items`, `list_conversation_items`, `retrieve_conversation_item`, `delete_conversation_item`, and `compact_response_context`.
 - MCP approval workflows can now continue through `submit_mcp_approval_response(...)` without raw provider-shaped request payloads.
+- OpenAI MCP/connector approval continuations can also rebuild the tool definition from `server_url`, `connector_id`, `authorization`, `allowed_tools`, `require_approval`, and `defer_loading`, which is important because OpenAI does not persist connector authorization on stored Responses objects.
 - Hosted shell and apply-patch tool loops can now continue through `submit_shell_call_output(...)` and `submit_apply_patch_call_output(...)` without raw provider-shaped request payloads.
 - OpenAI request controls `include`, `prompt_cache_key`, and `prompt_cache_retention` are first-class parameters on the OpenAI provider.
 - Stored OpenAI Responses can now be deleted through `delete_response(...)` without dropping to the raw SDK.

@@ -120,7 +120,7 @@ This pass used the docs index as the source-of-truth inventory and then ran a bi
 | Responses API advanced `tool_choice` including `allowed_tools` | `guides/function-calling.md` | Implemented | Important | Public surface now accepts dict tool-choice payloads and aliases nested function names correctly. |
 | Responses built-in tools as first-class package abstractions | `guides/tools*.md` | Implemented | Important | Added stable `ResponsesBuiltinTool` descriptors in `llm_client.tools` and OpenAI translation support. |
 | Responses custom tools with CFG grammar | `guides/function-calling.md` | Implemented | Important | Added stable `ResponsesCustomTool` and `ResponsesGrammar` descriptors in `llm_client.tools`. |
-| Responses MCP approval continuation | `guides/tools-remote-mcp.md` | Implemented | Important | Added `submit_mcp_approval_response(...)` helper for approval loops. |
+| Responses MCP approval continuation | `guides/tools-remote-mcp.md`, `guides/tools-connectors-mcp.md` | Implemented | Important | Added `submit_mcp_approval_response(...)` helper for approval loops, including MCP/connector convenience kwargs so continuation calls can resend auth-bearing tool definitions. |
 | Encrypted reasoning continuity controls | `guides/reasoning.md`, `guides/migrate-to-responses.md` | Implemented | Important | Added first-class `include=["reasoning.encrypted_content"]` request control support. |
 | Prompt caching request controls | `guides/prompt-caching.md` | Implemented | Important | Added first-class `prompt_cache_key` and `prompt_cache_retention` controls. |
 | Background response retrieve/cancel/resume APIs | `guides/background.md` | Implemented | Important | Provider now exposes retrieval, cancellation, polling, and resumed background streaming. |
@@ -145,7 +145,7 @@ The next bounded `1.2` implementation slice should be:
 Why this order:
 
 - `tool_search`, namespaces, hosted shell/apply-patch continuation, retrieval tuning/ingestion ergonomics, store-level vector-store polling, and the first Realtime lifecycle/event wrapper slice are now closed as the early advanced OpenAI-specific `1.2` slices
-- deeper connectors/MCP and hosted file-search product management now represent the clearest remaining high-value gaps
+- deeper connectors/MCP and hosted file-search product management now represent the clearest remaining high-value gaps, although MCP approval continuation no longer requires raw tool reconstruction
 - broader Realtime product-management work still remains, but the connection-level lifecycle contract is materially stronger than before
 
 This roadmap covers the remaining work needed to extend `llm_client` toward broader official-docs parity. It is ordered by package impact: fix compliance gaps first, then add missing capabilities that need package-contract expansion, then harden metadata, tests, and user-facing docs.

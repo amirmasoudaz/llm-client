@@ -239,6 +239,12 @@ For advanced OpenAI-specific deferred-tool workflows, use:
   `ResponsesApplyPatchCallOutput` when hosted `shell` or `apply_patch` tool
   calls need typed continuation payloads instead of raw provider dicts
 
+On OpenAI approval-continuation flows, `submit_mcp_approval_response(...)`
+accepts the same MCP/connector convenience kwargs as the hosted helper methods.
+Use that path when a connector or remote MCP server requires authorization on
+every follow-up request, because OpenAI does not persist that authorization on
+stored Responses objects.
+
 Provider-native Responses tools are request-side descriptors, not executable
 runtime tools. Keep using `ToolRegistry` for locally executed function tools.
 
