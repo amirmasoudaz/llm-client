@@ -41,6 +41,8 @@ from .types import (
     MessageInput,
     ModerationResult,
     StreamEvent,
+    UploadPartResource,
+    UploadResource,
     Usage,
     RealtimeCallResult,
     RealtimeConnection,
@@ -226,6 +228,26 @@ class Provider(Protocol):
 
     async def get_file_content(self, file_id: str, **kwargs: Any) -> FileContentResult:
         """Fetch binary content for a generic provider file when supported."""
+        ...
+
+    async def create_upload(self, **kwargs: Any) -> UploadResource:
+        """Create an upload lifecycle resource when supported."""
+        ...
+
+    async def add_upload_part(self, upload_id: str, **kwargs: Any) -> UploadPartResource:
+        """Attach a part to an upload lifecycle resource when supported."""
+        ...
+
+    async def complete_upload(self, upload_id: str, **kwargs: Any) -> UploadResource:
+        """Complete an upload lifecycle resource when supported."""
+        ...
+
+    async def cancel_upload(self, upload_id: str, **kwargs: Any) -> UploadResource:
+        """Cancel an upload lifecycle resource when supported."""
+        ...
+
+    async def upload_file_chunked(self, **kwargs: Any) -> UploadResource:
+        """Upload a file through the chunked upload lifecycle when supported."""
         ...
 
     async def create_vector_store(self, **kwargs: Any) -> VectorStoreResource:
@@ -1043,6 +1065,26 @@ class BaseProvider(Provider, ABC):
     async def get_file_content(self, file_id: str, **kwargs: Any) -> FileContentResult:
         _ = file_id, kwargs
         raise NotImplementedError(f"{self.__class__.__name__} does not support generic file content retrieval.")
+
+    async def create_upload(self, **kwargs: Any) -> UploadResource:
+        _ = kwargs
+        raise NotImplementedError(f"{self.__class__.__name__} does not support uploads.")
+
+    async def add_upload_part(self, upload_id: str, **kwargs: Any) -> UploadPartResource:
+        _ = upload_id, kwargs
+        raise NotImplementedError(f"{self.__class__.__name__} does not support uploads.")
+
+    async def complete_upload(self, upload_id: str, **kwargs: Any) -> UploadResource:
+        _ = upload_id, kwargs
+        raise NotImplementedError(f"{self.__class__.__name__} does not support uploads.")
+
+    async def cancel_upload(self, upload_id: str, **kwargs: Any) -> UploadResource:
+        _ = upload_id, kwargs
+        raise NotImplementedError(f"{self.__class__.__name__} does not support uploads.")
+
+    async def upload_file_chunked(self, **kwargs: Any) -> UploadResource:
+        _ = kwargs
+        raise NotImplementedError(f"{self.__class__.__name__} does not support uploads.")
 
     async def create_vector_store(self, **kwargs: Any) -> VectorStoreResource:
         raise NotImplementedError(f"{self.__class__.__name__} does not support vector stores.")

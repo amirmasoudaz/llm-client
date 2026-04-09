@@ -46,6 +46,8 @@ from llm_client.providers.types import (
     RealtimeTranscriptionSessionResult,
     StreamEvent,
     StreamEventType,
+    UploadPartResource,
+    UploadResource,
     Usage,
     VectorStoreFileBatchResource,
     VectorStoreFileContentResult,
@@ -317,6 +319,31 @@ class _WorkflowProvider(ScriptedProvider):
     async def get_file_content(self, file_id: str, **kwargs):
         self.workflow_calls.append(("get_file_content", {"file_id": file_id, **kwargs}))
         return FileContentResult(file_id=file_id, content=b"abc", media_type="application/pdf")
+
+    async def create_upload(self, **kwargs):
+        self.workflow_calls.append(("create_upload", dict(kwargs)))
+        return UploadResource(upload_id="upload_1", status="pending", filename=str(kwargs.get("filename") or "file.bin"))
+
+    async def add_upload_part(self, upload_id: str, **kwargs):
+        self.workflow_calls.append(("add_upload_part", {"upload_id": upload_id, **kwargs}))
+        return UploadPartResource(part_id="part_1", upload_id=upload_id)
+
+    async def complete_upload(self, upload_id: str, **kwargs):
+        self.workflow_calls.append(("complete_upload", {"upload_id": upload_id, **kwargs}))
+        return UploadResource(
+            upload_id=upload_id,
+            status="completed",
+            filename="guide.pdf",
+            file=FileResource(file_id="file_2", filename="guide.pdf", purpose="assistants"),
+        )
+
+    async def cancel_upload(self, upload_id: str, **kwargs):
+        self.workflow_calls.append(("cancel_upload", {"upload_id": upload_id, **kwargs}))
+        return UploadResource(upload_id=upload_id, status="cancelled")
+
+    async def upload_file_chunked(self, **kwargs):
+        self.workflow_calls.append(("upload_file_chunked", dict(kwargs)))
+        return UploadResource(upload_id="upload_2", status="completed", filename=str(kwargs.get("filename") or "chunked.bin"))
 
     async def create_vector_store(self, **kwargs):
         self.workflow_calls.append(("create_vector_store", dict(kwargs)))
@@ -894,6 +921,17 @@ async def test_engine_orchestrates_extended_provider_api_workflows() -> None:
     image = await engine.generate_image("draw a cat")
     transcript = await engine.transcribe_audio("clip.wav")
     speech = await engine.synthesize_speech("hello", voice="alloy")
+    upload = await engine.create_upload(bytes=3, filename="guide.pdf", mime_type="application/pdf", purpose="assistants")
+    upload_part = await engine.add_upload_part("upload_1", data=b"abc")
+    completed_upload = await engine.complete_upload("upload_1", part_ids=["part_1"], md5="deadbeef")
+    cancelled_upload = await engine.cancel_upload("upload_2")
+    chunked_upload = await engine.upload_file_chunked(
+        file=b"abc",
+        filename="guide.pdf",
+        bytes=3,
+        mime_type="application/pdf",
+        purpose="assistants",
+    )
     vector_store = await engine.create_vector_store(name="Docs")
     search = await engine.search_vector_store("vs_1", query="cache invalidation")
     fine_tune = await engine.create_fine_tuning_job(model="gpt-4o-mini", training_file="file_1")
@@ -903,6 +941,11 @@ async def test_engine_orchestrates_extended_provider_api_workflows() -> None:
     assert image.images[0].url == "https://example.com/image.png"
     assert transcript.text == "hello"
     assert speech.byte_length == 3
+    assert upload.upload_id == "upload_1"
+    assert upload_part.part_id == "part_1"
+    assert completed_upload.file is not None and completed_upload.file.file_id == "file_2"
+    assert cancelled_upload.status == "cancelled"
+    assert chunked_upload.status == "completed"
     assert vector_store.vector_store_id == "vs_1"
     assert search.results[0]["file_id"] == "file_1"
     assert fine_tune.job_id == "ftjob_1"

@@ -1352,6 +1352,58 @@ class FileContentResult:
 
 
 @dataclass
+class UploadResource:
+    """Provider-level representation of an OpenAI upload lifecycle object."""
+
+    upload_id: str
+    status: str | None = None
+    filename: str | None = None
+    purpose: str | None = None
+    bytes: int | None = None
+    created_at: int | None = None
+    expires_at: int | None = None
+    file: FileResource | None = None
+    raw_response: Any | None = field(default=None, repr=False)
+
+    @property
+    def ok(self) -> bool:
+        return self.status not in {"cancelled", "expired"}
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "upload_id": self.upload_id,
+            "status": self.status,
+            "filename": self.filename,
+            "purpose": self.purpose,
+            "bytes": self.bytes,
+            "created_at": self.created_at,
+            "expires_at": self.expires_at,
+            "file": self.file.to_dict() if self.file is not None else None,
+        }
+
+
+@dataclass
+class UploadPartResource:
+    """Provider-level representation of an upload part."""
+
+    part_id: str
+    upload_id: str
+    created_at: int | None = None
+    raw_response: Any | None = field(default=None, repr=False)
+
+    @property
+    def ok(self) -> bool:
+        return bool(self.part_id)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "part_id": self.part_id,
+            "upload_id": self.upload_id,
+            "created_at": self.created_at,
+        }
+
+
+@dataclass
 class VectorStoreFileResource:
     """Provider-level representation of a vector-store file."""
 

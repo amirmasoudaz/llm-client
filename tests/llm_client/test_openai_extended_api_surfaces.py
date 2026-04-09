@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from llm_client.providers.openai import OpenAIProvider
-from llm_client.providers.types import RealtimeConnection
+from llm_client.providers.types import RealtimeConnection, UploadPartResource, UploadResource
 from llm_client.tools import (
     ResponsesAttributeFilter,
     ResponsesChunkingStrategy,
@@ -247,6 +247,95 @@ async def test_openai_vector_store_and_fine_tuning_surfaces() -> None:
     assert search.results[0]["file_id"] == "file_1"
     assert job.job_id == "ftjob_1"
     assert events.events[0]["id"] == "ftevent_1"
+
+
+@pytest.mark.asyncio
+async def test_openai_upload_surfaces() -> None:
+    provider = _openai_provider("gpt-4o-mini")
+
+    async def _create_upload(**kwargs):
+        assert kwargs["bytes"] == 3
+        assert kwargs["filename"] == "guide.pdf"
+        assert kwargs["mime_type"] == "application/pdf"
+        assert kwargs["purpose"] == "assistants"
+        assert kwargs["expires_after"] == {"anchor": "created_at", "seconds": 3600}
+        return SimpleNamespace(
+            id="upload_1",
+            status="pending",
+            filename="guide.pdf",
+            purpose="assistants",
+            bytes=3,
+            created_at=1,
+            expires_at=2,
+        )
+
+    async def _add_part(upload_id: str, **kwargs):
+        assert upload_id == "upload_1"
+        assert kwargs["data"] == b"abc"
+        return SimpleNamespace(id="part_1", upload_id=upload_id, created_at=3)
+
+    async def _complete(upload_id: str, **kwargs):
+        assert upload_id == "upload_1"
+        assert kwargs["part_ids"] == ["part_1"]
+        assert kwargs["md5"] == "deadbeef"
+        return SimpleNamespace(
+            id="upload_1",
+            status="completed",
+            filename="guide.pdf",
+            purpose="assistants",
+            bytes=3,
+            file={"id": "file_1", "filename": "guide.pdf", "purpose": "assistants"},
+        )
+
+    async def _cancel(upload_id: str, **kwargs):
+        assert upload_id == "upload_2"
+        return SimpleNamespace(id="upload_2", status="cancelled", filename="stale.bin", purpose="assistants", bytes=1)
+
+    async def _chunked(**kwargs):
+        assert kwargs["file"] == b"abc"
+        assert kwargs["filename"] == "guide.pdf"
+        assert kwargs["bytes"] == 3
+        assert kwargs["mime_type"] == "application/pdf"
+        assert kwargs["purpose"] == "assistants"
+        assert kwargs["part_size"] == 2
+        return SimpleNamespace(id="upload_3", status="completed", filename="guide.pdf", purpose="assistants", bytes=3)
+
+    provider.client = SimpleNamespace(
+        uploads=SimpleNamespace(
+            create=_create_upload,
+            complete=_complete,
+            cancel=_cancel,
+            upload_file_chunked=_chunked,
+            parts=SimpleNamespace(create=_add_part),
+        )
+    )
+
+    created = await provider.create_upload(
+        bytes=3,
+        filename="guide.pdf",
+        mime_type="application/pdf",
+        purpose="assistants",
+        expires_after={"anchor": "created_at", "seconds": 3600},
+    )
+    part = await provider.add_upload_part("upload_1", data=b"abc")
+    completed = await provider.complete_upload("upload_1", part_ids=["part_1"], md5="deadbeef")
+    cancelled = await provider.cancel_upload("upload_2")
+    chunked = await provider.upload_file_chunked(
+        file=b"abc",
+        filename="guide.pdf",
+        bytes=3,
+        mime_type="application/pdf",
+        purpose="assistants",
+        part_size=2,
+    )
+
+    assert isinstance(created, UploadResource)
+    assert created.upload_id == "upload_1"
+    assert isinstance(part, UploadPartResource)
+    assert part.part_id == "part_1"
+    assert completed.file is not None and completed.file.file_id == "file_1"
+    assert cancelled.status == "cancelled"
+    assert chunked.upload_id == "upload_3"
 
 
 @pytest.mark.asyncio

@@ -79,6 +79,8 @@ from llm_client.types import (
     RequestSpec,
     StreamEvent,
     StreamEventType,
+    UploadPartResource,
+    UploadResource,
     Usage,
     VectorStoreFileContentResult,
     VectorStoreFileBatchResource,
@@ -134,6 +136,8 @@ def test_types_namespace_exports_shared_request_and_result_types() -> None:
     realtime_event = RealtimeEventResult(event_type="conversation.item.added", event_id="evt_1")
     realtime_connection = RealtimeConnection(connection=object(), model="gpt-realtime", call_id="rtc_1")
     webhook = WebhookEventResult(event_id="wh_1", event_type="realtime.call.incoming", data={"call_id": "rtc_1"})
+    upload = UploadResource(upload_id="upload_1", status="pending", filename="guide.pdf")
+    upload_part = UploadPartResource(part_id="part_1", upload_id="upload_1")
     vector_store_batch = VectorStoreFileBatchResource(batch_id="vsfb_1", vector_store_id="vs_1", status="in_progress")
     output_item = NormalizedOutputItem(type="refusal", text="No")
     event = StreamEvent(type=StreamEventType.DONE, data=result)
@@ -170,6 +174,8 @@ def test_types_namespace_exports_shared_request_and_result_types() -> None:
     assert realtime_event.event_type == "conversation.item.added"
     assert realtime_connection.call_id == "rtc_1"
     assert webhook.event_type == "realtime.call.incoming"
+    assert upload.upload_id == "upload_1"
+    assert upload_part.upload_id == "upload_1"
     assert vector_store_batch.batch_id == "vsfb_1"
     assert output_item.type == "refusal"
     assert event.type.value == "done"

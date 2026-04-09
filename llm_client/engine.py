@@ -43,6 +43,8 @@ from .providers.types import (
     RealtimeConnection,
     RealtimeClientSecretResult,
     RealtimeTranscriptionSessionResult,
+    UploadPartResource,
+    UploadResource,
     VectorStoreFileBatchResource,
     StreamEvent,
     StreamEventType,
@@ -1130,6 +1132,112 @@ class ExecutionEngine:
             context=context,
             timeout=timeout,
             call=lambda provider: provider.get_file_content(file_id, **kwargs),
+        )
+
+    async def create_upload(
+        self,
+        *,
+        bytes: int,
+        filename: str,
+        mime_type: str,
+        purpose: str,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> UploadResource:
+        kwargs.update({"bytes": bytes, "filename": filename, "mime_type": mime_type, "purpose": purpose})
+        return await self._run_workflow_operation(
+            "create_upload",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.create_upload(**kwargs),
+        )
+
+    async def add_upload_part(
+        self,
+        upload_id: str,
+        *,
+        data: Any,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> UploadPartResource:
+        kwargs["data"] = data
+        return await self._run_workflow_operation(
+            "add_upload_part",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.add_upload_part(upload_id, **kwargs),
+        )
+
+    async def complete_upload(
+        self,
+        upload_id: str,
+        *,
+        part_ids: list[str] | tuple[str, ...],
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> UploadResource:
+        kwargs["part_ids"] = list(part_ids)
+        return await self._run_workflow_operation(
+            "complete_upload",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.complete_upload(upload_id, **kwargs),
+        )
+
+    async def cancel_upload(
+        self,
+        upload_id: str,
+        *,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> UploadResource:
+        return await self._run_workflow_operation(
+            "cancel_upload",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.cancel_upload(upload_id, **kwargs),
+        )
+
+    async def upload_file_chunked(
+        self,
+        *,
+        file: Any,
+        mime_type: str,
+        purpose: str,
+        provider_name: str | None = None,
+        model: str | None = None,
+        context: RequestContext | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> UploadResource:
+        kwargs.update({"file": file, "mime_type": mime_type, "purpose": purpose})
+        return await self._run_workflow_operation(
+            "upload_file_chunked",
+            provider_name=provider_name,
+            model=model,
+            context=context,
+            timeout=timeout,
+            call=lambda provider: provider.upload_file_chunked(**kwargs),
         )
 
     async def create_vector_store(

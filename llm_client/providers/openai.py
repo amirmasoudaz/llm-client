@@ -72,6 +72,8 @@ from .types import (
     StreamEventType,
     ToolCall,
     ToolCallDelta,
+    UploadPartResource,
+    UploadResource,
     Usage,
     RealtimeCallResult,
     RealtimeConnection,
@@ -1365,6 +1367,35 @@ class OpenAIProvider(BaseProvider):
             bytes=int(response_dict.get("bytes", 0)) if response_dict.get("bytes") is not None else None,
             status=str(response_dict.get("status") or "") or None,
             media_type=str(response_dict.get("mime_type") or response_dict.get("media_type") or "") or None,
+            created_at=response_dict.get("created_at"),
+            raw_response=response,
+        )
+
+    @staticmethod
+    def _upload_resource_from_response(response: Any) -> UploadResource:
+        payload = OpenAIProvider._serialize_responses_item(response)
+        response_dict = payload if isinstance(payload, dict) else {}
+        nested_file = response_dict.get("file")
+        file_resource = OpenAIProvider._file_resource_from_response(nested_file) if isinstance(nested_file, dict) else None
+        return UploadResource(
+            upload_id=str(response_dict.get("id") or ""),
+            status=str(response_dict.get("status") or "") or None,
+            filename=str(response_dict.get("filename") or "") or None,
+            purpose=str(response_dict.get("purpose") or "") or None,
+            bytes=int(response_dict.get("bytes", 0)) if response_dict.get("bytes") is not None else None,
+            created_at=response_dict.get("created_at"),
+            expires_at=response_dict.get("expires_at"),
+            file=file_resource,
+            raw_response=response,
+        )
+
+    @staticmethod
+    def _upload_part_resource_from_response(response: Any) -> UploadPartResource:
+        payload = OpenAIProvider._serialize_responses_item(response)
+        response_dict = payload if isinstance(payload, dict) else {}
+        return UploadPartResource(
+            part_id=str(response_dict.get("id") or ""),
+            upload_id=str(response_dict.get("upload_id") or ""),
             created_at=response_dict.get("created_at"),
             raw_response=response,
         )
@@ -3206,6 +3237,89 @@ class OpenAIProvider(BaseProvider):
             media_type=str(media_type or "") or None,
             raw_response=response,
         )
+
+    async def create_upload(
+        self,
+        *,
+        bytes: int,
+        filename: str,
+        mime_type: str,
+        purpose: str,
+        expires_after: dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> UploadResource:
+        params = dict(kwargs)
+        params.update(
+            {
+                "bytes": int(bytes),
+                "filename": filename,
+                "mime_type": mime_type,
+                "purpose": purpose,
+            }
+        )
+        if expires_after is not None:
+            params["expires_after"] = expires_after
+        async with self.limiter.limit(tokens=0, requests=1):
+            response = await self.client.uploads.create(**params)
+        return self._upload_resource_from_response(response)
+
+    async def add_upload_part(
+        self,
+        upload_id: str,
+        *,
+        data: Any,
+        **kwargs: Any,
+    ) -> UploadPartResource:
+        async with self.limiter.limit(tokens=0, requests=1):
+            response = await self.client.uploads.parts.create(upload_id, data=data, **kwargs)
+        return self._upload_part_resource_from_response(response)
+
+    async def complete_upload(
+        self,
+        upload_id: str,
+        *,
+        part_ids: list[str] | tuple[str, ...],
+        md5: str | None = None,
+        **kwargs: Any,
+    ) -> UploadResource:
+        params = dict(kwargs)
+        params["part_ids"] = [str(part_id) for part_id in part_ids]
+        if md5 is not None:
+            params["md5"] = md5
+        async with self.limiter.limit(tokens=0, requests=1):
+            response = await self.client.uploads.complete(upload_id, **params)
+        return self._upload_resource_from_response(response)
+
+    async def cancel_upload(self, upload_id: str, **kwargs: Any) -> UploadResource:
+        async with self.limiter.limit(tokens=0, requests=1):
+            response = await self.client.uploads.cancel(upload_id, **kwargs)
+        return self._upload_resource_from_response(response)
+
+    async def upload_file_chunked(
+        self,
+        *,
+        file: Any,
+        mime_type: str,
+        purpose: str,
+        filename: str | None = None,
+        bytes: int | None = None,
+        part_size: int | None = None,
+        md5: str | None = None,
+        **kwargs: Any,
+    ) -> UploadResource:
+        params = dict(kwargs)
+        params.update({"file": file, "mime_type": mime_type, "purpose": purpose})
+        if filename is not None:
+            params["filename"] = filename
+        if bytes is not None:
+            params["bytes"] = int(bytes)
+        if part_size is not None:
+            params["part_size"] = int(part_size)
+        if md5 is not None:
+            params["md5"] = md5
+        async with self.limiter.limit(tokens=0, requests=1):
+            response = await self.client.uploads.upload_file_chunked(**params)
+        return self._upload_resource_from_response(response)
 
     async def create_vector_store(
         self,
