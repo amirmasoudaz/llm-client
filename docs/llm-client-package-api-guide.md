@@ -268,6 +268,15 @@ expose `submit_shell_call_output(...)` and
 `submit_apply_patch_call_output(...)` so shell/apply-patch loops can continue
 without falling back to raw Responses input items.
 
+On the Realtime side, `RealtimeConnection` now also exposes higher-level
+conversation helpers for `create_text_message(...)`,
+`append_input_audio_chunks(...)`, and
+`commit_audio_and_create_response(...)` on top of the lower-level
+`create_conversation_item(...)`, `append_input_audio(...)`,
+`commit_input_audio(...)`, and `create_response(...)` events. Use the higher
+level helpers when you want the cookbook-style WebSocket conversation flow
+without rebuilding common event payloads manually.
+
 ### Service Adaptors
 
 Use `llm_client.adapters` when you need normalized access to supporting
