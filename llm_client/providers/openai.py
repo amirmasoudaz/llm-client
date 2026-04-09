@@ -1412,6 +1412,70 @@ class OpenAIProvider(BaseProvider):
             return tool.to_dict()
         return dict(tool)
 
+    @staticmethod
+    def _consume_mcp_tool_kwargs(kwargs: dict[str, Any]) -> ResponsesMCPTool | dict[str, Any] | None:
+        tool = kwargs.pop("tool", None)
+        server_url = kwargs.pop("server_url", None)
+        connector_id = kwargs.pop("connector_id", None)
+        server_label = kwargs.pop("server_label", None)
+        server_description = kwargs.pop("server_description", None)
+        authorization = kwargs.pop("authorization", None)
+        headers = kwargs.pop("headers", None)
+        allowed_tools = kwargs.pop("allowed_tools", None)
+        require_approval = kwargs.pop("require_approval", None)
+        defer_loading = kwargs.pop("defer_loading", None)
+        tool_metadata = dict(kwargs.pop("tool_metadata", {}) or {})
+
+        helper_values = (
+            server_url,
+            connector_id,
+            server_label,
+            server_description,
+            authorization,
+            headers,
+            allowed_tools,
+            require_approval,
+            defer_loading,
+        )
+        used_helper_kwargs = any(value is not None for value in helper_values) or bool(tool_metadata)
+        if tool is not None and used_helper_kwargs:
+            raise ValueError(
+                "Provide an explicit `tool` object or MCP/connector helper kwargs, but do not mix both."
+            )
+        if server_url is not None and connector_id is not None:
+            raise ValueError("Provide either `server_url` or `connector_id`, not both.")
+        if server_description is not None and connector_id is not None:
+            raise ValueError("`server_description` is only supported for remote MCP server tools.")
+        if headers is not None and connector_id is not None:
+            raise ValueError("`headers` is only supported for remote MCP server tools.")
+        if tool is not None:
+            return tool
+        if connector_id is not None:
+            return ResponsesMCPTool.connector(
+                connector_id,
+                server_label=server_label,
+                authorization=authorization,
+                allowed_tools=allowed_tools,
+                require_approval=require_approval,
+                defer_loading=defer_loading,
+                **tool_metadata,
+            )
+        if server_url is not None:
+            return ResponsesMCPTool.remote_server(
+                str(server_url),
+                server_label=server_label,
+                server_description=server_description,
+                authorization=authorization,
+                headers=headers,
+                allowed_tools=allowed_tools,
+                require_approval=require_approval,
+                defer_loading=defer_loading,
+                **tool_metadata,
+            )
+        if used_helper_kwargs:
+            raise ValueError("MCP helper kwargs require either `server_url`, `connector_id`, or `tool`.")
+        return None
+
     def _normalize_deep_research_mcp_tool(self, tool: Any) -> Any:
         if isinstance(tool, ResponsesMCPTool):
             normalized_tool = tool.to_dict()
@@ -3830,20 +3894,12 @@ class OpenAIProvider(BaseProvider):
         **kwargs: Any,
     ) -> CompletionResult:
         model_name = str(kwargs.pop("model", self.model_name))
-        tool = kwargs.pop("tool", None)
+        tool = self._consume_mcp_tool_kwargs(kwargs)
         if tool is None:
-            server_url = kwargs.pop("server_url")
-            tool = ResponsesMCPTool.remote_server(
-                server_url,
-                server_label=kwargs.pop("server_label", None),
-                server_description=kwargs.pop("server_description", None),
-                authorization=kwargs.pop("authorization", None),
-                headers=kwargs.pop("headers", None),
-                allowed_tools=kwargs.pop("allowed_tools", None),
-                require_approval=kwargs.pop("require_approval", None),
-                defer_loading=kwargs.pop("defer_loading", None),
-                **dict(kwargs.pop("tool_metadata", {}) or {}),
-            )
+            raise ValueError("Remote MCP workflows require `tool` or `server_url`.")
+        rendered_tool = self._coerce_mcp_tool(tool)
+        if rendered_tool.get("connector_id") is not None:
+            raise ValueError("Remote MCP workflows require a remote MCP server tool, not a connector tool.")
         return await self._complete_with_responses_tools(prompt, tools=[tool], model=model_name, **kwargs)
 
     async def respond_with_connector(
@@ -3852,18 +3908,12 @@ class OpenAIProvider(BaseProvider):
         **kwargs: Any,
     ) -> CompletionResult:
         model_name = str(kwargs.pop("model", self.model_name))
-        tool = kwargs.pop("tool", None)
+        tool = self._consume_mcp_tool_kwargs(kwargs)
         if tool is None:
-            connector_id = str(kwargs.pop("connector_id"))
-            tool = ResponsesMCPTool.connector(
-                connector_id,
-                server_label=kwargs.pop("server_label", None),
-                authorization=kwargs.pop("authorization", None),
-                allowed_tools=kwargs.pop("allowed_tools", None),
-                require_approval=kwargs.pop("require_approval", None),
-                defer_loading=kwargs.pop("defer_loading", None),
-                **dict(kwargs.pop("tool_metadata", {}) or {}),
-            )
+            raise ValueError("Connector workflows require `tool` or `connector_id`.")
+        rendered_tool = self._coerce_mcp_tool(tool)
+        if rendered_tool.get("connector_id") is None:
+            raise ValueError("Connector workflows require a connector MCP tool, not a remote MCP server tool.")
         return await self._complete_with_responses_tools(prompt, tools=[tool], model=model_name, **kwargs)
 
     async def start_deep_research(
@@ -4199,6 +4249,16 @@ class OpenAIProvider(BaseProvider):
     ) -> CompletionResult:
         if not bool(getattr(self, "use_responses_api", False)):
             raise NotImplementedError("MCP approval flows require use_responses_api=True")
+
+        helper_kwargs = dict(kwargs)
+        helper_tool = self._consume_mcp_tool_kwargs(helper_kwargs)
+        kwargs = helper_kwargs
+        if helper_tool is not None:
+            if tools:
+                raise ValueError(
+                    "Provide `tools` or MCP/connector helper kwargs for approval continuation, but do not mix both."
+                )
+            tools = [helper_tool]
 
         params: dict[str, Any] = {
             "model": self.model_name,

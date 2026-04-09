@@ -13,8 +13,10 @@ from llm_client.tools import (
     ResponsesApplyPatchCallOutput,
     ResponsesAttributeFilter,
     ResponsesChunkingStrategy,
+    ResponsesConnectorId,
     ResponsesExpirationPolicy,
     ResponsesFileSearchRankingOptions,
+    ResponsesGoogleCalendarTool,
     ResponsesShellCallChunk,
     ResponsesVectorStoreFileSpec,
 )
@@ -834,6 +836,11 @@ async def test_engine_orchestrates_provider_workflow_methods() -> None:
         previous_response_id="resp_prev",
         approval_request_id="apr_1",
         approve=True,
+        connector_id=ResponsesConnectorId.GOOGLE_CALENDAR,
+        server_label="Google Calendar",
+        authorization="Bearer oauth-token",
+        allowed_tools=(ResponsesGoogleCalendarTool.SEARCH_EVENTS,),
+        require_approval="never",
     )
     deleted_response = await engine.delete_response("resp_3")
 
@@ -848,6 +855,11 @@ async def test_engine_orchestrates_provider_workflow_methods() -> None:
     assert compacted.compaction_id == "cmp_1"
     assert approved.content == "approved"
     assert deleted_response.resource_id == "resp_3"
+    approval_call = next(payload for name, payload in provider.workflow_calls if name == "submit_mcp_approval_response")
+    assert approval_call["connector_id"] == ResponsesConnectorId.GOOGLE_CALENDAR
+    assert approval_call["authorization"] == "Bearer oauth-token"
+    assert approval_call["allowed_tools"] == (ResponsesGoogleCalendarTool.SEARCH_EVENTS,)
+    assert approval_call["require_approval"] == "never"
 
     event_names = [name for name, _ in hook.events]
     assert event_names.count("workflow.start") == 11

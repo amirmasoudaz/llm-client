@@ -11,6 +11,7 @@ from llm_client.providers.anthropic import AnthropicProvider
 from llm_client.providers.google import GoogleProvider
 from llm_client.providers.openai import OpenAIProvider
 from llm_client.providers.types import Message, StreamEventType
+from llm_client.tools import ResponsesConnectorId, ResponsesGoogleCalendarTool
 from tests.llm_client.fakes import FakeModel
 from tests.llm_client.stream_transcripts import (
     AnthropicStreamManager,
@@ -870,6 +871,54 @@ async def test_openai_submit_mcp_approval_response_continues_response() -> None:
             "type": "mcp_approval_response",
             "approval_request_id": "mcpr_1",
             "approve": True,
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_openai_submit_mcp_approval_response_builds_connector_tool_from_helper_kwargs() -> None:
+    provider = _openai_provider("gpt-5")
+    provider.use_responses_api = True
+
+    captured: dict[str, object] = {}
+
+    async def _responses_create(**kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(
+            id="resp_approved",
+            model="gpt-5",
+            status="completed",
+            output_text="approved",
+            output=[SimpleNamespace(type="message", content=[SimpleNamespace(type="output_text", text="approved")])],
+            usage=SimpleNamespace(to_dict=lambda: {"input_tokens": 2, "output_tokens": 1, "total_tokens": 3}),
+            incomplete_details=None,
+            error=None,
+        )
+
+    provider.client = SimpleNamespace(responses=SimpleNamespace(create=_responses_create))
+
+    result = await provider.submit_mcp_approval_response(
+        previous_response_id="resp_prev",
+        approval_request_id="mcpr_1",
+        approve=True,
+        connector_id=ResponsesConnectorId.GOOGLE_CALENDAR,
+        server_label="Google Calendar",
+        authorization="Bearer oauth-token",
+        allowed_tools=(ResponsesGoogleCalendarTool.SEARCH_EVENTS,),
+        require_approval="never",
+        defer_loading=True,
+    )
+
+    assert result.content == "approved"
+    assert captured["tools"] == [
+        {
+            "type": "mcp",
+            "connector_id": ResponsesConnectorId.GOOGLE_CALENDAR.value,
+            "server_label": "Google Calendar",
+            "authorization": "Bearer oauth-token",
+            "allowed_tools": [ResponsesGoogleCalendarTool.SEARCH_EVENTS.value],
+            "require_approval": "never",
+            "defer_loading": True,
         }
     ]
 
