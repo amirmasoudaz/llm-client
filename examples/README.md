@@ -35,6 +35,10 @@ Run only the application-shaped examples:
 python scripts/ci/run_llm_client_examples.py --subset application
 ```
 
+The default runner tracks the currently validated cookbook ring. Newly added
+advanced provider-specific examples may appear in this index before they are
+promoted into that default ring, and can be run directly by filename.
+
 ## Core Capability Examples
 
 - `01_one_shot_completion.py`: direct provider completion
@@ -84,6 +88,12 @@ python scripts/ci/run_llm_client_examples.py --subset application
   with clarification, rewrite, kickoff, and optional wait-for-completion
 - `52_openai_files_api.py`: generic OpenAI Files API upload, retrieval,
   listing, content fetch, and optional cleanup
+- `53_openai_realtime_conversation_lifecycle.py`: realtime text-turn
+  lifecycle with `create_text_message(...)`, `create_response(...)`, and typed
+  event waiting
+- `54_openai_tool_search_and_namespaces.py`: advanced OpenAI `tool_search`
+  plus namespaced deferred tools and optional `submit_tool_search_output(...)`
+  continuation
 
 ## Combined / Application-Shaped Examples
 
@@ -164,6 +174,11 @@ python scripts/ci/run_llm_client_examples.py --subset application
   - `LLM_CLIENT_EXAMPLE_MCP_PREVIOUS_RESPONSE_ID`
   - `LLM_CLIENT_EXAMPLE_MCP_APPROVAL_REQUEST_ID`
   - optionally `LLM_CLIENT_EXAMPLE_MCP_APPROVE=0|1`
+  - and optionally the same connector / remote-MCP env vars used by example
+    `50` when approval continuation needs to resend an auth-bearing tool
+    definition
+- Example `53` reuses `LLM_CLIENT_EXAMPLE_REALTIME_MODEL`.
+- Example `54` reuses `LLM_CLIENT_EXAMPLE_OPENAI_TOOLS_MODEL`.
 - You can switch providers with:
   - `LLM_CLIENT_EXAMPLE_PROVIDER=openai|anthropic|google`
   - `LLM_CLIENT_EXAMPLE_MODEL=...`

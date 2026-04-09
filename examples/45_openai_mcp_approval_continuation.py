@@ -28,6 +28,30 @@ async def main() -> None:
             "Set LLM_CLIENT_EXAMPLE_MCP_PREVIOUS_RESPONSE_ID and "
             "LLM_CLIENT_EXAMPLE_MCP_APPROVAL_REQUEST_ID to continue an MCP approval loop."
         )
+    connector_id = example_env("LLM_CLIENT_EXAMPLE_CONNECTOR_ID")
+    connector_authorization = example_env("LLM_CLIENT_EXAMPLE_CONNECTOR_AUTHORIZATION")
+    mcp_server_url = example_env("LLM_CLIENT_EXAMPLE_MCP_SERVER_URL")
+    mcp_authorization = example_env("LLM_CLIENT_EXAMPLE_MCP_AUTHORIZATION")
+
+    continuation_kwargs: dict[str, object] = {}
+    if connector_id:
+        continuation_kwargs.update(
+            {
+                "connector_id": connector_id,
+                "server_label": example_env("LLM_CLIENT_EXAMPLE_CONNECTOR_LABEL", connector_id),
+                "authorization": connector_authorization,
+                "require_approval": example_env("LLM_CLIENT_EXAMPLE_CONNECTOR_REQUIRE_APPROVAL", "always"),
+            }
+        )
+    elif mcp_server_url:
+        continuation_kwargs.update(
+            {
+                "server_url": mcp_server_url,
+                "server_label": example_env("LLM_CLIENT_EXAMPLE_MCP_SERVER_LABEL", "Remote MCP"),
+                "authorization": mcp_authorization,
+                "require_approval": example_env("LLM_CLIENT_EXAMPLE_MCP_REQUIRE_APPROVAL", "never"),
+            }
+        )
 
     try:
         engine = ExecutionEngine(provider=handle.provider)
@@ -37,6 +61,7 @@ async def main() -> None:
             approve=approve,
             provider_name="openai",
             model=handle.model,
+            **continuation_kwargs,
         )
 
         print_heading("OpenAI MCP Approval Continuation")
@@ -47,6 +72,7 @@ async def main() -> None:
                 "previous_response_id": previous_response_id,
                 "approval_request_id": approval_request_id,
                 "approve": approve,
+                "continuation_kwargs": continuation_kwargs,
                 "content": result.content,
                 "usage": summarize_usage(result.usage),
                 "output_items": [item.to_dict() for item in (result.output_items or [])],
