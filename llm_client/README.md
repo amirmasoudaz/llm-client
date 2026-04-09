@@ -810,6 +810,11 @@ A provider implements:
 - `list_files(**kwargs)`
 - `delete_file(file_id, **kwargs)`
 - `get_file_content(file_id, **kwargs)`
+- `create_upload(bytes, filename, mime_type, purpose, **kwargs)`
+- `add_upload_part(upload_id, data, **kwargs)`
+- `complete_upload(upload_id, part_ids, **kwargs)`
+- `cancel_upload(upload_id, **kwargs)`
+- `upload_file_chunked(file, mime_type, purpose, **kwargs)`
 - `create_vector_store(**kwargs)`
 - `retrieve_vector_store(vector_store_id, **kwargs)`
 - `update_vector_store(vector_store_id, **kwargs)`
@@ -945,6 +950,11 @@ Key methods:
 - `await provider.list_files(**kwargs) -> FilesPage`
 - `await provider.delete_file(file_id: str, **kwargs) -> DeletionResult`
 - `await provider.get_file_content(file_id: str, **kwargs) -> FileContentResult`
+- `await provider.create_upload(bytes: int, filename: str, mime_type: str, purpose: str, **kwargs) -> UploadResource`
+- `await provider.add_upload_part(upload_id: str, data, **kwargs) -> UploadPartResource`
+- `await provider.complete_upload(upload_id: str, part_ids: list[str] | tuple[str, ...], **kwargs) -> UploadResource`
+- `await provider.cancel_upload(upload_id: str, **kwargs) -> UploadResource`
+- `await provider.upload_file_chunked(file, mime_type: str, purpose: str, **kwargs) -> UploadResource`
 - `await provider.create_vector_store(**kwargs) -> VectorStoreResource`
 - `await provider.retrieve_vector_store(vector_store_id: str, **kwargs) -> VectorStoreResource`
 - `await provider.update_vector_store(vector_store_id: str, **kwargs) -> VectorStoreResource`
@@ -1251,6 +1261,11 @@ Key methods:
 - `await engine.list_files(provider_name=None, model=None, ...)`
 - `await engine.delete_file(file_id, provider_name=None, model=None, ...)`
 - `await engine.get_file_content(file_id, provider_name=None, model=None, ...)`
+- `await engine.create_upload(bytes=..., filename=..., mime_type=..., purpose=..., provider_name=None, model=None, ...)`
+- `await engine.add_upload_part(upload_id, data=..., provider_name=None, model=None, ...)`
+- `await engine.complete_upload(upload_id, part_ids=[...], provider_name=None, model=None, ...)`
+- `await engine.cancel_upload(upload_id, provider_name=None, model=None, ...)`
+- `await engine.upload_file_chunked(file=..., mime_type=..., purpose=..., provider_name=None, model=None, ...)`
 - `await engine.create_vector_store(provider_name=None, model=None, ...)`
 - `await engine.retrieve_vector_store(vector_store_id, provider_name=None, model=None, ...)`
 - `await engine.update_vector_store(vector_store_id, provider_name=None, model=None, ...)`
@@ -1605,6 +1620,12 @@ chunking, or per-file batch metadata instead of raw OpenAI request dicts.
 When vector stores are created with initial `file_ids`, use
 `poll_vector_store(...)` or `create_vector_store_and_poll(...)` to wait for
 hosted ingestion to settle based on terminal `status` or `file_counts`.
+
+For large hosted-file ingestion, use `create_upload(...)`,
+`add_upload_part(...)`, `complete_upload(...)`, `cancel_upload(...)`, and
+`upload_file_chunked(...)` instead of dropping down to the raw OpenAI SDK.
+Those helpers cover the documented Uploads lifecycle that ultimately produces a
+regular `FileResource` usable with vector stores and file-search workflows.
 
 Example:
 

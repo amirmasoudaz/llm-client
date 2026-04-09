@@ -94,6 +94,8 @@ promoted into that default ring, and can be run directly by filename.
 - `54_openai_tool_search_and_namespaces.py`: advanced OpenAI `tool_search`
   plus namespaced deferred tools and optional `submit_tool_search_output(...)`
   continuation
+- `55_openai_uploads_api.py`: OpenAI Uploads API lifecycle with create, part
+  upload, completion, cancellation, and chunked-upload helper coverage
 
 ## Combined / Application-Shaped Examples
 

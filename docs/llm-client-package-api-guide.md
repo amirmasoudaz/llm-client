@@ -141,7 +141,7 @@ Use them when:
 - you do not need engine-level retry/cache/failover behavior
 - you are building a lower-level integration
 - you need provider-native workflows such as OpenAI Responses background retrieval or resumed streaming
-- you need OpenAI-first product surfaces such as moderation, image generation/editing, speech APIs, generic file uploads/content retrieval, hosted vector stores, vector-store files and file batches, fine-tuning jobs, realtime connection/call/transcription helpers, hosted Responses tool workflows, webhook verification, or staged deep-research orchestration
+- you need OpenAI-first product surfaces such as moderation, image generation/editing, speech APIs, generic file uploads/content retrieval, the Uploads API lifecycle, hosted vector stores, vector-store files and file batches, fine-tuning jobs, realtime connection/call/transcription helpers, hosted Responses tool workflows, webhook verification, or staged deep-research orchestration
 
 Use `llm_client.engine` instead of direct provider calls when you want those
 provider-native workflows but still need a shared engine surface for hook
@@ -156,7 +156,7 @@ Use it when:
 - you want stable request execution behavior
 - you want caching, retry, failover, hooks, or idempotency
 - you want higher-level flows to be provider-agnostic
-- you want one orchestration surface for provider-native workflows beyond `complete(...)`, including moderation, media APIs, generic file APIs, vector stores, vector-store files and file batches, fine-tuning, realtime connection/call/transcription helpers, hosted Responses tool workflows, webhook verification, and staged deep-research orchestration
+- you want one orchestration surface for provider-native workflows beyond `complete(...)`, including moderation, media APIs, generic file APIs, Uploads lifecycle helpers, vector stores, vector-store files and file batches, fine-tuning, realtime connection/call/transcription helpers, hosted Responses tool workflows, webhook verification, and staged deep-research orchestration
 
 `RealtimeConnection` now also exposes first-class lifecycle helpers for
 `conversation.item.retrieve`, `conversation.item.delete`,
@@ -267,6 +267,19 @@ For hosted built-in tool continuations, the OpenAI provider and engine now also
 expose `submit_shell_call_output(...)` and
 `submit_apply_patch_call_output(...)` so shell/apply-patch loops can continue
 without falling back to raw Responses input items.
+
+For larger OpenAI file-ingestion workflows, the provider and engine also expose
+the Uploads lifecycle directly:
+
+- `create_upload(...)`
+- `add_upload_part(...)`
+- `complete_upload(...)`
+- `cancel_upload(...)`
+- `upload_file_chunked(...)`
+
+Use those helpers when you need the documented multipart upload flow that ends
+in a regular OpenAI file object later consumed by vector stores, file search,
+or other hosted workflows.
 
 On the Realtime side, `RealtimeConnection` now also exposes higher-level
 conversation helpers for `create_text_message(...)`,

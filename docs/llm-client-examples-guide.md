@@ -159,6 +159,8 @@ Typical failure classes:
 - optional provider package not installed
 - optional infrastructure not running
 - provider quota/rate limits
+- large-upload examples may also fail on provider-side file-purpose or MIME
+  validation if the local file does not match the configured purpose
 
 These failures should be treated differently from package regressions.
 

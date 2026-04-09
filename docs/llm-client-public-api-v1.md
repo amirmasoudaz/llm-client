@@ -71,7 +71,7 @@ Use for:
 - `Usage`
 - `CompletionResult`, `NormalizedOutputItem`, `BackgroundResponseResult`, `DeepResearchRunResult`, `ConversationResource`, `CompactionResult`, `DeletionResult`, `ConversationItemResource`, `ConversationItemsPage`, `EmbeddingResult`
 - `ModerationResult`, `ImageGenerationResult`, `GeneratedImage`, `AudioTranscriptionResult`, `AudioSpeechResult`
-- `FileResource`, `FilesPage`, `FileContentResult`
+- `FileResource`, `FilesPage`, `FileContentResult`, `UploadResource`, `UploadPartResource`
 - `VectorStoreResource`, `VectorStoresPage`, `VectorStoreSearchResult`, `VectorStoreFileResource`, `VectorStoreFilesPage`, `VectorStoreFileContentResult`, `VectorStoreFileBatchResource`
 - `FineTuningJobResult`, `FineTuningJobsPage`, `FineTuningJobEventsPage`
 - `RealtimeClientSecretResult`, `RealtimeTranscriptionSessionResult`, `RealtimeCallResult`, `RealtimeEventResult`, `RealtimeConnection`, `WebhookEventResult`
