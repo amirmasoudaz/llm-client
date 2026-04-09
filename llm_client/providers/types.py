@@ -1040,6 +1040,24 @@ class RealtimeConnection:
             payload["event_id"] = event_id
         await self.send(payload)
 
+    async def create_text_message(
+        self,
+        text: str,
+        *,
+        role: str = "user",
+        previous_item_id: str | None = None,
+        event_id: str | None = None,
+    ) -> None:
+        await self.create_conversation_item(
+            {
+                "type": "message",
+                "role": str(role),
+                "content": [{"type": "input_text", "text": str(text)}],
+            },
+            previous_item_id=previous_item_id,
+            event_id=event_id,
+        )
+
     async def create_conversation_item(
         self,
         item: dict[str, Any],
@@ -1103,6 +1121,18 @@ class RealtimeConnection:
             payload["event_id"] = event_id
         await self.send(payload)
 
+    async def append_input_audio_chunks(
+        self,
+        audio_chunks: Sequence[bytes],
+        *,
+        event_ids: Sequence[str | None] | None = None,
+    ) -> None:
+        if event_ids is not None and len(event_ids) != len(audio_chunks):
+            raise ValueError("`event_ids` must match the number of audio chunks.")
+        for index, chunk in enumerate(audio_chunks):
+            event_id = event_ids[index] if event_ids is not None else None
+            await self.append_input_audio(chunk, event_id=event_id)
+
     async def append_input_audio(self, audio: bytes, *, event_id: str | None = None) -> None:
         payload: dict[str, Any] = {
             "type": "input_audio_buffer.append",
@@ -1130,6 +1160,16 @@ class RealtimeConnection:
         if event_id:
             payload["event_id"] = event_id
         await self.send(payload)
+
+    async def commit_audio_and_create_response(
+        self,
+        response: dict[str, Any] | None = None,
+        *,
+        commit_event_id: str | None = None,
+        response_event_id: str | None = None,
+    ) -> None:
+        await self.commit_input_audio(event_id=commit_event_id)
+        await self.create_response(response, event_id=response_event_id)
 
     async def clear_input_audio(self, *, event_id: str | None = None) -> None:
         payload: dict[str, Any] = {"type": "input_audio_buffer.clear"}

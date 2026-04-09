@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from llm_client.providers.openai import OpenAIProvider
+from llm_client.providers.types import RealtimeConnection
 from llm_client.tools import (
     ResponsesAttributeFilter,
     ResponsesChunkingStrategy,
@@ -537,6 +538,7 @@ async def test_openai_realtime_and_webhook_surfaces() -> None:
     event = await provider.unwrap_webhook("{}", {"webhook-signature": "sig"}, secret="whsec")
     await connection.update_session({"modalities": ["text"]}, event_id="evt_session")
     await connection.create_response({"modalities": ["text"]}, event_id="evt_response_create")
+    await connection.create_text_message("hello helper", event_id="evt_text_helper")
     await connection.create_conversation_item(
         {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "hello"}]},
         event_id="evt_create",
@@ -545,8 +547,14 @@ async def test_openai_realtime_and_webhook_surfaces() -> None:
     await connection.delete_conversation_item("item_2", event_id="evt_delete")
     await connection.truncate_conversation_item("item_3", audio_end_ms=1200, event_id="evt_truncate")
     await connection.append_input_audio(b"abc", event_id="evt_append")
+    await connection.append_input_audio_chunks([b"de", b"fg"], event_ids=["evt_append_2", "evt_append_3"])
     await connection.cancel_response(response_id="resp_1", event_id="evt_cancel")
     await connection.commit_input_audio(event_id="evt_commit")
+    await connection.commit_audio_and_create_response(
+        {"modalities": ["text"], "instructions": "Continue after audio input."},
+        commit_event_id="evt_commit_2",
+        response_event_id="evt_response_after_audio",
+    )
     await connection.clear_input_audio(event_id="evt_clear_input")
     await connection.clear_output_audio(event_id="evt_clear_output")
     received = await connection.recv()
@@ -575,6 +583,11 @@ async def test_openai_realtime_and_webhook_surfaces() -> None:
         {"type": "response.create", "response": {"modalities": ["text"]}, "event_id": "evt_response_create"},
         {
             "type": "conversation.item.create",
+            "item": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "hello helper"}]},
+            "event_id": "evt_text_helper",
+        },
+        {
+            "type": "conversation.item.create",
             "item": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "hello"}]},
             "event_id": "evt_create",
         },
@@ -588,8 +601,16 @@ async def test_openai_realtime_and_webhook_surfaces() -> None:
             "event_id": "evt_truncate",
         },
         {"type": "input_audio_buffer.append", "audio": "YWJj", "event_id": "evt_append"},
+        {"type": "input_audio_buffer.append", "audio": "ZGU=", "event_id": "evt_append_2"},
+        {"type": "input_audio_buffer.append", "audio": "Zmc=", "event_id": "evt_append_3"},
         {"type": "response.cancel", "response_id": "resp_1", "event_id": "evt_cancel"},
         {"type": "input_audio_buffer.commit", "event_id": "evt_commit"},
+        {"type": "input_audio_buffer.commit", "event_id": "evt_commit_2"},
+        {
+            "type": "response.create",
+            "response": {"modalities": ["text"], "instructions": "Continue after audio input."},
+            "event_id": "evt_response_after_audio",
+        },
         {"type": "input_audio_buffer.clear", "event_id": "evt_clear_input"},
         {"type": "output_audio_buffer.clear", "event_id": "evt_clear_output"},
     ]
@@ -614,6 +635,14 @@ async def test_openai_realtime_and_webhook_surfaces() -> None:
         ("verify", {"secret": "whsec", "tolerance": 42}),
         ("unwrap", "whsec"),
     ]
+
+
+@pytest.mark.asyncio
+async def test_realtime_connection_rejects_mismatched_audio_chunk_event_ids() -> None:
+    connection = RealtimeConnection(SimpleNamespace(send=lambda event: event))
+
+    with pytest.raises(ValueError, match="event_ids"):
+        await connection.append_input_audio_chunks([b"a", b"b"], event_ids=["evt_1"])
 
 
 @pytest.mark.asyncio
