@@ -343,17 +343,22 @@ async def test_openai_upload_surfaces() -> None:
 async def test_openai_vector_store_polling_and_create_and_poll() -> None:
     provider = _openai_provider("gpt-4o-mini")
     retrieved_calls: list[tuple[str, dict[str, object]]] = []
+    batch_calls: list[tuple[str, dict[str, object]]] = []
 
     retrieve_responses = [
         SimpleNamespace(id="vs_1", status="in_progress", file_counts={"in_progress": 1}),
         SimpleNamespace(id="vs_1", status="in_progress", file_counts={"in_progress": 0, "completed": 2}),
         SimpleNamespace(id="vs_1", status="completed", file_counts={"completed": 2}),
+        SimpleNamespace(id="vs_3", status="completed", file_counts={"completed": 1}),
     ]
 
     async def _create_vector_store(**kwargs):
         if kwargs["name"] == "Docs":
             assert kwargs["file_ids"] == ["file_1", "file_2"]
             return SimpleNamespace(id="vs_1", name="Docs", status="in_progress", file_counts={"in_progress": 2})
+        if kwargs["name"] == "Spec files":
+            assert "file_ids" not in kwargs
+            return SimpleNamespace(id="vs_3", name="Spec files", status="in_progress", file_counts={"in_progress": 1})
         assert kwargs["name"] == "No files"
         assert "file_ids" not in kwargs
         return SimpleNamespace(id="vs_2", name="No files", status="completed", file_counts=None)
@@ -362,10 +367,16 @@ async def test_openai_vector_store_polling_and_create_and_poll() -> None:
         retrieved_calls.append((vector_store_id, dict(kwargs)))
         return retrieve_responses.pop(0)
 
+    async def _create_batch_and_poll(vector_store_id: str, **kwargs):
+        batch_calls.append((vector_store_id, dict(kwargs)))
+        assert vector_store_id == "vs_3"
+        return SimpleNamespace(id="vsfb_1", vector_store_id=vector_store_id, status="completed", file_counts={"completed": 1})
+
     provider.client = SimpleNamespace(
         vector_stores=SimpleNamespace(
             create=_create_vector_store,
             retrieve=_retrieve_vector_store,
+            file_batches=SimpleNamespace(create_and_poll=_create_batch_and_poll),
         )
     )
 
@@ -376,17 +387,57 @@ async def test_openai_vector_store_polling_and_create_and_poll() -> None:
         poll_interval=0.0,
         timeout=5.0,
     )
+    created_from_files = await provider.create_vector_store_and_poll(
+        name="Spec files",
+        files=[
+            ResponsesVectorStoreFileSpec(
+                file_id="file_3",
+                attributes={"scope": "spec"},
+                chunking_strategy=ResponsesChunkingStrategy.auto(),
+            )
+        ],
+        poll_interval=0.0,
+        timeout=5.0,
+    )
     create_without_files = await provider.create_vector_store_and_poll(name="No files", poll_interval=0.0, timeout=5.0)
 
     assert polled.vector_store_id == "vs_1"
     assert polled.file_counts == {"in_progress": 0, "completed": 2}
     assert created_polled.vector_store_id == "vs_1"
+    assert created_from_files.vector_store_id == "vs_3"
     assert create_without_files.vector_store_id == "vs_2"
+    assert batch_calls == [
+        (
+            "vs_3",
+            {
+                "files": [
+                    {
+                        "file_id": "file_3",
+                        "attributes": {"scope": "spec"},
+                        "chunking_strategy": {"type": "auto"},
+                    }
+                ]
+            },
+        )
+    ]
     assert retrieved_calls == [
         ("vs_1", {}),
         ("vs_1", {}),
         ("vs_1", {}),
+        ("vs_3", {}),
     ]
+
+
+@pytest.mark.asyncio
+async def test_openai_vector_store_create_and_poll_rejects_mixed_file_ids_and_files() -> None:
+    provider = _openai_provider("gpt-4o-mini")
+
+    with pytest.raises(ValueError, match="either `file_ids` or `files`"):
+        await provider.create_vector_store_and_poll(
+            name="Mixed",
+            file_ids=["file_1"],
+            files=[ResponsesVectorStoreFileSpec(file_id="file_2")],
+        )
 
 
 @pytest.mark.asyncio

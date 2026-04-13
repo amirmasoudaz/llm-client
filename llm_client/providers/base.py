@@ -1151,7 +1151,21 @@ class BaseProvider(Provider, ABC):
         **kwargs: Any,
     ) -> VectorStoreResource:
         initial_file_ids = kwargs.get("file_ids")
+        provisioned_files = kwargs.pop("files", None)
+        if initial_file_ids and provisioned_files:
+            raise ValueError("Provide either `file_ids` or `files` when provisioning a vector store, not both.")
+
         result = await self.create_vector_store(**kwargs)
+        if provisioned_files:
+            await self.create_vector_store_file_batch_and_poll(
+                result.vector_store_id,
+                files=provisioned_files,
+            )
+            return await self.poll_vector_store(
+                result.vector_store_id,
+                poll_interval=poll_interval,
+                timeout=timeout,
+            )
         if not initial_file_ids:
             return result
         return await self.poll_vector_store(

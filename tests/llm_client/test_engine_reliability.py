@@ -1160,9 +1160,22 @@ async def test_engine_orchestrates_vector_store_polling_helpers() -> None:
         poll_interval=0.0,
         timeout=5.0,
     )
+    created_from_files = await engine.create_vector_store_and_poll(
+        name="Spec docs",
+        files=[
+            ResponsesVectorStoreFileSpec(
+                file_id="file_2",
+                attributes={"scope": "batch"},
+                chunking_strategy=ResponsesChunkingStrategy.auto(),
+            )
+        ],
+        poll_interval=0.0,
+        timeout=5.0,
+    )
 
     assert polled.vector_store_id == "vs_1"
     assert created_polled.vector_store_id == "vs_1"
+    assert created_from_files.vector_store_id == "vs_1"
     assert provider.workflow_calls[0] == (
         "poll_vector_store",
         {"vector_store_id": "vs_1", "poll_interval": 0.0, "timeout": 5.0},
@@ -1170,4 +1183,19 @@ async def test_engine_orchestrates_vector_store_polling_helpers() -> None:
     assert provider.workflow_calls[1] == (
         "create_vector_store_and_poll",
         {"poll_interval": 0.0, "timeout": 5.0, "name": "Docs", "file_ids": ["file_1"]},
+    )
+    assert provider.workflow_calls[2] == (
+        "create_vector_store_and_poll",
+        {
+            "poll_interval": 0.0,
+            "timeout": 5.0,
+            "name": "Spec docs",
+            "files": [
+                ResponsesVectorStoreFileSpec(
+                    file_id="file_2",
+                    attributes={"scope": "batch"},
+                    chunking_strategy=ResponsesChunkingStrategy.auto(),
+                )
+            ],
+        },
     )
