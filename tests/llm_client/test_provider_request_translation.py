@@ -265,6 +265,15 @@ def test_openai_responses_request_translation_preserves_reasoning_items_and_allo
     }
 
 
+def test_responses_mcp_tool_rejects_conflicting_authorization_headers() -> None:
+    with pytest.raises(ValueError, match="authorization"):
+        ResponsesMCPTool.remote_server(
+            "https://mcp.example.com",
+            authorization="Bearer token",
+            headers={"Authorization": "Bearer other"},
+        )
+
+
 def test_openai_responses_request_translation_supports_builtin_and_custom_tool_descriptors() -> None:
     provider = _openai_provider("gpt-5-mini")
     strict_tool = Tool(

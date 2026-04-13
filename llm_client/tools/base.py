@@ -302,6 +302,24 @@ class ResponsesMCPTool:
     defer_loading: bool | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
+    def __post_init__(self) -> None:
+        has_server_url = bool(str(self.server_url or "").strip())
+        has_connector_id = bool(str(self.connector_id or "").strip())
+        if has_server_url == has_connector_id:
+            raise ValueError("Provide exactly one of `server_url` or `connector_id` for an MCP tool.")
+        if has_connector_id and self.server_description is not None:
+            raise ValueError("`server_description` is only supported for remote MCP server tools.")
+
+        rendered_headers = {str(key): str(value) for key, value in (self.headers or {}).items()}
+        authorization_header = next(
+            (value for key, value in rendered_headers.items() if key.lower() == "authorization"),
+            None,
+        )
+        if self.authorization is not None and authorization_header is not None:
+            raise ValueError("Provide either `authorization` or `headers.Authorization`, not both.")
+        if has_connector_id and authorization_header is not None:
+            raise ValueError("Connector MCP tools must not send `headers.Authorization`; use `authorization` instead.")
+
     def to_dict(self) -> dict[str, Any]:
         payload: dict[str, Any] = {"type": "mcp"}
         if self.server_label:

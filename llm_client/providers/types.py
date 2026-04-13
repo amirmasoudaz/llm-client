@@ -970,6 +970,36 @@ class RealtimeResponseOutput:
         }
 
 
+@dataclass
+class RealtimeMCPToolListingResult:
+    """Result of waiting for a realtime MCP tool listing lifecycle event."""
+
+    server_label: str | None = None
+    status: str | None = None
+    tools: list[str] = field(default_factory=list)
+    item_id: str | None = None
+    event_type: str | None = None
+    error: str | None = None
+    details: dict[str, Any] = field(default_factory=dict)
+    final_event: RealtimeEventResult | None = None
+
+    @property
+    def ok(self) -> bool:
+        return bool(self.status) and str(self.status) not in {"failed", "error"}
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "server_label": self.server_label,
+            "status": self.status,
+            "tools": list(self.tools),
+            "item_id": self.item_id,
+            "event_type": self.event_type,
+            "error": self.error,
+            "details": dict(self.details),
+            "final_event": self.final_event.to_dict() if self.final_event is not None else None,
+        }
+
+
 class RealtimeConnection:
     """Stable wrapper around a provider realtime connection."""
 
@@ -1048,6 +1078,63 @@ class RealtimeConnection:
             raw_event=event,
         )
 
+    @staticmethod
+    def _serialize_tool_definition(tool: Any) -> dict[str, Any]:
+        if hasattr(tool, "to_dict"):
+            serialized = tool.to_dict()
+        elif hasattr(tool, "model_dump"):
+            serialized = tool.model_dump()
+        elif hasattr(tool, "dict"):
+            serialized = tool.dict()
+        else:
+            serialized = dict(tool)
+        return dict(serialized)
+
+    @classmethod
+    def _render_realtime_tools(cls, tools: Sequence[Any]) -> list[dict[str, Any]]:
+        rendered = [cls._serialize_tool_definition(tool) for tool in tools]
+        seen_server_labels: set[str] = set()
+        for tool in rendered:
+            if str(tool.get("type") or "") != "mcp":
+                continue
+            server_url = str(tool.get("server_url") or "").strip()
+            connector_id = str(tool.get("connector_id") or "").strip()
+            if bool(server_url) == bool(connector_id):
+                raise ValueError("Realtime MCP tools require exactly one of `server_url` or `connector_id`.")
+            server_label = str(tool.get("server_label") or "").strip()
+            if server_label:
+                if server_label in seen_server_labels:
+                    raise ValueError("Realtime MCP tools must not reuse the same `server_label` in one tools array.")
+                seen_server_labels.add(server_label)
+            headers = (
+                {str(key): str(value) for key, value in tool.get("headers", {}).items()}
+                if isinstance(tool.get("headers"), dict)
+                else {}
+            )
+            has_auth_header = any(key.lower() == "authorization" for key in headers)
+            if tool.get("authorization") is not None and has_auth_header:
+                raise ValueError("Provide either `authorization` or `headers.Authorization`, not both.")
+            if connector_id and has_auth_header:
+                raise ValueError("Connector MCP tools must not send `headers.Authorization`; use `authorization` instead.")
+        return rendered
+
+    @staticmethod
+    def _extract_mcp_tool_names(tools: Any) -> list[str]:
+        if not isinstance(tools, list):
+            return []
+        names: list[str] = []
+        for tool in tools:
+            if isinstance(tool, str):
+                if tool.strip():
+                    names.append(tool)
+                continue
+            if not isinstance(tool, dict):
+                continue
+            name = str(tool.get("name") or tool.get("title") or "").strip()
+            if name:
+                names.append(name)
+        return names
+
     async def send(self, event: Any) -> None:
         result = self._connection.send(event)
         if hasattr(result, "__await__"):
@@ -1058,6 +1145,17 @@ class RealtimeConnection:
         if event_id:
             payload["event_id"] = event_id
         await self.send(payload)
+
+    async def update_session_tools(
+        self,
+        tools: Sequence[Any],
+        *,
+        session: dict[str, Any] | None = None,
+        event_id: str | None = None,
+    ) -> None:
+        payload = dict(session or {})
+        payload["tools"] = self._render_realtime_tools(tools)
+        await self.update_session(payload, event_id=event_id)
 
     async def disable_vad(
         self,
@@ -1081,6 +1179,17 @@ class RealtimeConnection:
         if event_id:
             payload["event_id"] = event_id
         await self.send(payload)
+
+    async def create_response_with_tools(
+        self,
+        tools: Sequence[Any],
+        response: dict[str, Any] | None = None,
+        *,
+        event_id: str | None = None,
+    ) -> None:
+        payload = dict(response or {})
+        payload["tools"] = self._render_realtime_tools(tools)
+        await self.create_response(payload, event_id=event_id)
 
     async def create_text_message(
         self,
@@ -1116,6 +1225,24 @@ class RealtimeConnection:
         if event_id:
             payload["event_id"] = event_id
         await self.send(payload)
+
+    async def create_mcp_approval_response(
+        self,
+        approval_request_id: str,
+        approve: bool,
+        *,
+        previous_item_id: str | None = None,
+        event_id: str | None = None,
+    ) -> None:
+        await self.create_conversation_item(
+            {
+                "type": "mcp_approval_response",
+                "approval_request_id": approval_request_id,
+                "approve": bool(approve),
+            },
+            previous_item_id=previous_item_id,
+            event_id=event_id,
+        )
 
     async def retrieve_conversation_item(
         self,
@@ -1275,6 +1402,56 @@ class RealtimeConnection:
                 event = await self.recv_event()
                 if str(event.event_type or "") in expected:
                     return event
+
+        if timeout is None:
+            return await _wait()
+        return await asyncio.wait_for(_wait(), timeout=timeout)
+
+    async def wait_for_mcp_tool_listing(
+        self,
+        *,
+        server_label: str | None = None,
+        timeout: float | None = None,
+    ) -> RealtimeMCPToolListingResult:
+        expected_label = str(server_label or "").strip() or None
+
+        async def _wait() -> RealtimeMCPToolListingResult:
+            while True:
+                event = await self.recv_event()
+                event_type = str(event.event_type or "")
+                item = dict(event.item or {}) if isinstance(event.item, dict) else {}
+                item_type = str(item.get("type") or "")
+                item_label = str(item.get("server_label") or event.details.get("server_label") or "").strip() or None
+                if expected_label is not None and item_label != expected_label:
+                    continue
+
+                if event_type == "conversation.item.done" and item_type == "mcp_list_tools":
+                    return RealtimeMCPToolListingResult(
+                        server_label=item_label,
+                        status=str(item.get("status") or event.status or "completed"),
+                        tools=self._extract_mcp_tool_names(item.get("tools")),
+                        item_id=event.item_id or str(item.get("id") or "") or None,
+                        event_type=event_type,
+                        details={k: v for k, v in item.items() if k not in {"type", "status", "tools", "server_label", "id"}},
+                        final_event=event,
+                    )
+
+                if event_type == "mcp_list_tools.failed":
+                    error = event.details.get("error")
+                    if isinstance(error, dict):
+                        error = error.get("message") or error.get("code") or json.dumps(error)
+                    elif error is not None and not isinstance(error, str):
+                        error = str(error)
+                    return RealtimeMCPToolListingResult(
+                        server_label=item_label,
+                        status=event.status or "failed",
+                        tools=[],
+                        item_id=event.item_id,
+                        event_type=event_type,
+                        error=error or None,
+                        details=dict(event.details),
+                        final_event=event,
+                    )
 
         if timeout is None:
             return await _wait()
@@ -1705,6 +1882,7 @@ __all__ = [
     "RealtimeCallResult",
     "RealtimeTranscriptionSessionResult",
     "RealtimeEventResult",
+    "RealtimeMCPToolListingResult",
     "RealtimeResponseOutput",
     "RealtimeConnection",
     "WebhookEventResult",

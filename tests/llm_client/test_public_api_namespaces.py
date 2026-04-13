@@ -74,6 +74,7 @@ from llm_client.types import (
     RealtimeConnection,
     RealtimeClientSecretResult,
     RealtimeEventResult,
+    RealtimeMCPToolListingResult,
     RealtimeResponseOutput,
     RealtimeTranscriptionSessionResult,
     RequestContext,
@@ -135,6 +136,7 @@ def test_types_namespace_exports_shared_request_and_result_types() -> None:
     realtime_transcription = RealtimeTranscriptionSessionResult(value="tx_secret_1")
     realtime_call = RealtimeCallResult(call_id="rtc_1", action="create")
     realtime_event = RealtimeEventResult(event_type="conversation.item.added", event_id="evt_1")
+    realtime_mcp_listing = RealtimeMCPToolListingResult(server_label="Docs", status="completed")
     realtime_output = RealtimeResponseOutput(response_id="resp_1", text="hello")
     realtime_connection = RealtimeConnection(connection=object(), model="gpt-realtime", call_id="rtc_1")
     webhook = WebhookEventResult(event_id="wh_1", event_type="realtime.call.incoming", data={"call_id": "rtc_1"})
@@ -174,6 +176,7 @@ def test_types_namespace_exports_shared_request_and_result_types() -> None:
     assert realtime_transcription.value == "tx_secret_1"
     assert realtime_call.call_id == "rtc_1"
     assert realtime_event.event_type == "conversation.item.added"
+    assert realtime_mcp_listing.status == "completed"
     assert realtime_output.response_id == "resp_1"
     assert realtime_connection.call_id == "rtc_1"
     assert webhook.event_type == "realtime.call.incoming"
@@ -278,6 +281,7 @@ def test_public_modules_define_explicit_all_contracts() -> None:
     assert "OpenAIProvider" in providers.__all__
     assert "ToolRegistry" in tools.__all__
     assert "RequestContext" in types.__all__
+    assert "RealtimeMCPToolListingResult" in types.__all__
     assert "RealtimeResponseOutput" in types.__all__
     assert "RuntimeEvent" in observability.__all__
     assert "ValidationError" in validation.__all__

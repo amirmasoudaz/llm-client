@@ -6,14 +6,22 @@ from types import SimpleNamespace
 import pytest
 
 from llm_client.providers.openai import OpenAIProvider
-from llm_client.providers.types import RealtimeConnection, RealtimeResponseOutput, UploadPartResource, UploadResource
+from llm_client.providers.types import (
+    RealtimeConnection,
+    RealtimeMCPToolListingResult,
+    RealtimeResponseOutput,
+    UploadPartResource,
+    UploadResource,
+)
 from llm_client.tools import (
     ResponsesAttributeFilter,
     ResponsesChunkingStrategy,
+    ResponsesConnectorId,
     ResponsesExpirationPolicy,
     ResponsesFileSearchHybridWeights,
     ResponsesFileSearchRankingOptions,
     ResponsesGmailTool,
+    ResponsesGoogleCalendarTool,
     ResponsesMCPTool,
     ResponsesVectorStoreFileSpec,
 )
@@ -884,6 +892,122 @@ async def test_realtime_connection_audio_turn_helpers_and_output_collection() ->
     ]
     assert collected.final_event is not None
     assert collected.final_event.event_type == "response.done"
+
+
+@pytest.mark.asyncio
+async def test_realtime_connection_mcp_helpers_and_listing_wait() -> None:
+    realtime_connection = _FakeRealtimeConnection(
+        recv_events=[
+            SimpleNamespace(
+                to_dict=lambda: {
+                    "type": "conversation.item.done",
+                    "item_id": "item_mcp_tools",
+                    "item": {
+                        "id": "item_mcp_tools",
+                        "type": "mcp_list_tools",
+                        "server_label": "Docs",
+                        "status": "completed",
+                        "tools": [{"name": "search_docs"}, {"name": "read_page"}],
+                    },
+                }
+            ),
+        ]
+    )
+    connection = RealtimeConnection(realtime_connection, model="gpt-realtime")
+    remote_tool = ResponsesMCPTool.remote_server(
+        "https://mcp.example.com",
+        server_label="Docs",
+        authorization="Bearer token",
+        allowed_tools=("search_docs",),
+    )
+    connector_tool = ResponsesMCPTool.connector(
+        ResponsesConnectorId.GOOGLE_CALENDAR,
+        server_label="Calendar",
+        authorization="Bearer oauth-token",
+        allowed_tools=(ResponsesGoogleCalendarTool.SEARCH_EVENTS.value,),
+    )
+
+    await connection.update_session_tools(
+        [remote_tool],
+        session={"modalities": ["text"]},
+        event_id="evt_session_tools",
+    )
+    await connection.create_response_with_tools(
+        [connector_tool],
+        {"modalities": ["text"]},
+        event_id="evt_response_tools",
+    )
+    await connection.create_mcp_approval_response(
+        "approval_1",
+        True,
+        previous_item_id="item_prev",
+        event_id="evt_approval",
+    )
+    listing = await connection.wait_for_mcp_tool_listing(server_label="Docs", timeout=1.0)
+
+    assert realtime_connection.sent == [
+        {
+            "type": "session.update",
+            "session": {
+                "modalities": ["text"],
+                "tools": [
+                    {
+                        "type": "mcp",
+                        "server_label": "Docs",
+                        "server_url": "https://mcp.example.com",
+                        "authorization": "Bearer token",
+                        "allowed_tools": ["search_docs"],
+                    }
+                ],
+            },
+            "event_id": "evt_session_tools",
+        },
+        {
+            "type": "response.create",
+            "response": {
+                "modalities": ["text"],
+                "tools": [
+                    {
+                        "type": "mcp",
+                        "server_label": "Calendar",
+                        "connector_id": "connector_googlecalendar",
+                        "authorization": "Bearer oauth-token",
+                        "allowed_tools": ["search_events"],
+                    }
+                ],
+            },
+            "event_id": "evt_response_tools",
+        },
+        {
+            "type": "conversation.item.create",
+            "item": {
+                "type": "mcp_approval_response",
+                "approval_request_id": "approval_1",
+                "approve": True,
+            },
+            "previous_item_id": "item_prev",
+            "event_id": "evt_approval",
+        },
+    ]
+    assert isinstance(listing, RealtimeMCPToolListingResult)
+    assert listing.ok is True
+    assert listing.server_label == "Docs"
+    assert listing.tools == ["search_docs", "read_page"]
+    assert listing.item_id == "item_mcp_tools"
+    assert listing.event_type == "conversation.item.done"
+
+
+@pytest.mark.asyncio
+async def test_realtime_connection_rejects_duplicate_mcp_server_labels() -> None:
+    connection = RealtimeConnection(SimpleNamespace(send=lambda event: event))
+
+    with pytest.raises(ValueError, match="server_label"):
+        await connection.update_session_tools(
+            [
+                ResponsesMCPTool.remote_server("https://mcp.example.com/1", server_label="Docs"),
+                ResponsesMCPTool.remote_server("https://mcp.example.com/2", server_label="Docs"),
+            ]
+        )
 
 
 @pytest.mark.asyncio
