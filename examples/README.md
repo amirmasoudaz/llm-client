@@ -96,6 +96,10 @@ promoted into that default ring, and can be run directly by filename.
   continuation
 - `55_openai_uploads_api.py`: OpenAI Uploads API lifecycle with create, part
   upload, completion, cancellation, and chunked-upload helper coverage
+- `56_openai_realtime_output_collection.py`: realtime text-turn output
+  collection via `collect_response_output(...)`
+- `57_openai_realtime_push_to_talk.py`: optional realtime push-to-talk helper
+  flow with `disable_vad(...)` and `send_audio_turn(...)`
 
 ## Combined / Application-Shaped Examples
 
@@ -181,6 +185,10 @@ promoted into that default ring, and can be run directly by filename.
     definition
 - Example `53` reuses `LLM_CLIENT_EXAMPLE_REALTIME_MODEL`.
 - Example `54` reuses `LLM_CLIENT_EXAMPLE_OPENAI_TOOLS_MODEL`.
+- Example `55` reuses `LLM_CLIENT_EXAMPLE_UPLOAD_FILE_PATH`.
+- Example `56` reuses `LLM_CLIENT_EXAMPLE_REALTIME_MODEL`.
+- Example `57` reuses `LLM_CLIENT_EXAMPLE_REALTIME_MODEL` and expects
+  `LLM_CLIENT_EXAMPLE_REALTIME_AUDIO_PATH`.
 - You can switch providers with:
   - `LLM_CLIENT_EXAMPLE_PROVIDER=openai|anthropic|google`
   - `LLM_CLIENT_EXAMPLE_MODEL=...`

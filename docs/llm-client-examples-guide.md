@@ -102,6 +102,11 @@ These demonstrate stable package capabilities directly:
 - `46` OpenAI realtime connection wrapper
 - `47` OpenAI vector-store file batches
 - `48` OpenAI deep-research clarify/rewrite kickoff
+- `53` OpenAI realtime conversation lifecycle
+- `54` OpenAI `tool_search` and namespaces
+- `55` OpenAI Uploads API lifecycle
+- `56` OpenAI realtime output collection
+- `57` OpenAI realtime push-to-talk helper flow
 - `49` OpenAI realtime transcription session
 - `50` OpenAI MCP and connector workflows
 - `51` OpenAI staged deep research orchestration
@@ -161,6 +166,8 @@ Typical failure classes:
 - provider quota/rate limits
 - large-upload examples may also fail on provider-side file-purpose or MIME
   validation if the local file does not match the configured purpose
+- realtime audio-turn examples may also skip or fail fast when no compatible
+  local audio file is configured or the websocket session cannot be established
 
 These failures should be treated differently from package regressions.
 
