@@ -284,6 +284,11 @@ Use those helpers when you need the documented multipart upload flow that ends
 in a regular OpenAI file object later consumed by vector stores, file search,
 or other hosted workflows.
 
+`create_vector_store_and_poll(...)` now also accepts typed `files=[...]`
+entries using `ResponsesVectorStoreFileSpec`, so the engine/provider workflow
+can provision a fresh vector store, attach per-file metadata/chunking settings,
+and wait until ingestion is complete in one call.
+
 On the Realtime side, `RealtimeConnection` now also exposes higher-level
 conversation helpers for `create_text_message(...)`,
 `append_input_audio_chunks(...)`, `commit_audio_and_create_response(...)`,

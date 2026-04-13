@@ -100,6 +100,8 @@ promoted into that default ring, and can be run directly by filename.
   collection via `collect_response_output(...)`
 - `57_openai_realtime_push_to_talk.py`: optional realtime push-to-talk helper
   flow with `disable_vad(...)` and `send_audio_turn(...)`
+- `58_openai_vector_store_provisioning.py`: create a vector store, attach typed
+  file specs, wait for ingestion, and run a hosted search
 
 ## Combined / Application-Shaped Examples
 
@@ -189,6 +191,8 @@ promoted into that default ring, and can be run directly by filename.
 - Example `56` reuses `LLM_CLIENT_EXAMPLE_REALTIME_MODEL`.
 - Example `57` reuses `LLM_CLIENT_EXAMPLE_REALTIME_MODEL` and expects
   `LLM_CLIENT_EXAMPLE_REALTIME_AUDIO_PATH`.
+- Example `58` reuses `LLM_CLIENT_EXAMPLE_UPLOAD_FILE_PATH` and optionally
+  `LLM_CLIENT_EXAMPLE_KEEP_VECTOR_STORE=0|1`.
 - You can switch providers with:
   - `LLM_CLIENT_EXAMPLE_PROVIDER=openai|anthropic|google`
   - `LLM_CLIENT_EXAMPLE_MODEL=...`

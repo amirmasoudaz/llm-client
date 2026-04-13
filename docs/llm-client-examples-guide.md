@@ -107,6 +107,7 @@ These demonstrate stable package capabilities directly:
 - `55` OpenAI Uploads API lifecycle
 - `56` OpenAI realtime output collection
 - `57` OpenAI realtime push-to-talk helper flow
+- `58` OpenAI vector-store provisioning
 - `49` OpenAI realtime transcription session
 - `50` OpenAI MCP and connector workflows
 - `51` OpenAI staged deep research orchestration
