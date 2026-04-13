@@ -160,6 +160,7 @@ coverage/
 logs
 artifacts/
 tmp/
+.specstory/
 
 backend/.venv/
 *.pyc
