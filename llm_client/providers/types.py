@@ -938,6 +938,38 @@ class RealtimeEventResult:
         }
 
 
+@dataclass
+class RealtimeResponseOutput:
+    """Collected output from a realtime response event stream."""
+
+    response_id: str | None = None
+    text: str = ""
+    transcript: str = ""
+    audio: bytes = b""
+    status: str | None = None
+    item_ids: list[str] = field(default_factory=list)
+    event_types: list[str] = field(default_factory=list)
+    final_event: RealtimeEventResult | None = None
+    raw_events: list[RealtimeEventResult] = field(default_factory=list, repr=False)
+
+    @property
+    def ok(self) -> bool:
+        return bool(self.response_id or self.final_event)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "response_id": self.response_id,
+            "text": self.text,
+            "transcript": self.transcript,
+            "audio_b64": base64.b64encode(self.audio).decode("ascii") if self.audio else None,
+            "audio_bytes": len(self.audio),
+            "status": self.status,
+            "item_ids": list(self.item_ids),
+            "event_types": list(self.event_types),
+            "final_event": self.final_event.to_dict() if self.final_event is not None else None,
+        }
+
+
 class RealtimeConnection:
     """Stable wrapper around a provider realtime connection."""
 
@@ -1026,6 +1058,16 @@ class RealtimeConnection:
         if event_id:
             payload["event_id"] = event_id
         await self.send(payload)
+
+    async def disable_vad(
+        self,
+        *,
+        session: dict[str, Any] | None = None,
+        event_id: str | None = None,
+    ) -> None:
+        payload = dict(session or {})
+        payload["turn_detection"] = None
+        await self.update_session(payload, event_id=event_id)
 
     async def create_response(
         self,
@@ -1171,6 +1213,34 @@ class RealtimeConnection:
         await self.commit_input_audio(event_id=commit_event_id)
         await self.create_response(response, event_id=response_event_id)
 
+    async def send_audio_turn(
+        self,
+        audio_chunks: Sequence[bytes],
+        response: dict[str, Any] | None = None,
+        *,
+        clear_input: bool = False,
+        clear_output: bool = False,
+        cancel_response_id: str | None = None,
+        clear_input_event_id: str | None = None,
+        clear_output_event_id: str | None = None,
+        cancel_event_id: str | None = None,
+        append_event_ids: Sequence[str | None] | None = None,
+        commit_event_id: str | None = None,
+        response_event_id: str | None = None,
+    ) -> None:
+        if clear_input:
+            await self.clear_input_audio(event_id=clear_input_event_id)
+        if cancel_response_id is not None:
+            await self.cancel_response(response_id=cancel_response_id, event_id=cancel_event_id)
+        if clear_output:
+            await self.clear_output_audio(event_id=clear_output_event_id)
+        await self.append_input_audio_chunks(audio_chunks, event_ids=append_event_ids)
+        await self.commit_audio_and_create_response(
+            response,
+            commit_event_id=commit_event_id,
+            response_event_id=response_event_id,
+        )
+
     async def clear_input_audio(self, *, event_id: str | None = None) -> None:
         payload: dict[str, Any] = {"type": "input_audio_buffer.clear"}
         if event_id:
@@ -1209,6 +1279,51 @@ class RealtimeConnection:
         if timeout is None:
             return await _wait()
         return await asyncio.wait_for(_wait(), timeout=timeout)
+
+    async def collect_response_output(
+        self,
+        *,
+        response_id: str | None = None,
+        timeout: float | None = None,
+        decode_audio: bool = True,
+    ) -> RealtimeResponseOutput:
+        terminal_types = {"response.done", "response.cancelled", "response.failed"}
+
+        async def _collect() -> RealtimeResponseOutput:
+            collected = RealtimeResponseOutput(response_id=response_id)
+            while True:
+                event = await self.recv_event()
+                event_type = str(event.event_type or "")
+                event_response_id = event.response_id
+                if response_id is not None and event_response_id != response_id:
+                    continue
+
+                collected.raw_events.append(event)
+                if event_response_id and not collected.response_id:
+                    collected.response_id = event_response_id
+                if event.item_id and event.item_id not in collected.item_ids:
+                    collected.item_ids.append(event.item_id)
+                if event_type:
+                    collected.event_types.append(event_type)
+
+                if event_type == "response.output_text.delta" and event.delta:
+                    collected.text += event.delta
+                elif event_type == "response.output_audio_transcript.delta" and event.transcript:
+                    collected.transcript += event.transcript
+                elif event_type == "response.output_audio.delta" and event.delta and decode_audio:
+                    try:
+                        collected.audio += base64.b64decode(event.delta)
+                    except Exception:
+                        pass
+
+                if event_type in terminal_types:
+                    collected.status = event.status or event_type.removeprefix("response.")
+                    collected.final_event = event
+                    return collected
+
+        if timeout is None:
+            return await _collect()
+        return await asyncio.wait_for(_collect(), timeout=timeout)
 
     async def recv_raw(self) -> Any:
         result = self._connection.recv()
@@ -1590,6 +1705,7 @@ __all__ = [
     "RealtimeCallResult",
     "RealtimeTranscriptionSessionResult",
     "RealtimeEventResult",
+    "RealtimeResponseOutput",
     "RealtimeConnection",
     "WebhookEventResult",
     "FileResource",

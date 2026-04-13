@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import base64
 from types import SimpleNamespace
 
 import pytest
 
 from llm_client.providers.openai import OpenAIProvider
-from llm_client.providers.types import RealtimeConnection, UploadPartResource, UploadResource
+from llm_client.providers.types import RealtimeConnection, RealtimeResponseOutput, UploadPartResource, UploadResource
 from llm_client.tools import (
     ResponsesAttributeFilter,
     ResponsesChunkingStrategy,
@@ -732,6 +733,106 @@ async def test_realtime_connection_rejects_mismatched_audio_chunk_event_ids() ->
 
     with pytest.raises(ValueError, match="event_ids"):
         await connection.append_input_audio_chunks([b"a", b"b"], event_ids=["evt_1"])
+
+
+@pytest.mark.asyncio
+async def test_realtime_connection_audio_turn_helpers_and_output_collection() -> None:
+    realtime_connection = _FakeRealtimeConnection(
+        recv_events=[
+            SimpleNamespace(to_dict=lambda: {"type": "response.created", "response_id": "resp_2"}),
+            SimpleNamespace(
+                to_dict=lambda: {
+                    "type": "response.output_text.delta",
+                    "response_id": "resp_2",
+                    "item_id": "item_10",
+                    "delta": "Hello ",
+                }
+            ),
+            SimpleNamespace(
+                to_dict=lambda: {
+                    "type": "response.output_text.delta",
+                    "response_id": "resp_2",
+                    "item_id": "item_10",
+                    "delta": "world",
+                }
+            ),
+            SimpleNamespace(
+                to_dict=lambda: {
+                    "type": "response.output_audio_transcript.delta",
+                    "response_id": "resp_2",
+                    "item_id": "item_10",
+                    "transcript": "spoken words",
+                }
+            ),
+            SimpleNamespace(
+                to_dict=lambda: {
+                    "type": "response.output_audio.delta",
+                    "response_id": "resp_2",
+                    "item_id": "item_10",
+                    "delta": base64.b64encode(b"audio-bytes").decode("ascii"),
+                }
+            ),
+            SimpleNamespace(
+                to_dict=lambda: {
+                    "type": "response.done",
+                    "event_id": "evt_done",
+                    "response_id": "resp_2",
+                    "status": "completed",
+                }
+            ),
+        ]
+    )
+    connection = RealtimeConnection(realtime_connection, model="gpt-realtime")
+
+    await connection.disable_vad(
+        session={"modalities": ["audio", "text"]},
+        event_id="evt_disable_vad",
+    )
+    await connection.send_audio_turn(
+        [b"ab", b"cd"],
+        {"modalities": ["audio", "text"]},
+        clear_input=True,
+        clear_output=True,
+        cancel_response_id="resp_prev",
+        clear_input_event_id="evt_clear_input",
+        clear_output_event_id="evt_clear_output",
+        cancel_event_id="evt_cancel",
+        append_event_ids=["evt_append_1", "evt_append_2"],
+        commit_event_id="evt_commit",
+        response_event_id="evt_response",
+    )
+    collected = await connection.collect_response_output(timeout=1.0)
+
+    assert realtime_connection.sent == [
+        {
+            "type": "session.update",
+            "session": {"modalities": ["audio", "text"], "turn_detection": None},
+            "event_id": "evt_disable_vad",
+        },
+        {"type": "input_audio_buffer.clear", "event_id": "evt_clear_input"},
+        {"type": "response.cancel", "response_id": "resp_prev", "event_id": "evt_cancel"},
+        {"type": "output_audio_buffer.clear", "event_id": "evt_clear_output"},
+        {"type": "input_audio_buffer.append", "audio": "YWI=", "event_id": "evt_append_1"},
+        {"type": "input_audio_buffer.append", "audio": "Y2Q=", "event_id": "evt_append_2"},
+        {"type": "input_audio_buffer.commit", "event_id": "evt_commit"},
+        {"type": "response.create", "response": {"modalities": ["audio", "text"]}, "event_id": "evt_response"},
+    ]
+    assert collected.response_id == "resp_2"
+    assert collected.text == "Hello world"
+    assert collected.transcript == "spoken words"
+    assert collected.audio == b"audio-bytes"
+    assert collected.status == "completed"
+    assert collected.item_ids == ["item_10"]
+    assert collected.event_types == [
+        "response.created",
+        "response.output_text.delta",
+        "response.output_text.delta",
+        "response.output_audio_transcript.delta",
+        "response.output_audio.delta",
+        "response.done",
+    ]
+    assert collected.final_event is not None
+    assert collected.final_event.event_type == "response.done"
 
 
 @pytest.mark.asyncio
