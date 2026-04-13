@@ -102,6 +102,8 @@ promoted into that default ring, and can be run directly by filename.
   flow with `disable_vad(...)` and `send_audio_turn(...)`
 - `58_openai_vector_store_provisioning.py`: create a vector store, attach typed
   file specs, wait for ingestion, and run a hosted search
+- `59_openai_realtime_mcp_lifecycle.py`: realtime MCP session-tool injection
+  and `mcp_list_tools` lifecycle waiting
 
 ## Combined / Application-Shaped Examples
 
@@ -193,6 +195,11 @@ promoted into that default ring, and can be run directly by filename.
   `LLM_CLIENT_EXAMPLE_REALTIME_AUDIO_PATH`.
 - Example `58` reuses `LLM_CLIENT_EXAMPLE_UPLOAD_FILE_PATH` and optionally
   `LLM_CLIENT_EXAMPLE_KEEP_VECTOR_STORE=0|1`.
+- Example `59` reuses `LLM_CLIENT_EXAMPLE_REALTIME_MODEL`,
+  `LLM_CLIENT_EXAMPLE_MCP_SERVER_URL`,
+  `LLM_CLIENT_EXAMPLE_MCP_SERVER_LABEL`,
+  `LLM_CLIENT_EXAMPLE_MCP_AUTHORIZATION`, and optionally
+  `LLM_CLIENT_EXAMPLE_MCP_REQUIRE_APPROVAL`.
 - You can switch providers with:
   - `LLM_CLIENT_EXAMPLE_PROVIDER=openai|anthropic|google`
   - `LLM_CLIENT_EXAMPLE_MODEL=...`

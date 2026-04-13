@@ -74,7 +74,7 @@ Use for:
 - `FileResource`, `FilesPage`, `FileContentResult`, `UploadResource`, `UploadPartResource`
 - `VectorStoreResource`, `VectorStoresPage`, `VectorStoreSearchResult`, `VectorStoreFileResource`, `VectorStoreFilesPage`, `VectorStoreFileContentResult`, `VectorStoreFileBatchResource`
 - `FineTuningJobResult`, `FineTuningJobsPage`, `FineTuningJobEventsPage`
-- `RealtimeClientSecretResult`, `RealtimeTranscriptionSessionResult`, `RealtimeCallResult`, `RealtimeEventResult`, `RealtimeResponseOutput`, `RealtimeConnection`, `WebhookEventResult`
+- `RealtimeClientSecretResult`, `RealtimeTranscriptionSessionResult`, `RealtimeCallResult`, `RealtimeEventResult`, `RealtimeMCPToolListingResult`, `RealtimeResponseOutput`, `RealtimeConnection`, `WebhookEventResult`
 - `StreamEvent`, `StreamEventType`
 - `CancellationToken`, `CancelledError`
 

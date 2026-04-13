@@ -108,6 +108,7 @@ These demonstrate stable package capabilities directly:
 - `56` OpenAI realtime output collection
 - `57` OpenAI realtime push-to-talk helper flow
 - `58` OpenAI vector-store provisioning
+- `59` OpenAI realtime MCP lifecycle and tool-loading wait helper
 - `49` OpenAI realtime transcription session
 - `50` OpenAI MCP and connector workflows
 - `51` OpenAI staged deep research orchestration
@@ -203,7 +204,7 @@ For a new adopter:
 4. `38`, `39`, `40` if you plan to use OpenAI Responses lifecycle/state APIs
 5. `41`, `42`, `43` if you need reconnectable background streams, prompt
    caching controls, or context compaction
-6. `44`, `45`, `46`, `47`, `48`, `49`, `50`, `51`, `53`, `54` if you plan to orchestrate
+6. `44`, `45`, `46`, `47`, `48`, `49`, `50`, `51`, `53`, `54`, `59` if you plan to orchestrate
    stored OpenAI workflows, realtime product surfaces, or hosted-tool
    workflows at the engine layer
 7. `36`, `37` if you plan to expose controlled service access through tools

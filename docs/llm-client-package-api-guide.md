@@ -92,6 +92,7 @@ Provider-level outputs are:
 - `RealtimeClientSecretResult`
 - `RealtimeCallResult`
 - `RealtimeEventResult`
+- `RealtimeMCPToolListingResult`
 - `RealtimeResponseOutput`
 - `RealtimeConnection`
 - `WebhookEventResult`
@@ -162,9 +163,12 @@ Use it when:
 `RealtimeConnection` now also exposes first-class lifecycle helpers for
 `conversation.item.retrieve`, `conversation.item.delete`,
 `conversation.item.truncate`, `response.cancel`, `disable_vad(...)`,
-`send_audio_turn(...)`, and typed receive-side helpers through
-`RealtimeEventResult`, `RealtimeResponseOutput`, `recv_event()`,
-`recv_until_type(...)`, and `collect_response_output(...)`.
+`send_audio_turn(...)`, `update_session_tools(...)`,
+`create_response_with_tools(...)`, realtime `mcp_approval_response`
+creation, and typed receive-side helpers through `RealtimeEventResult`,
+`RealtimeMCPToolListingResult`, `RealtimeResponseOutput`, `recv_event()`,
+`recv_until_type(...)`, `wait_for_mcp_tool_listing(...)`, and
+`collect_response_output(...)`.
 
 ### Agent
 
@@ -292,8 +296,9 @@ and wait until ingestion is complete in one call.
 On the Realtime side, `RealtimeConnection` now also exposes higher-level
 conversation helpers for `create_text_message(...)`,
 `append_input_audio_chunks(...)`, `commit_audio_and_create_response(...)`,
-`disable_vad(...)`, `send_audio_turn(...)`, and
-`collect_response_output(...)` on top of the lower-level
+`disable_vad(...)`, `send_audio_turn(...)`, `update_session_tools(...)`,
+`create_response_with_tools(...)`, `create_mcp_approval_response(...)`,
+`wait_for_mcp_tool_listing(...)`, and `collect_response_output(...)` on top of the lower-level
 `create_conversation_item(...)`, `append_input_audio(...)`,
 `commit_input_audio(...)`, `create_response(...)`, and raw event consumption.
 Use the higher-level helpers when you want the cookbook-style WebSocket
