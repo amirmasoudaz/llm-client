@@ -1,6 +1,6 @@
 # OpenAI Provider Capability Audit
 
-Last updated: 2026-04-08
+Last updated: 2026-04-16
 
 This document tracks how `llm_client`'s OpenAI provider aligns with the local scraped OpenAI docs index exposed by the docs API container.
 
@@ -14,6 +14,7 @@ Refresh findings:
 - the official docs MCP confirmed the `tool_search` and namespace work completed earlier on this branch, and the next missing hosted-tool gap was output-side continuation helpers for `shell` and `apply_patch`
 - the official Realtime conversations guidance now explicitly enumerates `conversation.item.added` and `conversation.item.done`, confirming the current Realtime base is useful but still narrower than the latest documented event surface
 - the official retrieval/file-search guidance now explicitly calls out vector-store-file `attributes` and `attribute_filter`-based filtering, which reframes the remaining retrieval gap as ergonomics and first-class workflow support rather than missing vector-store CRUD
+- the official model pages and pricing docs now expose the GPT-5.4 family as the current flagship OpenAI reasoning line, and the package model registry has been expanded accordingly with `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.4-nano`, and `gpt-5.4-pro`
 
 ## Canonical sources
 
@@ -76,6 +77,7 @@ This pass used the docs index as the source-of-truth inventory and then ran a bi
 - Responses function tools now default to `strict=True` unless the caller explicitly overrides that field.
 - OpenAI Responses tool validation now fails early when built-in/custom Responses descriptors are used on the chat-completions path or with non-OpenAI providers.
 - The model catalog and provider registry now expose explicit Responses-first capability flags for OpenAI completions models and the OpenAI provider surface.
+- The model catalog and provider registry now include the GPT-5.4 family with official snapshot ids, context windows, reasoning-effort ranges, and current pricing/rate-limit metadata from the OpenAI model pages.
 - OpenAI provider and engine workflows now expose direct moderation, image generation/editing, speech-to-text, translation, text-to-speech, generic file upload/retrieve/content helpers, Uploads lifecycle helpers, hosted vector stores, vector-store files, and fine-tuning job APIs.
 - OpenAI provider and engine workflows now expose realtime websocket connection helpers, client-secret/call-control helpers, webhook verification/unwrapping, and vector-store file polling/batch helpers.
 - OpenAI provider and engine workflows now expose realtime transcription-session helpers plus hosted Responses workflow helpers for web search, file search, code interpreter, shell, apply-patch, computer-use, image generation, remote MCP, and connectors.
@@ -92,6 +94,7 @@ This pass used the docs index as the source-of-truth inventory and then ran a bi
 - MCP/connectors now have typed descriptors, typed connector allowlists, deferred loading for tool-search workflows, and helper workflows, but they still do not cover the full skills/connectors product surface from the docs.
 - Deep research now covers clarify/rewrite/kickoff/staged orchestration, but it is still not the full lifecycle/product surface from the docs.
 - The local docs API remains intermittently unavailable on `127.0.0.1:8000`; live re-audit should be treated as best-effort until `/health` and `/docs/index` stabilize consistently.
+- The package model registry is broader than before, but it is still not a full mirror of the entire OpenAI docs model corpus.
 
 ## Capability matrix
 

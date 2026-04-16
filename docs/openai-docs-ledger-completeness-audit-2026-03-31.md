@@ -1,6 +1,6 @@
 # OpenAI Docs-Ledger Completeness Audit
 
-Last updated: 2026-04-08
+Last updated: 2026-04-16
 
 This report audits `llm_client` against the local OpenAI docs ledger API running on `http://127.0.0.1:8000`, using only the `docs/` and `search/` endpoints as requested.
 
@@ -100,6 +100,7 @@ Relevant docs corpus cached from the ledger included:
 - typed MCP/connector descriptors with structured approval-policy support, typed connector allowlists, and deferred-loading support for tool search
 - deep-research clarify/rewrite helpers plus kickoff orchestration and a staged runner over Responses background mode
 - expanded OpenAI model registry coverage across newer GPT-4.1, GPT-5 chat/codex, o-series, image, audio, realtime, and deprecated compatibility families
+- expanded OpenAI model registry coverage now also includes the GPT-5.4 family (`gpt-5.4`, `gpt-5.4-mini`, `gpt-5.4-nano`, `gpt-5.4-pro`) with official snapshot ids, pricing, and rate-limit metadata from the current model pages
 - runnable cookbook coverage for realtime connection, realtime transcription, vector-store file batches, MCP/connector workflows, and deep-research kickoff/staged workflows
 
 `llm_client` does not implement the full OpenAI docs surface.
@@ -147,7 +148,7 @@ The biggest missing or incomplete areas are:
 | Agents | `guides/agents.md`, `guides/agents-sdk.md` | `llm_client.agent` package, generic tool runtime, engine | Partial | The package has its own agent layer, but it is not a full implementation of the OpenAI Agents SDK / AgentKit product surface. |
 | Realtime API | `guides/realtime.md`, `guides/realtime-server-controls.md`, `guides/realtime-transcription.md`, `guides/realtime-conversations.md`, `guides/realtime-mcp.md`, `api-reference.md` | `connect_realtime(...)`, `connect_realtime_transcription(...)`, realtime and realtime-transcription session helpers, call helpers, and `RealtimeConnection` lifecycle/event helpers in `llm_client/providers/openai.py`, `llm_client/providers/types.py`, and `llm_client/engine.py` | Partial | Stable websocket/session bootstrap, higher-level text/audio-turn helpers on `RealtimeConnection`, session/response-level MCP tool injection, realtime MCP approval-response creation, typed tool-loading wait helpers, conversation-item lifecycle helpers, typed receive-side event wrappers, and call controls are now wrapped, but the full Realtime product surface still extends beyond the current helper set. |
 | Deep Research | `guides/deep-research.md` | `clarify_deep_research_task(...)`, `rewrite_deep_research_prompt(...)`, `start_deep_research(...)`, and `run_deep_research(...)` in `llm_client/providers/openai.py` and `llm_client/engine.py` | Partial | Clarify, rewrite, kickoff, optional background wait, and typed MCP/connectors are implemented, but the broader deep-research lifecycle/product surface is still incomplete. |
-| Model registry | `models.md`, `index.md` models section | `llm_client/assets/model_catalog.json`, `llm_client/models.py`, `llm_client/model_catalog.py` | Partial | The registry now includes a much broader OpenAI set, including GPT-4.1, GPT-5 chat/codex variants, o-series reasoning families, image/audio/realtime families, and deprecated compatibility entries, but it still does not cover the full docs-ledger model corpus. |
+| Model registry | `models.md`, `index.md` models section | `llm_client/assets/model_catalog.json`, `llm_client/models.py`, `llm_client/model_catalog.py` | Partial | The registry now includes a much broader OpenAI set, including GPT-5.4, GPT-4.1, GPT-5 chat/codex variants, o-series reasoning families, image/audio/realtime families, and deprecated compatibility entries, but it still does not cover the full docs-ledger model corpus. |
 
 ### Missing
 
@@ -192,7 +193,7 @@ This means the package’s current OpenAI strengths are real:
 ### Evidence that the package is narrower than the docs corpus
 
 - The docs-ledger `index.md` includes guides and models for image generation, speech-to-text, text-to-speech, moderation, fine-tuning, realtime, deep research, and many more model families.
-- The OpenAI model registry in `llm_client/assets/model_catalog.json` now covers a much broader slice of the docs-ledger model corpus, but still not all documented families and variants.
+- The OpenAI model registry in `llm_client/assets/model_catalog.json` now covers a much broader slice of the docs-ledger model corpus, including the current GPT-5.4 family, but still not all documented families and variants.
 - `llm_client/providers/openai.py` still does not expose the full product family set from the docs, especially broader hosted file-search resources beyond the generic Files API/vector-store layers, fuller connector/skills product management, and several newer platform families.
 
 ### Evidence that some product families are only partial
