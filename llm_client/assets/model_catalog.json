@@ -1660,6 +1660,164 @@
       }
     },
     {
+      "key": "gpt-5.4",
+      "provider": "openai",
+      "model_name": "gpt-5.4-2026-03-05",
+      "category": "completions",
+      "context_window": 1050000,
+      "max_output": 128000,
+      "output_dimensions": null,
+      "encoding": "o200k_base",
+      "reasoning": true,
+      "reasoning_efforts": [
+        "none",
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ],
+      "default_reasoning_effort": "none",
+      "tool_calling": true,
+      "streaming": true,
+      "structured_outputs": true,
+      "responses_api": true,
+      "background_responses": true,
+      "responses_native_tools": true,
+      "normalized_output_items": true,
+      "vision_input": true,
+      "audio_input": false,
+      "file_input": true,
+      "deprecated": false,
+      "replacement": null,
+      "rate_limits": {
+        "tkn_per_min": 4000000,
+        "req_per_min": 10000
+      },
+      "usage_costs": {
+        "input": 2.5e-06,
+        "output": 1.5e-05,
+        "cached_input": 2.5e-07
+      }
+    },
+    {
+      "key": "gpt-5.4-mini",
+      "provider": "openai",
+      "model_name": "gpt-5.4-mini-2026-03-17",
+      "category": "completions",
+      "context_window": 400000,
+      "max_output": 128000,
+      "output_dimensions": null,
+      "encoding": "o200k_base",
+      "reasoning": true,
+      "reasoning_efforts": [
+        "none",
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ],
+      "default_reasoning_effort": null,
+      "tool_calling": true,
+      "streaming": true,
+      "structured_outputs": true,
+      "responses_api": true,
+      "background_responses": true,
+      "responses_native_tools": true,
+      "normalized_output_items": true,
+      "vision_input": true,
+      "audio_input": false,
+      "file_input": true,
+      "deprecated": false,
+      "replacement": null,
+      "rate_limits": {
+        "tkn_per_min": 10000000,
+        "req_per_min": 10000
+      },
+      "usage_costs": {
+        "input": 7.5e-07,
+        "output": 4.5e-06,
+        "cached_input": 7.5e-08
+      }
+    },
+    {
+      "key": "gpt-5.4-nano",
+      "provider": "openai",
+      "model_name": "gpt-5.4-nano-2026-03-17",
+      "category": "completions",
+      "context_window": 400000,
+      "max_output": 128000,
+      "output_dimensions": null,
+      "encoding": "o200k_base",
+      "reasoning": true,
+      "reasoning_efforts": [
+        "none",
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ],
+      "default_reasoning_effort": null,
+      "tool_calling": true,
+      "streaming": true,
+      "structured_outputs": true,
+      "responses_api": true,
+      "background_responses": true,
+      "responses_native_tools": true,
+      "normalized_output_items": true,
+      "vision_input": true,
+      "audio_input": false,
+      "file_input": true,
+      "deprecated": false,
+      "replacement": null,
+      "rate_limits": {
+        "tkn_per_min": 10000000,
+        "req_per_min": 10000
+      },
+      "usage_costs": {
+        "input": 2e-07,
+        "output": 1.25e-06,
+        "cached_input": 2e-08
+      }
+    },
+    {
+      "key": "gpt-5.4-pro",
+      "provider": "openai",
+      "model_name": "gpt-5.4-pro-2026-03-05",
+      "category": "completions",
+      "context_window": 1050000,
+      "max_output": 128000,
+      "output_dimensions": null,
+      "encoding": "o200k_base",
+      "reasoning": true,
+      "reasoning_efforts": [
+        "medium",
+        "high",
+        "xhigh"
+      ],
+      "default_reasoning_effort": null,
+      "tool_calling": true,
+      "streaming": true,
+      "structured_outputs": false,
+      "responses_api": true,
+      "background_responses": true,
+      "responses_native_tools": true,
+      "normalized_output_items": true,
+      "vision_input": true,
+      "audio_input": false,
+      "file_input": true,
+      "deprecated": false,
+      "replacement": null,
+      "rate_limits": {
+        "tkn_per_min": 2000000,
+        "req_per_min": 10000
+      },
+      "usage_costs": {
+        "input": 3e-05,
+        "output": 0.00018,
+        "cached_input": 0.0
+      }
+    },
+    {
       "key": "gpt-audio",
       "provider": "openai",
       "model_name": "gpt-audio",
