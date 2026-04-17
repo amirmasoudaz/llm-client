@@ -718,12 +718,27 @@ def _normalize_file_data(data: str | bytes) -> tuple[str, bytes]:
     if isinstance(data, bytes):
         return b64encode(data).decode("utf-8"), data
     encoded = str(data)
+    if encoded.startswith("data:") and ";base64," in encoded:
+        try:
+            _, base64_payload = encoded.split(";base64,", 1)
+            decoded = b64decode(base64_payload, validate=True)
+            return encoded, decoded
+        except Exception:
+            pass
     try:
         decoded = b64decode(encoded, validate=True)
         return encoded, decoded
     except Exception:
         raw = encoded.encode("utf-8")
         return b64encode(raw).decode("utf-8"), raw
+
+
+def _openai_file_data_uri(block: FileBlock) -> str:
+    data = block.data or ""
+    if data.startswith("data:"):
+        return data
+    mime_type = block.mime_type or "application/octet-stream"
+    return f"data:{mime_type};base64,{data}"
 
 
 def prepare_file_block(block: FileBlock) -> FileBlock:
@@ -820,7 +835,13 @@ def content_blocks_to_openai_responses_content(
                 continue
             if block.data:
                 filename = block.name or "file"
-                parts.append({"type": "input_file", "filename": filename, "file_data": block.data})
+                parts.append(
+                    {
+                        "type": "input_file",
+                        "filename": filename,
+                        "file_data": _openai_file_data_uri(block),
+                    }
+                )
                 continue
             fallback_text = _content_placeholder_text(block)
             if mode is ContentHandlingMode.STRICT:
