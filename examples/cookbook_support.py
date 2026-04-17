@@ -77,7 +77,7 @@ def fail_or_skip(message: str) -> None:
     raise SystemExit(0 if allow_skip() else 1)
 
 
-def require_database_dsn() -> str:
+def require_database_dsn() -> str | None:
     dsn = example_env("LLM_CLIENT_EXAMPLE_PG_DSN")
     if not dsn:
         fail_or_skip("Set LLM_CLIENT_EXAMPLE_PG_DSN to run this example against PostgreSQL.")
