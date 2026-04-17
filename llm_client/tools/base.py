@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import (
     Any,
+    Literal,
     TypeAlias,
     Union,
     cast,
@@ -25,6 +26,20 @@ from typing import (
 
 from ..concurrency import run_sync
 from ..validation import validate_against_schema, validate_or_raise, validate_tool_definition
+
+
+def _serialize_provider_config_value(value: Any) -> Any:
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, dict):
+        return {str(key): _serialize_provider_config_value(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_serialize_provider_config_value(item) for item in value]
+    if hasattr(value, "to_dict"):
+        return _serialize_provider_config_value(value.to_dict())
+    if hasattr(value, "model_dump"):
+        return _serialize_provider_config_value(value.model_dump())
+    return value
 
 
 @dataclass(frozen=True)
@@ -64,7 +79,7 @@ class ResponsesBuiltinTool:
     def to_dict(self) -> dict[str, Any]:
         return {
             "type": self.type,
-            **dict(self.config),
+            **{str(key): _serialize_provider_config_value(value) for key, value in self.config.items()},
         }
 
     def to_openai_format(self) -> dict[str, Any]:
@@ -119,6 +134,36 @@ class ResponsesBuiltinTool:
         return cls.of("apply_patch", **config)
 
 
+@dataclass(frozen=True)
+class ResponsesToolSearch:
+    """Typed OpenAI Responses tool-search descriptor."""
+
+    config: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "type": "tool_search",
+            **{str(key): _serialize_provider_config_value(value) for key, value in self.config.items()},
+        }
+
+    def to_openai_format(self) -> dict[str, Any]:
+        return self.to_dict()
+
+    @classmethod
+    def of(cls, **config: Any) -> ResponsesToolSearch:
+        return cls(config=dict(config))
+
+    @classmethod
+    def hosted(cls, **config: Any) -> ResponsesToolSearch:
+        return cls.of(**config)
+
+    @classmethod
+    def client(cls, **config: Any) -> ResponsesToolSearch:
+        payload = dict(config)
+        payload.setdefault("execution", "client")
+        return cls.of(**payload)
+
+
 class ResponsesConnectorId(str, Enum):
     """Documented OpenAI connector ids for MCP-backed connectors."""
 
@@ -132,6 +177,78 @@ class ResponsesConnectorId(str, Enum):
     SHAREPOINT = "connector_sharepoint"
 
 
+class ResponsesDropboxTool(str, Enum):
+    SEARCH = "search"
+    FETCH = "fetch"
+    SEARCH_FILES = "search_files"
+    FETCH_FILE = "fetch_file"
+    LIST_RECENT_FILES = "list_recent_files"
+    GET_PROFILE = "get_profile"
+
+
+class ResponsesGmailTool(str, Enum):
+    GET_PROFILE = "get_profile"
+    SEARCH_EMAILS = "search_emails"
+    SEARCH_EMAIL_IDS = "search_email_ids"
+    GET_RECENT_EMAILS = "get_recent_emails"
+    READ_EMAIL = "read_email"
+    BATCH_READ_EMAIL = "batch_read_email"
+
+
+class ResponsesGoogleCalendarTool(str, Enum):
+    GET_PROFILE = "get_profile"
+    SEARCH = "search"
+    FETCH = "fetch"
+    SEARCH_EVENTS = "search_events"
+    READ_EVENT = "read_event"
+
+
+class ResponsesGoogleDriveTool(str, Enum):
+    GET_PROFILE = "get_profile"
+    LIST_DRIVES = "list_drives"
+    SEARCH = "search"
+    RECENT_DOCUMENTS = "recent_documents"
+    FETCH = "fetch"
+
+
+class ResponsesMicrosoftTeamsTool(str, Enum):
+    SEARCH = "search"
+    FETCH = "fetch"
+    GET_CHAT_MEMBERS = "get_chat_members"
+    GET_PROFILE = "get_profile"
+
+
+class ResponsesOutlookCalendarTool(str, Enum):
+    SEARCH_EVENTS = "search_events"
+    FETCH_EVENT = "fetch_event"
+    FETCH_EVENTS_BATCH = "fetch_events_batch"
+    LIST_EVENTS = "list_events"
+    GET_PROFILE = "get_profile"
+
+
+class ResponsesOutlookEmailTool(str, Enum):
+    GET_PROFILE = "get_profile"
+    LIST_MESSAGES = "list_messages"
+    SEARCH_MESSAGES = "search_messages"
+    GET_RECENT_EMAILS = "get_recent_emails"
+    FETCH_MESSAGE = "fetch_message"
+    FETCH_MESSAGES_BATCH = "fetch_messages_batch"
+
+
+class ResponsesSharePointTool(str, Enum):
+    GET_SITE = "get_site"
+    SEARCH = "search"
+    LIST_RECENT_DOCUMENTS = "list_recent_documents"
+    FETCH = "fetch"
+    GET_PROFILE = "get_profile"
+
+
+def _normalize_allowed_tool_name(tool_name: Any) -> str:
+    if isinstance(tool_name, Enum):
+        return str(tool_name.value)
+    return str(tool_name)
+
+
 @dataclass(frozen=True)
 class ResponsesMCPToolFilter:
     """Allowed-tool filter for OpenAI MCP and connector tools."""
@@ -142,6 +259,16 @@ class ResponsesMCPToolFilter:
         return {
             "tool_names": [name for name in self.tool_names if str(name).strip()],
         }
+
+    @classmethod
+    def of(cls, *tool_names: Any) -> ResponsesMCPToolFilter:
+        return cls(
+            tool_names=tuple(
+                normalized
+                for normalized in (_normalize_allowed_tool_name(tool_name) for tool_name in tool_names)
+                if normalized.strip()
+            )
+        )
 
 
 @dataclass(frozen=True)
@@ -172,7 +299,26 @@ class ResponsesMCPTool:
     headers: dict[str, str] | None = None
     allowed_tools: tuple[str, ...] | None = None
     require_approval: str | ResponsesMCPApprovalPolicy | dict[str, Any] | None = None
+    defer_loading: bool | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        has_server_url = bool(str(self.server_url or "").strip())
+        has_connector_id = bool(str(self.connector_id or "").strip())
+        if has_server_url == has_connector_id:
+            raise ValueError("Provide exactly one of `server_url` or `connector_id` for an MCP tool.")
+        if has_connector_id and self.server_description is not None:
+            raise ValueError("`server_description` is only supported for remote MCP server tools.")
+
+        rendered_headers = {str(key): str(value) for key, value in (self.headers or {}).items()}
+        authorization_header = next(
+            (value for key, value in rendered_headers.items() if key.lower() == "authorization"),
+            None,
+        )
+        if self.authorization is not None and authorization_header is not None:
+            raise ValueError("Provide either `authorization` or `headers.Authorization`, not both.")
+        if has_connector_id and authorization_header is not None:
+            raise ValueError("Connector MCP tools must not send `headers.Authorization`; use `authorization` instead.")
 
     def to_dict(self) -> dict[str, Any]:
         payload: dict[str, Any] = {"type": "mcp"}
@@ -187,7 +333,7 @@ class ResponsesMCPTool:
         if self.authorization:
             payload["authorization"] = self.authorization
         if self.headers:
-            payload["headers"] = dict(self.headers)
+            payload["headers"] = {str(key): str(value) for key, value in self.headers.items()}
         if self.allowed_tools:
             payload["allowed_tools"] = [name for name in self.allowed_tools if str(name).strip()]
         if self.require_approval is not None:
@@ -197,7 +343,9 @@ class ResponsesMCPTool:
                 payload["require_approval"] = dict(self.require_approval)
             else:
                 payload["require_approval"] = self.require_approval
-        payload.update(dict(self.metadata))
+        if self.defer_loading is not None:
+            payload["defer_loading"] = self.defer_loading
+        payload.update({str(key): _serialize_provider_config_value(value) for key, value in self.metadata.items()})
         return payload
 
     def to_openai_format(self) -> dict[str, Any]:
@@ -212,8 +360,9 @@ class ResponsesMCPTool:
         server_description: str | None = None,
         authorization: str | None = None,
         headers: dict[str, str] | None = None,
-        allowed_tools: list[str] | tuple[str, ...] | None = None,
+        allowed_tools: list[Any] | tuple[Any, ...] | None = None,
         require_approval: str | ResponsesMCPApprovalPolicy | dict[str, Any] | None = None,
+        defer_loading: bool | None = None,
         **metadata: Any,
     ) -> ResponsesMCPTool:
         return cls(
@@ -222,8 +371,14 @@ class ResponsesMCPTool:
             server_description=server_description,
             authorization=authorization,
             headers=dict(headers or {}) or None,
-            allowed_tools=tuple(allowed_tools or ()) or None,
+            allowed_tools=tuple(
+                normalized
+                for normalized in (_normalize_allowed_tool_name(tool_name) for tool_name in (allowed_tools or ()))
+                if normalized.strip()
+            )
+            or None,
             require_approval=require_approval,
+            defer_loading=defer_loading,
             metadata=dict(metadata),
         )
 
@@ -234,8 +389,9 @@ class ResponsesMCPTool:
         *,
         server_label: str | None = None,
         authorization: str | None = None,
-        allowed_tools: list[str] | tuple[str, ...] | None = None,
+        allowed_tools: list[Any] | tuple[Any, ...] | None = None,
         require_approval: str | ResponsesMCPApprovalPolicy | dict[str, Any] | None = None,
+        defer_loading: bool | None = None,
         **metadata: Any,
     ) -> ResponsesMCPTool:
         resolved_connector_id = (
@@ -245,8 +401,14 @@ class ResponsesMCPTool:
             connector_id=resolved_connector_id,
             server_label=server_label,
             authorization=authorization,
-            allowed_tools=tuple(allowed_tools or ()) or None,
+            allowed_tools=tuple(
+                normalized
+                for normalized in (_normalize_allowed_tool_name(tool_name) for tool_name in (allowed_tools or ()))
+                if normalized.strip()
+            )
+            or None,
             require_approval=require_approval,
+            defer_loading=defer_loading,
             metadata=dict(metadata),
         )
 
@@ -259,7 +421,8 @@ class ResponsesMCPTool:
         server_description: str | None = None,
         authorization: str | None = None,
         headers: dict[str, str] | None = None,
-        allowed_tools: list[str] | tuple[str, ...] | None = None,
+        allowed_tools: list[Any] | tuple[Any, ...] | None = None,
+        defer_loading: bool | None = None,
         **metadata: Any,
     ) -> ResponsesMCPTool:
         return cls.remote_server(
@@ -270,6 +433,7 @@ class ResponsesMCPTool:
             headers=headers,
             allowed_tools=allowed_tools,
             require_approval="never",
+            defer_loading=defer_loading,
             **metadata,
         )
 
@@ -280,7 +444,8 @@ class ResponsesMCPTool:
         *,
         server_label: str | None = None,
         authorization: str | None = None,
-        allowed_tools: list[str] | tuple[str, ...] | None = None,
+        allowed_tools: list[Any] | tuple[Any, ...] | None = None,
+        defer_loading: bool | None = None,
         **metadata: Any,
     ) -> ResponsesMCPTool:
         return cls.connector(
@@ -289,6 +454,7 @@ class ResponsesMCPTool:
             authorization=authorization,
             allowed_tools=allowed_tools,
             require_approval="never",
+            defer_loading=defer_loading,
             **metadata,
         )
 
@@ -312,11 +478,360 @@ class ResponsesCustomTool:
         }
         if self.strict is not None:
             payload["strict"] = self.strict
-        payload.update(dict(self.metadata))
+        payload.update({str(key): _serialize_provider_config_value(value) for key, value in self.metadata.items()})
         return payload
 
     def to_openai_format(self) -> dict[str, Any]:
         return self.to_dict()
+
+
+@dataclass(frozen=True)
+class ResponsesFunctionTool:
+    """Typed OpenAI Responses function descriptor with advanced provider metadata."""
+
+    name: str
+    description: str
+    parameters: dict[str, Any]
+    strict: bool | None = None
+    defer_loading: bool | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "type": "function",
+            "name": self.name,
+            "description": self.description,
+            "parameters": dict(self.parameters),
+        }
+        if self.strict is not None:
+            payload["strict"] = self.strict
+        if self.defer_loading is not None:
+            payload["defer_loading"] = self.defer_loading
+        payload.update({str(key): _serialize_provider_config_value(value) for key, value in self.metadata.items()})
+        return payload
+
+    def to_openai_format(self) -> dict[str, Any]:
+        return self.to_dict()
+
+    @classmethod
+    def from_tool(
+        cls,
+        tool: Tool,
+        *,
+        strict: bool | None = None,
+        defer_loading: bool | None = None,
+        **metadata: Any,
+    ) -> ResponsesFunctionTool:
+        return cls(
+            name=tool.name,
+            description=tool.description,
+            parameters=dict(tool.parameters),
+            strict=(True if tool.strict else None) if strict is None else strict,
+            defer_loading=defer_loading,
+            metadata=dict(metadata),
+        )
+
+
+@dataclass(frozen=True)
+class ResponsesShellCallOutcome:
+    """Typed OpenAI Responses shell-call outcome descriptor."""
+
+    type: Literal["exit", "timeout"]
+    exit_code: int | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {"type": self.type}
+        if self.type == "exit":
+            if self.exit_code is None:
+                raise ValueError("Shell exit outcomes require an exit_code")
+            payload["exit_code"] = self.exit_code
+        return payload
+
+    @classmethod
+    def exit(cls, exit_code: int) -> ResponsesShellCallOutcome:
+        return cls(type="exit", exit_code=int(exit_code))
+
+    @classmethod
+    def timeout(cls) -> ResponsesShellCallOutcome:
+        return cls(type="timeout")
+
+
+@dataclass(frozen=True)
+class ResponsesShellCallChunk:
+    """Captured stdout/stderr chunk for an OpenAI shell-call continuation."""
+
+    stdout: str
+    stderr: str
+    outcome: ResponsesShellCallOutcome | dict[str, Any]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "stdout": self.stdout,
+            "stderr": self.stderr,
+            "outcome": _serialize_provider_config_value(self.outcome),
+        }
+
+    @classmethod
+    def exit(cls, *, stdout: str = "", stderr: str = "", exit_code: int = 0) -> ResponsesShellCallChunk:
+        return cls(stdout=stdout, stderr=stderr, outcome=ResponsesShellCallOutcome.exit(exit_code))
+
+    @classmethod
+    def timeout(cls, *, stdout: str = "", stderr: str = "") -> ResponsesShellCallChunk:
+        return cls(stdout=stdout, stderr=stderr, outcome=ResponsesShellCallOutcome.timeout())
+
+
+@dataclass(frozen=True)
+class ResponsesShellCallOutput:
+    """Typed OpenAI shell-call output item for Responses continuation."""
+
+    call_id: str
+    output: tuple[ResponsesShellCallChunk | dict[str, Any], ...]
+    max_output_length: int | None = None
+    status: Literal["in_progress", "completed", "incomplete"] | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "type": "shell_call_output",
+            "call_id": self.call_id,
+            "output": [_serialize_provider_config_value(item) for item in self.output],
+        }
+        if self.max_output_length is not None:
+            payload["max_output_length"] = int(self.max_output_length)
+        if self.status is not None:
+            payload["status"] = self.status
+        return payload
+
+
+@dataclass(frozen=True)
+class ResponsesApplyPatchCallOutput:
+    """Typed OpenAI apply-patch output item for Responses continuation."""
+
+    call_id: str
+    status: Literal["completed", "failed"]
+    output: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "type": "apply_patch_call_output",
+            "call_id": self.call_id,
+            "status": self.status,
+        }
+        if self.output is not None:
+            payload["output"] = self.output
+        return payload
+
+
+@dataclass(frozen=True)
+class ResponsesToolNamespace:
+    """Typed OpenAI Responses namespace descriptor for grouped function tools."""
+
+    name: str
+    description: str
+    tools: tuple[Any, ...]
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "type": "namespace",
+            "name": self.name,
+            "description": self.description,
+            "tools": [self._render_namespace_tool(tool) for tool in self.tools],
+        }
+        payload.update({str(key): _serialize_provider_config_value(value) for key, value in self.metadata.items()})
+        return payload
+
+    def to_openai_format(self) -> dict[str, Any]:
+        return self.to_dict()
+
+    @staticmethod
+    def _render_namespace_tool(tool: Any) -> dict[str, Any]:
+        if isinstance(tool, dict):
+            rendered = dict(tool)
+        elif hasattr(tool, "to_openai_format"):
+            rendered = tool.to_openai_format()
+            if not isinstance(rendered, dict):
+                raise ValueError("Namespace tools must render to dictionary definitions")
+            rendered = dict(rendered)
+        else:
+            rendered = {
+                "type": "function",
+                "function": {
+                    "name": tool.name,
+                    "description": tool.description,
+                    "parameters": tool.parameters,
+                },
+            }
+            if getattr(tool, "strict", False):
+                rendered["function"]["strict"] = True
+
+        if str(rendered.get("type") or "") != "function":
+            raise ValueError("OpenAI namespaces only support function tool definitions")
+
+        function_payload = rendered.get("function")
+        if isinstance(function_payload, dict):
+            flattened = {
+                key: function_payload[key]
+                for key in ("name", "description", "parameters", "strict", "defer_loading")
+                if key in function_payload
+            }
+            if flattened:
+                rendered = {
+                    "type": "function",
+                    **flattened,
+                }
+        return rendered
+
+
+@dataclass(frozen=True)
+class ResponsesAttributeFilter:
+    """Typed OpenAI attribute filter for retrieval and file-search workflows."""
+
+    payload: dict[str, Any]
+
+    def to_dict(self) -> dict[str, Any]:
+        return cast(dict[str, Any], _serialize_provider_config_value(self.payload))
+
+    @classmethod
+    def compare(cls, op: str, *, key: str, value: str | float | bool | list[str | float]) -> ResponsesAttributeFilter:
+        return cls({"type": op, "key": key, "value": value})
+
+    @classmethod
+    def eq(cls, key: str, value: str | float | bool) -> ResponsesAttributeFilter:
+        return cls.compare("eq", key=key, value=value)
+
+    @classmethod
+    def ne(cls, key: str, value: str | float | bool) -> ResponsesAttributeFilter:
+        return cls.compare("ne", key=key, value=value)
+
+    @classmethod
+    def gt(cls, key: str, value: float) -> ResponsesAttributeFilter:
+        return cls.compare("gt", key=key, value=value)
+
+    @classmethod
+    def gte(cls, key: str, value: float) -> ResponsesAttributeFilter:
+        return cls.compare("gte", key=key, value=value)
+
+    @classmethod
+    def lt(cls, key: str, value: float) -> ResponsesAttributeFilter:
+        return cls.compare("lt", key=key, value=value)
+
+    @classmethod
+    def lte(cls, key: str, value: float) -> ResponsesAttributeFilter:
+        return cls.compare("lte", key=key, value=value)
+
+    @classmethod
+    def in_(cls, key: str, values: list[str | float]) -> ResponsesAttributeFilter:
+        return cls.compare("in", key=key, value=list(values))
+
+    @classmethod
+    def nin(cls, key: str, values: list[str | float]) -> ResponsesAttributeFilter:
+        return cls.compare("nin", key=key, value=list(values))
+
+    @classmethod
+    def and_(cls, *filters: Any) -> ResponsesAttributeFilter:
+        return cls({"type": "and", "filters": list(filters)})
+
+    @classmethod
+    def or_(cls, *filters: Any) -> ResponsesAttributeFilter:
+        return cls({"type": "or", "filters": list(filters)})
+
+
+@dataclass(frozen=True)
+class ResponsesFileSearchHybridWeights:
+    """Typed hybrid-search weights for OpenAI file-search ranking."""
+
+    embedding_weight: float
+    text_weight: float
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "embedding_weight": self.embedding_weight,
+            "text_weight": self.text_weight,
+        }
+
+
+@dataclass(frozen=True)
+class ResponsesFileSearchRankingOptions:
+    """Typed ranking options for OpenAI retrieval and file-search workflows."""
+
+    ranker: str | None = None
+    score_threshold: float | None = None
+    hybrid_search: ResponsesFileSearchHybridWeights | dict[str, Any] | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {}
+        if self.ranker is not None:
+            payload["ranker"] = self.ranker
+        if self.score_threshold is not None:
+            payload["score_threshold"] = self.score_threshold
+        if self.hybrid_search is not None:
+            payload["hybrid_search"] = _serialize_provider_config_value(self.hybrid_search)
+        return payload
+
+
+@dataclass(frozen=True)
+class ResponsesExpirationPolicy:
+    """Typed OpenAI vector-store expiration policy."""
+
+    days: int
+    anchor: str = "last_active_at"
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "anchor": self.anchor,
+            "days": self.days,
+        }
+
+
+@dataclass(frozen=True)
+class ResponsesChunkingStrategy:
+    """Typed OpenAI vector-store chunking strategy."""
+
+    payload: dict[str, Any]
+
+    def to_dict(self) -> dict[str, Any]:
+        return cast(dict[str, Any], _serialize_provider_config_value(self.payload))
+
+    @classmethod
+    def auto(cls) -> ResponsesChunkingStrategy:
+        return cls({"type": "auto"})
+
+    @classmethod
+    def static(
+        cls,
+        *,
+        max_chunk_size_tokens: int,
+        chunk_overlap_tokens: int,
+    ) -> ResponsesChunkingStrategy:
+        return cls(
+            {
+                "type": "static",
+                "static": {
+                    "max_chunk_size_tokens": int(max_chunk_size_tokens),
+                    "chunk_overlap_tokens": int(chunk_overlap_tokens),
+                },
+            }
+        )
+
+
+@dataclass(frozen=True)
+class ResponsesVectorStoreFileSpec:
+    """Typed OpenAI per-file vector-store batch/file configuration."""
+
+    file_id: str
+    attributes: dict[str, str | float | bool] | None = None
+    chunking_strategy: ResponsesChunkingStrategy | dict[str, Any] | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {"file_id": self.file_id}
+        if self.attributes is not None:
+            payload["attributes"] = {
+                str(key): cast(str | float | bool, value)
+                for key, value in self.attributes.items()
+            }
+        if self.chunking_strategy is not None:
+            payload["chunking_strategy"] = _serialize_provider_config_value(self.chunking_strategy)
+        return payload
 
 
 @dataclass
@@ -460,12 +975,31 @@ class Tool:
             return ToolResult.error_result(f"Invalid JSON arguments: {e}")
 
 
-ToolDefinition: TypeAlias = Tool | ResponsesBuiltinTool | ResponsesMCPTool | ResponsesCustomTool | dict[str, Any]
+ToolDefinition: TypeAlias = (
+    Tool
+    | ResponsesBuiltinTool
+    | ResponsesToolSearch
+    | ResponsesFunctionTool
+    | ResponsesToolNamespace
+    | ResponsesMCPTool
+    | ResponsesCustomTool
+    | dict[str, Any]
+)
 
 
 def is_provider_native_tool(tool: Any) -> bool:
     """Return True for package-native provider tool descriptors."""
-    return isinstance(tool, (ResponsesBuiltinTool, ResponsesMCPTool, ResponsesCustomTool))
+    return isinstance(
+        tool,
+        (
+            ResponsesBuiltinTool,
+            ResponsesToolSearch,
+            ResponsesFunctionTool,
+            ResponsesToolNamespace,
+            ResponsesMCPTool,
+            ResponsesCustomTool,
+        ),
+    )
 
 
 def ensure_function_tools_only(
@@ -866,10 +1400,25 @@ __all__ = [
     "ToolResult",
     "ToolRegistry",
     "ResponsesBuiltinTool",
+    "ResponsesToolSearch",
     "ResponsesConnectorId",
+    "ResponsesDropboxTool",
+    "ResponsesShellCallOutcome",
+    "ResponsesShellCallChunk",
+    "ResponsesShellCallOutput",
+    "ResponsesApplyPatchCallOutput",
+    "ResponsesFunctionTool",
+    "ResponsesGmailTool",
+    "ResponsesGoogleCalendarTool",
+    "ResponsesGoogleDriveTool",
+    "ResponsesMicrosoftTeamsTool",
+    "ResponsesToolNamespace",
     "ResponsesMCPToolFilter",
     "ResponsesMCPApprovalPolicy",
     "ResponsesMCPTool",
+    "ResponsesOutlookCalendarTool",
+    "ResponsesOutlookEmailTool",
+    "ResponsesSharePointTool",
     "ResponsesCustomTool",
     "ResponsesGrammar",
     "ToolDefinition",

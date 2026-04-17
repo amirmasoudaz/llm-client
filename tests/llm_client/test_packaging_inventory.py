@@ -6,7 +6,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 PYPROJECT = ROOT / "pyproject.toml"
-README = ROOT / "llm_client" / "README.md"
+README = ROOT / "README.md"
 GUIDE_INDEX = ROOT / "docs" / "llm-client-guides-index.md"
 PY_TYPED = ROOT / "llm_client" / "py.typed"
 
@@ -17,11 +17,6 @@ EXPECTED_DOCS = [
     "llm-client-semver-policy.md",
     "llm-client-support-policy.md",
     "llm-client-release-automation.md",
-]
-
-EXPECTED_WORKFLOWS = [
-    "llm-client-package-ci.yml",
-    "llm-client-publish.yml",
 ]
 
 EXPECTED_SCRIPTS = [
@@ -41,7 +36,7 @@ def test_pyproject_declares_standalone_package_metadata() -> None:
     data = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))
     project = data["project"]
     assert project["name"] == "llm-client"
-    assert project["readme"] == "llm_client/README.md"
+    assert project["readme"] == "README.md"
     assert project["license"] == "Apache-2.0"
     assert "authors" in project
     assert "maintainers" in project
@@ -70,13 +65,11 @@ def test_docs_exist() -> None:
     assert missing == []
 
 
-def test_workflows_and_scripts_exist() -> None:
-    missing_workflows = [
-        name for name in EXPECTED_WORKFLOWS if not (ROOT / ".github" / "workflows" / name).exists()
-    ]
+def test_release_docs_and_scripts_exist() -> None:
     missing_scripts = [name for name in EXPECTED_SCRIPTS if not (ROOT / name).exists()]
-    assert missing_workflows == []
     assert missing_scripts == []
+    assert not (ROOT / ".github" / "workflows" / "llm-client-package-ci.yml").exists()
+    assert not (ROOT / ".github" / "workflows" / "llm-client-publish.yml").exists()
 
 
 def test_typing_marker_and_governance_files_exist() -> None:
@@ -94,17 +87,14 @@ def test_readme_and_guide_index_reference_packaging_docs() -> None:
     assert "llm-client-semver-policy.md" in guide_index
 
 
-def test_workflow_contents_reference_example_and_artifact_checks() -> None:
-    ci_workflow = (ROOT / ".github" / "workflows" / "llm-client-package-ci.yml").read_text(
+def test_release_automation_doc_references_local_validation_steps() -> None:
+    release_automation = (ROOT / "docs" / "llm-client-release-automation.md").read_text(
         encoding="utf-8"
     )
-    publish_workflow = (ROOT / ".github" / "workflows" / "llm-client-publish.yml").read_text(
-        encoding="utf-8"
-    )
-    assert "run_llm_client_examples.py" in ci_workflow
-    assert "verify_llm_client_artifacts.py" in ci_workflow
-    assert "python -m build" in ci_workflow
-    assert "gh-action-pypi-publish" in publish_workflow
+    assert "run_llm_client_examples.py" not in release_automation
+    assert "GitHub-hosted CI" in release_automation
+    assert "twine check" in release_automation
+    assert "Build wheel and sdist locally" in release_automation
 
 
 def test_packaging_inventory_does_not_depend_on_archived_transition_docs() -> None:

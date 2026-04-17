@@ -19,13 +19,34 @@ from llm_client.observability import (
     RuntimeEventType,
 )
 from llm_client.tools import (
+    ResponsesApplyPatchCallOutput,
+    ResponsesAttributeFilter,
     ResponsesBuiltinTool,
+    ResponsesChunkingStrategy,
     ResponsesConnectorId,
     ResponsesCustomTool,
+    ResponsesDropboxTool,
+    ResponsesExpirationPolicy,
+    ResponsesFileSearchHybridWeights,
+    ResponsesFileSearchRankingOptions,
+    ResponsesFunctionTool,
+    ResponsesGmailTool,
+    ResponsesGoogleCalendarTool,
+    ResponsesGoogleDriveTool,
     ResponsesGrammar,
     ResponsesMCPApprovalPolicy,
     ResponsesMCPTool,
     ResponsesMCPToolFilter,
+    ResponsesMicrosoftTeamsTool,
+    ResponsesOutlookCalendarTool,
+    ResponsesOutlookEmailTool,
+    ResponsesShellCallChunk,
+    ResponsesShellCallOutcome,
+    ResponsesShellCallOutput,
+    ResponsesSharePointTool,
+    ResponsesToolNamespace,
+    ResponsesToolSearch,
+    ResponsesVectorStoreFileSpec,
 )
 from llm_client.types import (
     AudioSpeechResult,
@@ -52,11 +73,16 @@ from llm_client.types import (
     RealtimeCallResult,
     RealtimeConnection,
     RealtimeClientSecretResult,
+    RealtimeEventResult,
+    RealtimeMCPToolListingResult,
+    RealtimeResponseOutput,
     RealtimeTranscriptionSessionResult,
     RequestContext,
     RequestSpec,
     StreamEvent,
     StreamEventType,
+    UploadPartResource,
+    UploadResource,
     Usage,
     VectorStoreFileContentResult,
     VectorStoreFileBatchResource,
@@ -109,8 +135,13 @@ def test_types_namespace_exports_shared_request_and_result_types() -> None:
     realtime_secret = RealtimeClientSecretResult(value="secret_1")
     realtime_transcription = RealtimeTranscriptionSessionResult(value="tx_secret_1")
     realtime_call = RealtimeCallResult(call_id="rtc_1", action="create")
+    realtime_event = RealtimeEventResult(event_type="conversation.item.added", event_id="evt_1")
+    realtime_mcp_listing = RealtimeMCPToolListingResult(server_label="Docs", status="completed")
+    realtime_output = RealtimeResponseOutput(response_id="resp_1", text="hello")
     realtime_connection = RealtimeConnection(connection=object(), model="gpt-realtime", call_id="rtc_1")
     webhook = WebhookEventResult(event_id="wh_1", event_type="realtime.call.incoming", data={"call_id": "rtc_1"})
+    upload = UploadResource(upload_id="upload_1", status="pending", filename="guide.pdf")
+    upload_part = UploadPartResource(part_id="part_1", upload_id="upload_1")
     vector_store_batch = VectorStoreFileBatchResource(batch_id="vsfb_1", vector_store_id="vs_1", status="in_progress")
     output_item = NormalizedOutputItem(type="refusal", text="No")
     event = StreamEvent(type=StreamEventType.DONE, data=result)
@@ -144,8 +175,13 @@ def test_types_namespace_exports_shared_request_and_result_types() -> None:
     assert realtime_secret.value == "secret_1"
     assert realtime_transcription.value == "tx_secret_1"
     assert realtime_call.call_id == "rtc_1"
+    assert realtime_event.event_type == "conversation.item.added"
+    assert realtime_mcp_listing.status == "completed"
+    assert realtime_output.response_id == "resp_1"
     assert realtime_connection.call_id == "rtc_1"
     assert webhook.event_type == "realtime.call.incoming"
+    assert upload.upload_id == "upload_1"
+    assert upload_part.upload_id == "upload_1"
     assert vector_store_batch.batch_id == "vsfb_1"
     assert output_item.type == "refusal"
     assert event.type.value == "done"
@@ -167,6 +203,49 @@ def test_observability_namespace_exports_runtime_and_replay_primitives() -> None
     assert isinstance(LifecycleLoggingHook(), LifecycleLoggingHook)
     assert isinstance(RedactionPolicy(), RedactionPolicy)
     assert diagnostics.request_id == "req-1"
+
+
+def test_tools_namespace_exports_vector_store_resource_helpers() -> None:
+    expiration = ResponsesExpirationPolicy(days=7)
+    chunking = ResponsesChunkingStrategy.static(max_chunk_size_tokens=1200, chunk_overlap_tokens=200)
+    file_spec = ResponsesVectorStoreFileSpec(
+        file_id="file_1",
+        attributes={"scope": "tenant"},
+        chunking_strategy=ResponsesChunkingStrategy.auto(),
+    )
+
+    assert expiration.to_dict() == {"anchor": "last_active_at", "days": 7}
+    assert chunking.to_dict() == {
+        "type": "static",
+        "static": {"max_chunk_size_tokens": 1200, "chunk_overlap_tokens": 200},
+    }
+    assert file_spec.to_dict() == {
+        "file_id": "file_1",
+        "attributes": {"scope": "tenant"},
+        "chunking_strategy": {"type": "auto"},
+    }
+
+
+def test_tools_namespace_exports_hosted_tool_output_helpers() -> None:
+    outcome = ResponsesShellCallOutcome.exit(0)
+    chunk = ResponsesShellCallChunk.exit(stdout="done", exit_code=0)
+    shell_output = ResponsesShellCallOutput(call_id="shell_1", output=(chunk,), status="completed")
+    patch_output = ResponsesApplyPatchCallOutput(call_id="patch_1", status="completed", output="Applied")
+
+    assert outcome.to_dict() == {"type": "exit", "exit_code": 0}
+    assert chunk.to_dict() == {"stdout": "done", "stderr": "", "outcome": {"type": "exit", "exit_code": 0}}
+    assert shell_output.to_dict() == {
+        "type": "shell_call_output",
+        "call_id": "shell_1",
+        "output": [{"stdout": "done", "stderr": "", "outcome": {"type": "exit", "exit_code": 0}}],
+        "status": "completed",
+    }
+    assert patch_output.to_dict() == {
+        "type": "apply_patch_call_output",
+        "call_id": "patch_1",
+        "status": "completed",
+        "output": "Applied",
+    }
 
 
 def test_compat_namespace_exposes_legacy_client_api() -> None:
@@ -202,6 +281,8 @@ def test_public_modules_define_explicit_all_contracts() -> None:
     assert "OpenAIProvider" in providers.__all__
     assert "ToolRegistry" in tools.__all__
     assert "RequestContext" in types.__all__
+    assert "RealtimeMCPToolListingResult" in types.__all__
+    assert "RealtimeResponseOutput" in types.__all__
     assert "RuntimeEvent" in observability.__all__
     assert "ValidationError" in validation.__all__
     assert "load_env" in config.__all__
@@ -211,27 +292,71 @@ def test_public_modules_define_explicit_all_contracts() -> None:
 
 def test_tools_namespace_exports_responses_tool_descriptors() -> None:
     builtin = ResponsesBuiltinTool.web_search(search_context_size="low")
+    attribute_filter = ResponsesAttributeFilter.and_(
+        ResponsesAttributeFilter.eq("scope", "tenant"),
+        ResponsesAttributeFilter.gte("score", 0.8),
+    )
+    ranking = ResponsesFileSearchRankingOptions(
+        ranker="default-2024-11-15",
+        score_threshold=0.25,
+        hybrid_search=ResponsesFileSearchHybridWeights(embedding_weight=0.7, text_weight=0.3),
+    )
+    tool_search = ResponsesToolSearch.client(parameters={"type": "object", "properties": {"query": {"type": "string"}}})
     custom = ResponsesCustomTool(
         name="planner",
         description="Emit a plan.",
         grammar=ResponsesGrammar(syntax="lark", definition='start: "done"'),
     )
+    function_tool = ResponsesFunctionTool(
+        name="lookup_profile",
+        description="Lookup a profile.",
+        parameters={"type": "object", "properties": {"id": {"type": "string"}}},
+        defer_loading=True,
+    )
+    namespace = ResponsesToolNamespace(
+        name="crm",
+        description="CRM tools",
+        tools=(function_tool,),
+    )
     mcp = ResponsesMCPTool.connector(
         ResponsesConnectorId.GMAIL,
+        allowed_tools=(ResponsesGmailTool.SEARCH_EMAILS, ResponsesGmailTool.READ_EMAIL),
+        defer_loading=True,
         require_approval=ResponsesMCPApprovalPolicy(
-            always=ResponsesMCPToolFilter(tool_names=("read_thread",)),
+            always=ResponsesMCPToolFilter.of(ResponsesGmailTool.READ_EMAIL),
         ),
     )
 
     assert builtin.to_dict()["type"] == "web_search"
+    assert attribute_filter.to_dict()["filters"][0]["type"] == "eq"
+    assert ranking.to_dict()["hybrid_search"]["embedding_weight"] == 0.7
+    assert tool_search.to_dict()["type"] == "tool_search"
     assert custom.to_dict()["format"]["syntax"] == "lark"
+    assert function_tool.to_dict()["defer_loading"] is True
+    assert namespace.to_dict()["tools"][0]["name"] == "lookup_profile"
     assert mcp.to_dict()["connector_id"] == "connector_gmail"
-    assert mcp.to_dict()["require_approval"] == {"always": {"tool_names": ["read_thread"]}}
+    assert mcp.to_dict()["allowed_tools"] == ["search_emails", "read_email"]
+    assert mcp.to_dict()["defer_loading"] is True
+    assert mcp.to_dict()["require_approval"] == {"always": {"tool_names": ["read_email"]}}
     assert "ResponsesBuiltinTool" in tools.__all__
+    assert "ResponsesAttributeFilter" in tools.__all__
+    assert "ResponsesToolSearch" in tools.__all__
     assert "ResponsesConnectorId" in tools.__all__
+    assert "ResponsesDropboxTool" in tools.__all__
+    assert "ResponsesFileSearchHybridWeights" in tools.__all__
+    assert "ResponsesFileSearchRankingOptions" in tools.__all__
+    assert "ResponsesFunctionTool" in tools.__all__
+    assert "ResponsesGmailTool" in tools.__all__
+    assert "ResponsesGoogleCalendarTool" in tools.__all__
+    assert "ResponsesGoogleDriveTool" in tools.__all__
+    assert "ResponsesMicrosoftTeamsTool" in tools.__all__
+    assert "ResponsesToolNamespace" in tools.__all__
     assert "ResponsesMCPTool" in tools.__all__
     assert "ResponsesMCPApprovalPolicy" in tools.__all__
     assert "ResponsesMCPToolFilter" in tools.__all__
+    assert "ResponsesOutlookCalendarTool" in tools.__all__
+    assert "ResponsesOutlookEmailTool" in tools.__all__
+    assert "ResponsesSharePointTool" in tools.__all__
     assert "ResponsesCustomTool" in tools.__all__
     assert "ResponsesGrammar" in tools.__all__
 

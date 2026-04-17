@@ -7,6 +7,7 @@ and messages across different providers.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import time
@@ -894,6 +895,111 @@ class RealtimeTranscriptionSessionResult:
         }
 
 
+@dataclass
+class RealtimeEventResult:
+    """Normalized wrapper for server events received from a realtime connection."""
+
+    event_type: str | None = None
+    event_id: str | None = None
+    item_id: str | None = None
+    response_id: str | None = None
+    sequence_number: int | None = None
+    previous_item_id: str | None = None
+    delta: str | None = None
+    transcript: str | None = None
+    status: str | None = None
+    item: dict[str, Any] | None = None
+    response: dict[str, Any] | None = None
+    session: dict[str, Any] | None = None
+    rate_limits: list[dict[str, Any]] | None = None
+    details: dict[str, Any] = field(default_factory=dict)
+    raw_event: Any | None = field(default=None, repr=False)
+
+    @property
+    def ok(self) -> bool:
+        return bool(self.event_type)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "event_type": self.event_type,
+            "event_id": self.event_id,
+            "item_id": self.item_id,
+            "response_id": self.response_id,
+            "sequence_number": self.sequence_number,
+            "previous_item_id": self.previous_item_id,
+            "delta": self.delta,
+            "transcript": self.transcript,
+            "status": self.status,
+            "item": dict(self.item or {}) if self.item is not None else None,
+            "response": dict(self.response or {}) if self.response is not None else None,
+            "session": dict(self.session or {}) if self.session is not None else None,
+            "rate_limits": [dict(limit) for limit in self.rate_limits] if self.rate_limits is not None else None,
+            "details": dict(self.details),
+        }
+
+
+@dataclass
+class RealtimeResponseOutput:
+    """Collected output from a realtime response event stream."""
+
+    response_id: str | None = None
+    text: str = ""
+    transcript: str = ""
+    audio: bytes = b""
+    status: str | None = None
+    item_ids: list[str] = field(default_factory=list)
+    event_types: list[str] = field(default_factory=list)
+    final_event: RealtimeEventResult | None = None
+    raw_events: list[RealtimeEventResult] = field(default_factory=list, repr=False)
+
+    @property
+    def ok(self) -> bool:
+        return bool(self.response_id or self.final_event)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "response_id": self.response_id,
+            "text": self.text,
+            "transcript": self.transcript,
+            "audio_b64": base64.b64encode(self.audio).decode("ascii") if self.audio else None,
+            "audio_bytes": len(self.audio),
+            "status": self.status,
+            "item_ids": list(self.item_ids),
+            "event_types": list(self.event_types),
+            "final_event": self.final_event.to_dict() if self.final_event is not None else None,
+        }
+
+
+@dataclass
+class RealtimeMCPToolListingResult:
+    """Result of waiting for a realtime MCP tool listing lifecycle event."""
+
+    server_label: str | None = None
+    status: str | None = None
+    tools: list[str] = field(default_factory=list)
+    item_id: str | None = None
+    event_type: str | None = None
+    error: str | None = None
+    details: dict[str, Any] = field(default_factory=dict)
+    final_event: RealtimeEventResult | None = None
+
+    @property
+    def ok(self) -> bool:
+        return bool(self.status) and str(self.status) not in {"failed", "error"}
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "server_label": self.server_label,
+            "status": self.status,
+            "tools": list(self.tools),
+            "item_id": self.item_id,
+            "event_type": self.event_type,
+            "error": self.error,
+            "details": dict(self.details),
+            "final_event": self.final_event.to_dict() if self.final_event is not None else None,
+        }
+
+
 class RealtimeConnection:
     """Stable wrapper around a provider realtime connection."""
 
@@ -931,25 +1037,184 @@ class RealtimeConnection:
             return event.dict()
         return event
 
+    @classmethod
+    def _normalize_event(cls, event: Any) -> RealtimeEventResult:
+        serialized = cls._serialize_event(event)
+        if not isinstance(serialized, dict):
+            return RealtimeEventResult(details={"value": serialized}, raw_event=event)
+
+        reserved = {
+            "type",
+            "event_id",
+            "item_id",
+            "response_id",
+            "sequence_number",
+            "previous_item_id",
+            "delta",
+            "transcript",
+            "status",
+            "item",
+            "response",
+            "session",
+            "rate_limits",
+        }
+        return RealtimeEventResult(
+            event_type=str(serialized.get("type") or "") or None,
+            event_id=str(serialized.get("event_id") or "") or None,
+            item_id=str(serialized.get("item_id") or "") or None,
+            response_id=str(serialized.get("response_id") or "") or None,
+            sequence_number=int(serialized["sequence_number"]) if isinstance(serialized.get("sequence_number"), int) else None,
+            previous_item_id=str(serialized.get("previous_item_id") or "") or None,
+            delta=str(serialized.get("delta") or "") or None,
+            transcript=str(serialized.get("transcript") or "") or None,
+            status=str(serialized.get("status") or "") or None,
+            item=dict(serialized["item"]) if isinstance(serialized.get("item"), dict) else None,
+            response=dict(serialized["response"]) if isinstance(serialized.get("response"), dict) else None,
+            session=dict(serialized["session"]) if isinstance(serialized.get("session"), dict) else None,
+            rate_limits=[dict(limit) for limit in serialized.get("rate_limits", []) if isinstance(limit, dict)]
+            if isinstance(serialized.get("rate_limits"), list)
+            else None,
+            details={key: value for key, value in serialized.items() if key not in reserved},
+            raw_event=event,
+        )
+
+    @staticmethod
+    def _serialize_tool_definition(tool: Any) -> dict[str, Any]:
+        if hasattr(tool, "to_dict"):
+            serialized = tool.to_dict()
+        elif hasattr(tool, "model_dump"):
+            serialized = tool.model_dump()
+        elif hasattr(tool, "dict"):
+            serialized = tool.dict()
+        else:
+            serialized = dict(tool)
+        return dict(serialized)
+
+    @classmethod
+    def _render_realtime_tools(cls, tools: Sequence[Any]) -> list[dict[str, Any]]:
+        rendered = [cls._serialize_tool_definition(tool) for tool in tools]
+        seen_server_labels: set[str] = set()
+        for tool in rendered:
+            if str(tool.get("type") or "") != "mcp":
+                continue
+            server_url = str(tool.get("server_url") or "").strip()
+            connector_id = str(tool.get("connector_id") or "").strip()
+            if bool(server_url) == bool(connector_id):
+                raise ValueError("Realtime MCP tools require exactly one of `server_url` or `connector_id`.")
+            server_label = str(tool.get("server_label") or "").strip()
+            if server_label:
+                if server_label in seen_server_labels:
+                    raise ValueError("Realtime MCP tools must not reuse the same `server_label` in one tools array.")
+                seen_server_labels.add(server_label)
+            headers = (
+                {str(key): str(value) for key, value in tool.get("headers", {}).items()}
+                if isinstance(tool.get("headers"), dict)
+                else {}
+            )
+            has_auth_header = any(key.lower() == "authorization" for key in headers)
+            if tool.get("authorization") is not None and has_auth_header:
+                raise ValueError("Provide either `authorization` or `headers.Authorization`, not both.")
+            if connector_id and has_auth_header:
+                raise ValueError("Connector MCP tools must not send `headers.Authorization`; use `authorization` instead.")
+        return rendered
+
+    @staticmethod
+    def _extract_mcp_tool_names(tools: Any) -> list[str]:
+        if not isinstance(tools, list):
+            return []
+        names: list[str] = []
+        for tool in tools:
+            if isinstance(tool, str):
+                if tool.strip():
+                    names.append(tool)
+                continue
+            if not isinstance(tool, dict):
+                continue
+            name = str(tool.get("name") or tool.get("title") or "").strip()
+            if name:
+                names.append(name)
+        return names
+
     async def send(self, event: Any) -> None:
         result = self._connection.send(event)
         if hasattr(result, "__await__"):
             await result
 
-    async def update_session(self, session: dict[str, Any]) -> None:
-        await self.send({"type": "session.update", "session": dict(session)})
+    async def update_session(self, session: dict[str, Any], *, event_id: str | None = None) -> None:
+        payload: dict[str, Any] = {"type": "session.update", "session": dict(session)}
+        if event_id:
+            payload["event_id"] = event_id
+        await self.send(payload)
 
-    async def create_response(self, response: dict[str, Any] | None = None) -> None:
+    async def update_session_tools(
+        self,
+        tools: Sequence[Any],
+        *,
+        session: dict[str, Any] | None = None,
+        event_id: str | None = None,
+    ) -> None:
+        payload = dict(session or {})
+        payload["tools"] = self._render_realtime_tools(tools)
+        await self.update_session(payload, event_id=event_id)
+
+    async def disable_vad(
+        self,
+        *,
+        session: dict[str, Any] | None = None,
+        event_id: str | None = None,
+    ) -> None:
+        payload = dict(session or {})
+        payload["turn_detection"] = None
+        await self.update_session(payload, event_id=event_id)
+
+    async def create_response(
+        self,
+        response: dict[str, Any] | None = None,
+        *,
+        event_id: str | None = None,
+    ) -> None:
         payload: dict[str, Any] = {"type": "response.create"}
         if response:
             payload["response"] = dict(response)
+        if event_id:
+            payload["event_id"] = event_id
         await self.send(payload)
+
+    async def create_response_with_tools(
+        self,
+        tools: Sequence[Any],
+        response: dict[str, Any] | None = None,
+        *,
+        event_id: str | None = None,
+    ) -> None:
+        payload = dict(response or {})
+        payload["tools"] = self._render_realtime_tools(tools)
+        await self.create_response(payload, event_id=event_id)
+
+    async def create_text_message(
+        self,
+        text: str,
+        *,
+        role: str = "user",
+        previous_item_id: str | None = None,
+        event_id: str | None = None,
+    ) -> None:
+        await self.create_conversation_item(
+            {
+                "type": "message",
+                "role": str(role),
+                "content": [{"type": "input_text", "text": str(text)}],
+            },
+            previous_item_id=previous_item_id,
+            event_id=event_id,
+        )
 
     async def create_conversation_item(
         self,
         item: dict[str, Any],
         *,
         previous_item_id: str | None = None,
+        event_id: str | None = None,
     ) -> None:
         payload: dict[str, Any] = {
             "type": "conversation.item.create",
@@ -957,27 +1222,285 @@ class RealtimeConnection:
         }
         if previous_item_id:
             payload["previous_item_id"] = previous_item_id
+        if event_id:
+            payload["event_id"] = event_id
         await self.send(payload)
 
-    async def append_input_audio(self, audio: bytes) -> None:
-        await self.send(
+    async def create_mcp_approval_response(
+        self,
+        approval_request_id: str,
+        approve: bool,
+        *,
+        previous_item_id: str | None = None,
+        event_id: str | None = None,
+    ) -> None:
+        await self.create_conversation_item(
             {
-                "type": "input_audio_buffer.append",
-                "audio": base64.b64encode(audio).decode("ascii"),
-            }
+                "type": "mcp_approval_response",
+                "approval_request_id": approval_request_id,
+                "approve": bool(approve),
+            },
+            previous_item_id=previous_item_id,
+            event_id=event_id,
         )
 
-    async def commit_input_audio(self) -> None:
-        await self.send({"type": "input_audio_buffer.commit"})
+    async def retrieve_conversation_item(
+        self,
+        item_id: str,
+        *,
+        event_id: str | None = None,
+    ) -> None:
+        payload: dict[str, Any] = {
+            "type": "conversation.item.retrieve",
+            "item_id": item_id,
+        }
+        if event_id:
+            payload["event_id"] = event_id
+        await self.send(payload)
 
-    async def clear_input_audio(self) -> None:
-        await self.send({"type": "input_audio_buffer.clear"})
+    async def delete_conversation_item(
+        self,
+        item_id: str,
+        *,
+        event_id: str | None = None,
+    ) -> None:
+        payload: dict[str, Any] = {
+            "type": "conversation.item.delete",
+            "item_id": item_id,
+        }
+        if event_id:
+            payload["event_id"] = event_id
+        await self.send(payload)
+
+    async def truncate_conversation_item(
+        self,
+        item_id: str,
+        *,
+        audio_end_ms: int,
+        content_index: int = 0,
+        event_id: str | None = None,
+    ) -> None:
+        payload: dict[str, Any] = {
+            "type": "conversation.item.truncate",
+            "item_id": item_id,
+            "content_index": content_index,
+            "audio_end_ms": int(audio_end_ms),
+        }
+        if event_id:
+            payload["event_id"] = event_id
+        await self.send(payload)
+
+    async def append_input_audio_chunks(
+        self,
+        audio_chunks: Sequence[bytes],
+        *,
+        event_ids: Sequence[str | None] | None = None,
+    ) -> None:
+        if event_ids is not None and len(event_ids) != len(audio_chunks):
+            raise ValueError("`event_ids` must match the number of audio chunks.")
+        for index, chunk in enumerate(audio_chunks):
+            event_id = event_ids[index] if event_ids is not None else None
+            await self.append_input_audio(chunk, event_id=event_id)
+
+    async def append_input_audio(self, audio: bytes, *, event_id: str | None = None) -> None:
+        payload: dict[str, Any] = {
+            "type": "input_audio_buffer.append",
+            "audio": base64.b64encode(audio).decode("ascii"),
+        }
+        if event_id:
+            payload["event_id"] = event_id
+        await self.send(payload)
+
+    async def cancel_response(
+        self,
+        *,
+        response_id: str | None = None,
+        event_id: str | None = None,
+    ) -> None:
+        payload: dict[str, Any] = {"type": "response.cancel"}
+        if response_id:
+            payload["response_id"] = response_id
+        if event_id:
+            payload["event_id"] = event_id
+        await self.send(payload)
+
+    async def commit_input_audio(self, *, event_id: str | None = None) -> None:
+        payload: dict[str, Any] = {"type": "input_audio_buffer.commit"}
+        if event_id:
+            payload["event_id"] = event_id
+        await self.send(payload)
+
+    async def commit_audio_and_create_response(
+        self,
+        response: dict[str, Any] | None = None,
+        *,
+        commit_event_id: str | None = None,
+        response_event_id: str | None = None,
+    ) -> None:
+        await self.commit_input_audio(event_id=commit_event_id)
+        await self.create_response(response, event_id=response_event_id)
+
+    async def send_audio_turn(
+        self,
+        audio_chunks: Sequence[bytes],
+        response: dict[str, Any] | None = None,
+        *,
+        clear_input: bool = False,
+        clear_output: bool = False,
+        cancel_response_id: str | None = None,
+        clear_input_event_id: str | None = None,
+        clear_output_event_id: str | None = None,
+        cancel_event_id: str | None = None,
+        append_event_ids: Sequence[str | None] | None = None,
+        commit_event_id: str | None = None,
+        response_event_id: str | None = None,
+    ) -> None:
+        if clear_input:
+            await self.clear_input_audio(event_id=clear_input_event_id)
+        if cancel_response_id is not None:
+            await self.cancel_response(response_id=cancel_response_id, event_id=cancel_event_id)
+        if clear_output:
+            await self.clear_output_audio(event_id=clear_output_event_id)
+        await self.append_input_audio_chunks(audio_chunks, event_ids=append_event_ids)
+        await self.commit_audio_and_create_response(
+            response,
+            commit_event_id=commit_event_id,
+            response_event_id=response_event_id,
+        )
+
+    async def clear_input_audio(self, *, event_id: str | None = None) -> None:
+        payload: dict[str, Any] = {"type": "input_audio_buffer.clear"}
+        if event_id:
+            payload["event_id"] = event_id
+        await self.send(payload)
+
+    async def clear_output_audio(self, *, event_id: str | None = None) -> None:
+        payload: dict[str, Any] = {"type": "output_audio_buffer.clear"}
+        if event_id:
+            payload["event_id"] = event_id
+        await self.send(payload)
 
     async def recv(self) -> Any:
         result = self._connection.recv()
         if hasattr(result, "__await__"):
             result = await result
         return self._serialize_event(result)
+
+    async def recv_event(self) -> RealtimeEventResult:
+        return self._normalize_event(await self.recv_raw())
+
+    async def recv_until_type(
+        self,
+        event_types: str | Sequence[str],
+        *,
+        timeout: float | None = None,
+    ) -> RealtimeEventResult:
+        expected = {event_types} if isinstance(event_types, str) else {str(item) for item in event_types}
+
+        async def _wait() -> RealtimeEventResult:
+            while True:
+                event = await self.recv_event()
+                if str(event.event_type or "") in expected:
+                    return event
+
+        if timeout is None:
+            return await _wait()
+        return await asyncio.wait_for(_wait(), timeout=timeout)
+
+    async def wait_for_mcp_tool_listing(
+        self,
+        *,
+        server_label: str | None = None,
+        timeout: float | None = None,
+    ) -> RealtimeMCPToolListingResult:
+        expected_label = str(server_label or "").strip() or None
+
+        async def _wait() -> RealtimeMCPToolListingResult:
+            while True:
+                event = await self.recv_event()
+                event_type = str(event.event_type or "")
+                item = dict(event.item or {}) if isinstance(event.item, dict) else {}
+                item_type = str(item.get("type") or "")
+                item_label = str(item.get("server_label") or event.details.get("server_label") or "").strip() or None
+                if expected_label is not None and item_label != expected_label:
+                    continue
+
+                if event_type == "conversation.item.done" and item_type == "mcp_list_tools":
+                    return RealtimeMCPToolListingResult(
+                        server_label=item_label,
+                        status=str(item.get("status") or event.status or "completed"),
+                        tools=self._extract_mcp_tool_names(item.get("tools")),
+                        item_id=event.item_id or str(item.get("id") or "") or None,
+                        event_type=event_type,
+                        details={k: v for k, v in item.items() if k not in {"type", "status", "tools", "server_label", "id"}},
+                        final_event=event,
+                    )
+
+                if event_type == "mcp_list_tools.failed":
+                    error = event.details.get("error")
+                    if isinstance(error, dict):
+                        error = error.get("message") or error.get("code") or json.dumps(error)
+                    elif error is not None and not isinstance(error, str):
+                        error = str(error)
+                    return RealtimeMCPToolListingResult(
+                        server_label=item_label,
+                        status=event.status or "failed",
+                        tools=[],
+                        item_id=event.item_id,
+                        event_type=event_type,
+                        error=error or None,
+                        details=dict(event.details),
+                        final_event=event,
+                    )
+
+        if timeout is None:
+            return await _wait()
+        return await asyncio.wait_for(_wait(), timeout=timeout)
+
+    async def collect_response_output(
+        self,
+        *,
+        response_id: str | None = None,
+        timeout: float | None = None,
+        decode_audio: bool = True,
+    ) -> RealtimeResponseOutput:
+        terminal_types = {"response.done", "response.cancelled", "response.failed"}
+
+        async def _collect() -> RealtimeResponseOutput:
+            collected = RealtimeResponseOutput(response_id=response_id)
+            while True:
+                event = await self.recv_event()
+                event_type = str(event.event_type or "")
+                event_response_id = event.response_id
+                if response_id is not None and event_response_id != response_id:
+                    continue
+
+                collected.raw_events.append(event)
+                if event_response_id and not collected.response_id:
+                    collected.response_id = event_response_id
+                if event.item_id and event.item_id not in collected.item_ids:
+                    collected.item_ids.append(event.item_id)
+                if event_type:
+                    collected.event_types.append(event_type)
+
+                if event_type == "response.output_text.delta" and event.delta:
+                    collected.text += event.delta
+                elif event_type == "response.output_audio_transcript.delta" and event.transcript:
+                    collected.transcript += event.transcript
+                elif event_type == "response.output_audio.delta" and event.delta and decode_audio:
+                    try:
+                        collected.audio += base64.b64decode(event.delta)
+                    except Exception:
+                        pass
+
+                if event_type in terminal_types:
+                    collected.status = event.status or event_type.removeprefix("response.")
+                    collected.final_event = event
+                    return collected
+
+        if timeout is None:
+            return await _collect()
+        return await asyncio.wait_for(_collect(), timeout=timeout)
 
     async def recv_raw(self) -> Any:
         result = self._connection.recv()
@@ -1117,6 +1640,58 @@ class FileContentResult:
             "file_id": self.file_id,
             "media_type": self.media_type,
             "byte_length": self.byte_length,
+        }
+
+
+@dataclass
+class UploadResource:
+    """Provider-level representation of an OpenAI upload lifecycle object."""
+
+    upload_id: str
+    status: str | None = None
+    filename: str | None = None
+    purpose: str | None = None
+    bytes: int | None = None
+    created_at: int | None = None
+    expires_at: int | None = None
+    file: FileResource | None = None
+    raw_response: Any | None = field(default=None, repr=False)
+
+    @property
+    def ok(self) -> bool:
+        return self.status not in {"cancelled", "expired"}
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "upload_id": self.upload_id,
+            "status": self.status,
+            "filename": self.filename,
+            "purpose": self.purpose,
+            "bytes": self.bytes,
+            "created_at": self.created_at,
+            "expires_at": self.expires_at,
+            "file": self.file.to_dict() if self.file is not None else None,
+        }
+
+
+@dataclass
+class UploadPartResource:
+    """Provider-level representation of an upload part."""
+
+    part_id: str
+    upload_id: str
+    created_at: int | None = None
+    raw_response: Any | None = field(default=None, repr=False)
+
+    @property
+    def ok(self) -> bool:
+        return bool(self.part_id)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "part_id": self.part_id,
+            "upload_id": self.upload_id,
+            "created_at": self.created_at,
         }
 
 
@@ -1306,6 +1881,9 @@ __all__ = [
     "RealtimeClientSecretResult",
     "RealtimeCallResult",
     "RealtimeTranscriptionSessionResult",
+    "RealtimeEventResult",
+    "RealtimeMCPToolListingResult",
+    "RealtimeResponseOutput",
     "RealtimeConnection",
     "WebhookEventResult",
     "FileResource",

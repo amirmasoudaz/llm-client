@@ -9,6 +9,17 @@ from llm_client.engine import ExecutionEngine, FailoverPolicy, RetryConfig
 from llm_client.hooks import HookManager
 from llm_client.idempotency import IdempotencyTracker
 from llm_client.provider_registry import ProviderCapabilities, ProviderDescriptor, ProviderRegistry
+from llm_client.tools import (
+    ResponsesApplyPatchCallOutput,
+    ResponsesAttributeFilter,
+    ResponsesChunkingStrategy,
+    ResponsesConnectorId,
+    ResponsesExpirationPolicy,
+    ResponsesFileSearchRankingOptions,
+    ResponsesGoogleCalendarTool,
+    ResponsesShellCallChunk,
+    ResponsesVectorStoreFileSpec,
+)
 from llm_client.providers.types import (
     AudioSpeechResult,
     AudioTranscriptionResult,
@@ -35,6 +46,8 @@ from llm_client.providers.types import (
     RealtimeTranscriptionSessionResult,
     StreamEvent,
     StreamEventType,
+    UploadPartResource,
+    UploadResource,
     Usage,
     VectorStoreFileBatchResource,
     VectorStoreFileContentResult,
@@ -129,6 +142,24 @@ class _WorkflowProvider(ScriptedProvider):
         self.workflow_calls.append(("create_conversation", {"items": items, "metadata": metadata, **kwargs}))
         return ConversationResource(conversation_id="conv_1", metadata=metadata)
 
+    async def poll_vector_store(self, vector_store_id: str, *, poll_interval: float = 2.0, timeout: float | None = None, **kwargs):
+        self.workflow_calls.append(
+            (
+                "poll_vector_store",
+                {"vector_store_id": vector_store_id, "poll_interval": poll_interval, "timeout": timeout, **kwargs},
+            )
+        )
+        return VectorStoreResource(vector_store_id=vector_store_id, status="completed", file_counts={"completed": 2})
+
+    async def create_vector_store_and_poll(self, *, poll_interval: float = 2.0, timeout: float | None = None, **kwargs):
+        self.workflow_calls.append(
+            (
+                "create_vector_store_and_poll",
+                {"poll_interval": poll_interval, "timeout": timeout, **kwargs},
+            )
+        )
+        return VectorStoreResource(vector_store_id="vs_1", status="completed", file_counts={"completed": 1})
+
     async def create_conversation_items(self, conversation_id: str, *, items, include=None, **kwargs):
         self.workflow_calls.append(
             (
@@ -209,6 +240,39 @@ class _WorkflowProvider(ScriptedProvider):
         )
         return ok_result("approved", model=self.model_name)
 
+    async def submit_shell_call_output(self, *, previous_response_id: str, call_id: str | None = None, output=None, max_output_length: int | None = None, status: str | None = None, tools=None, **kwargs):
+        self.workflow_calls.append(
+            (
+                "submit_shell_call_output",
+                {
+                    "previous_response_id": previous_response_id,
+                    "call_id": call_id,
+                    "output": output,
+                    "max_output_length": max_output_length,
+                    "status": status,
+                    "tools": tools,
+                    **kwargs,
+                },
+            )
+        )
+        return ok_result("shell output submitted", model=self.model_name)
+
+    async def submit_apply_patch_call_output(self, *, previous_response_id: str, call_id: str | None = None, status: str | None = None, output=None, tools=None, **kwargs):
+        self.workflow_calls.append(
+            (
+                "submit_apply_patch_call_output",
+                {
+                    "previous_response_id": previous_response_id,
+                    "call_id": call_id,
+                    "status": status,
+                    "output": output,
+                    "tools": tools,
+                    **kwargs,
+                },
+            )
+        )
+        return ok_result("apply patch output submitted", model=self.model_name)
+
     async def delete_response(self, response_id: str, **kwargs):
         self.workflow_calls.append(("delete_response", {"response_id": response_id, **kwargs}))
         return DeletionResult(resource_id=response_id)
@@ -255,6 +319,31 @@ class _WorkflowProvider(ScriptedProvider):
     async def get_file_content(self, file_id: str, **kwargs):
         self.workflow_calls.append(("get_file_content", {"file_id": file_id, **kwargs}))
         return FileContentResult(file_id=file_id, content=b"abc", media_type="application/pdf")
+
+    async def create_upload(self, **kwargs):
+        self.workflow_calls.append(("create_upload", dict(kwargs)))
+        return UploadResource(upload_id="upload_1", status="pending", filename=str(kwargs.get("filename") or "file.bin"))
+
+    async def add_upload_part(self, upload_id: str, **kwargs):
+        self.workflow_calls.append(("add_upload_part", {"upload_id": upload_id, **kwargs}))
+        return UploadPartResource(part_id="part_1", upload_id=upload_id)
+
+    async def complete_upload(self, upload_id: str, **kwargs):
+        self.workflow_calls.append(("complete_upload", {"upload_id": upload_id, **kwargs}))
+        return UploadResource(
+            upload_id=upload_id,
+            status="completed",
+            filename="guide.pdf",
+            file=FileResource(file_id="file_2", filename="guide.pdf", purpose="assistants"),
+        )
+
+    async def cancel_upload(self, upload_id: str, **kwargs):
+        self.workflow_calls.append(("cancel_upload", {"upload_id": upload_id, **kwargs}))
+        return UploadResource(upload_id=upload_id, status="cancelled")
+
+    async def upload_file_chunked(self, **kwargs):
+        self.workflow_calls.append(("upload_file_chunked", dict(kwargs)))
+        return UploadResource(upload_id="upload_2", status="completed", filename=str(kwargs.get("filename") or "chunked.bin"))
 
     async def create_vector_store(self, **kwargs):
         self.workflow_calls.append(("create_vector_store", dict(kwargs)))
@@ -353,6 +442,22 @@ class _WorkflowProvider(ScriptedProvider):
     async def respond_with_code_interpreter(self, prompt: str, **kwargs):
         self.workflow_calls.append(("respond_with_code_interpreter", {"prompt": prompt, **kwargs}))
         return ok_result("code interpreter done", model=self.model_name)
+
+    async def respond_with_shell(self, prompt: str, **kwargs):
+        self.workflow_calls.append(("respond_with_shell", {"prompt": prompt, **kwargs}))
+        return ok_result("shell done", model=self.model_name)
+
+    async def respond_with_apply_patch(self, prompt: str, **kwargs):
+        self.workflow_calls.append(("respond_with_apply_patch", {"prompt": prompt, **kwargs}))
+        return ok_result("apply patch done", model=self.model_name)
+
+    async def respond_with_computer_use(self, prompt: str, **kwargs):
+        self.workflow_calls.append(("respond_with_computer_use", {"prompt": prompt, **kwargs}))
+        return ok_result("computer use done", model=self.model_name)
+
+    async def respond_with_image_generation(self, prompt: str, **kwargs):
+        self.workflow_calls.append(("respond_with_image_generation", {"prompt": prompt, **kwargs}))
+        return ok_result("image generation done", model=self.model_name)
 
     async def respond_with_remote_mcp(self, prompt: str, **kwargs):
         self.workflow_calls.append(("respond_with_remote_mcp", {"prompt": prompt, **kwargs}))
@@ -758,6 +863,11 @@ async def test_engine_orchestrates_provider_workflow_methods() -> None:
         previous_response_id="resp_prev",
         approval_request_id="apr_1",
         approve=True,
+        connector_id=ResponsesConnectorId.GOOGLE_CALENDAR,
+        server_label="Google Calendar",
+        authorization="Bearer oauth-token",
+        allowed_tools=(ResponsesGoogleCalendarTool.SEARCH_EVENTS,),
+        require_approval="never",
     )
     deleted_response = await engine.delete_response("resp_3")
 
@@ -772,6 +882,11 @@ async def test_engine_orchestrates_provider_workflow_methods() -> None:
     assert compacted.compaction_id == "cmp_1"
     assert approved.content == "approved"
     assert deleted_response.resource_id == "resp_3"
+    approval_call = next(payload for name, payload in provider.workflow_calls if name == "submit_mcp_approval_response")
+    assert approval_call["connector_id"] == ResponsesConnectorId.GOOGLE_CALENDAR
+    assert approval_call["authorization"] == "Bearer oauth-token"
+    assert approval_call["allowed_tools"] == (ResponsesGoogleCalendarTool.SEARCH_EVENTS,)
+    assert approval_call["require_approval"] == "never"
 
     event_names = [name for name, _ in hook.events]
     assert event_names.count("workflow.start") == 11
@@ -806,6 +921,17 @@ async def test_engine_orchestrates_extended_provider_api_workflows() -> None:
     image = await engine.generate_image("draw a cat")
     transcript = await engine.transcribe_audio("clip.wav")
     speech = await engine.synthesize_speech("hello", voice="alloy")
+    upload = await engine.create_upload(bytes=3, filename="guide.pdf", mime_type="application/pdf", purpose="assistants")
+    upload_part = await engine.add_upload_part("upload_1", data=b"abc")
+    completed_upload = await engine.complete_upload("upload_1", part_ids=["part_1"], md5="deadbeef")
+    cancelled_upload = await engine.cancel_upload("upload_2")
+    chunked_upload = await engine.upload_file_chunked(
+        file=b"abc",
+        filename="guide.pdf",
+        bytes=3,
+        mime_type="application/pdf",
+        purpose="assistants",
+    )
     vector_store = await engine.create_vector_store(name="Docs")
     search = await engine.search_vector_store("vs_1", query="cache invalidation")
     fine_tune = await engine.create_fine_tuning_job(model="gpt-4o-mini", training_file="file_1")
@@ -815,6 +941,11 @@ async def test_engine_orchestrates_extended_provider_api_workflows() -> None:
     assert image.images[0].url == "https://example.com/image.png"
     assert transcript.text == "hello"
     assert speech.byte_length == 3
+    assert upload.upload_id == "upload_1"
+    assert upload_part.part_id == "part_1"
+    assert completed_upload.file is not None and completed_upload.file.file_id == "file_2"
+    assert cancelled_upload.status == "cancelled"
+    assert chunked_upload.status == "completed"
     assert vector_store.vector_store_id == "vs_1"
     assert search.results[0]["file_id"] == "file_1"
     assert fine_tune.job_id == "ftjob_1"
@@ -850,6 +981,19 @@ async def test_engine_orchestrates_realtime_webhook_vector_file_and_deep_researc
     web_search = await engine.respond_with_web_search("Find latest docs")
     file_search = await engine.respond_with_file_search("Find tenant docs", vector_store_ids=["vs_1"])
     code_interpreter = await engine.respond_with_code_interpreter("Run analysis")
+    shell = await engine.respond_with_shell("List files")
+    apply_patch = await engine.respond_with_apply_patch("Rename helper")
+    shell_output = await engine.submit_shell_call_output(
+        previous_response_id="resp_shell",
+        call_id="shell_1",
+        output=[ResponsesShellCallChunk.exit(stdout="done", exit_code=0)],
+    )
+    patch_output = await engine.submit_apply_patch_call_output(
+        previous_response_id="resp_patch",
+        output=ResponsesApplyPatchCallOutput(call_id="patch_1", status="completed", output="Applied"),
+    )
+    computer_use = await engine.respond_with_computer_use("Open the dashboard")
+    image_generation = await engine.respond_with_image_generation("Draw a chart mascot")
     remote_mcp = await engine.respond_with_remote_mcp("Inspect wiki", server_url="https://mcp.example.com")
     connector = await engine.respond_with_connector("Inspect gmail", connector_id="gmail")
     research = await engine.start_deep_research("Research semaglutide", web_search=True, rewrite_prompt=True)
@@ -879,7 +1023,179 @@ async def test_engine_orchestrates_realtime_webhook_vector_file_and_deep_researc
     assert web_search.content == "web search done"
     assert file_search.content == "file search done"
     assert code_interpreter.content == "code interpreter done"
+    assert shell.content == "shell done"
+    assert apply_patch.content == "apply patch done"
+    assert shell_output.content == "shell output submitted"
+    assert patch_output.content == "apply patch output submitted"
+    assert computer_use.content == "computer use done"
+    assert image_generation.content == "image generation done"
     assert remote_mcp.content == "remote mcp done"
     assert connector.content == "connector done"
     assert research.content == "research queued"
     assert staged_research.background.completion.content == "research final"
+    assert any(name == "submit_shell_call_output" for name, _ in provider.workflow_calls)
+    assert any(name == "submit_apply_patch_call_output" for name, _ in provider.workflow_calls)
+
+
+@pytest.mark.asyncio
+async def test_engine_passes_through_typed_retrieval_controls() -> None:
+    provider = _WorkflowProvider()
+    engine = ExecutionEngine(provider=provider)
+
+    await engine.search_vector_store(
+        "vs_1",
+        query="cache invalidation",
+        attribute_filter=ResponsesAttributeFilter.eq("scope", "tenant"),
+        ranking_options=ResponsesFileSearchRankingOptions(score_threshold=0.2),
+        max_num_results=7,
+        rewrite_query=True,
+    )
+    await engine.respond_with_file_search(
+        "Find tenant docs",
+        vector_store_ids=["vs_1"],
+        attribute_filter=ResponsesAttributeFilter.eq("scope", "tenant"),
+        ranking_options=ResponsesFileSearchRankingOptions(score_threshold=0.15),
+        max_num_results=4,
+        include_search_results=True,
+    )
+
+    assert provider.workflow_calls[0] == (
+        "search_vector_store",
+        {
+            "vector_store_id": "vs_1",
+            "query": "cache invalidation",
+            "attribute_filter": ResponsesAttributeFilter.eq("scope", "tenant"),
+            "ranking_options": ResponsesFileSearchRankingOptions(score_threshold=0.2),
+            "max_num_results": 7,
+            "rewrite_query": True,
+        },
+    )
+    assert provider.workflow_calls[1] == (
+        "respond_with_file_search",
+        {
+            "prompt": "Find tenant docs",
+            "vector_store_ids": ["vs_1"],
+            "attribute_filter": ResponsesAttributeFilter.eq("scope", "tenant"),
+            "ranking_options": ResponsesFileSearchRankingOptions(score_threshold=0.15),
+            "max_num_results": 4,
+            "include_search_results": True,
+        },
+    )
+
+
+@pytest.mark.asyncio
+async def test_engine_passes_through_typed_vector_store_resource_controls() -> None:
+    provider = _WorkflowProvider()
+    engine = ExecutionEngine(provider=provider)
+
+    await engine.create_vector_store(
+        name="Docs",
+        description="Tenant docs",
+        file_ids=["file_1"],
+        metadata={"scope": "tenant"},
+        expiration_policy=ResponsesExpirationPolicy(days=14),
+        chunking_strategy=ResponsesChunkingStrategy.auto(),
+    )
+    await engine.create_vector_store_file(
+        "vs_1",
+        file_id="file_1",
+        attributes={"scope": "docs"},
+        chunking_strategy=ResponsesChunkingStrategy.static(max_chunk_size_tokens=1000, chunk_overlap_tokens=200),
+    )
+    await engine.create_vector_store_file_batch(
+        "vs_1",
+        files=[
+            ResponsesVectorStoreFileSpec(
+                file_id="file_2",
+                attributes={"scope": "batch"},
+                chunking_strategy=ResponsesChunkingStrategy.auto(),
+            )
+        ],
+    )
+
+    assert provider.workflow_calls[0] == (
+        "create_vector_store",
+        {
+            "name": "Docs",
+            "description": "Tenant docs",
+            "file_ids": ["file_1"],
+            "metadata": {"scope": "tenant"},
+            "expiration_policy": ResponsesExpirationPolicy(days=14),
+            "chunking_strategy": ResponsesChunkingStrategy.auto(),
+        },
+    )
+    assert provider.workflow_calls[1] == (
+        "create_vector_store_file",
+        {
+            "vector_store_id": "vs_1",
+            "file_id": "file_1",
+            "attributes": {"scope": "docs"},
+            "chunking_strategy": ResponsesChunkingStrategy.static(max_chunk_size_tokens=1000, chunk_overlap_tokens=200),
+        },
+    )
+    assert provider.workflow_calls[2] == (
+        "create_vector_store_file_batch",
+        {
+            "vector_store_id": "vs_1",
+            "files": [
+                ResponsesVectorStoreFileSpec(
+                    file_id="file_2",
+                    attributes={"scope": "batch"},
+                    chunking_strategy=ResponsesChunkingStrategy.auto(),
+                )
+            ],
+        },
+    )
+
+
+@pytest.mark.asyncio
+async def test_engine_orchestrates_vector_store_polling_helpers() -> None:
+    provider = _WorkflowProvider()
+    engine = ExecutionEngine(provider=provider)
+
+    polled = await engine.poll_vector_store("vs_1", poll_interval=0.0, timeout=5.0)
+    created_polled = await engine.create_vector_store_and_poll(
+        name="Docs",
+        file_ids=["file_1"],
+        poll_interval=0.0,
+        timeout=5.0,
+    )
+    created_from_files = await engine.create_vector_store_and_poll(
+        name="Spec docs",
+        files=[
+            ResponsesVectorStoreFileSpec(
+                file_id="file_2",
+                attributes={"scope": "batch"},
+                chunking_strategy=ResponsesChunkingStrategy.auto(),
+            )
+        ],
+        poll_interval=0.0,
+        timeout=5.0,
+    )
+
+    assert polled.vector_store_id == "vs_1"
+    assert created_polled.vector_store_id == "vs_1"
+    assert created_from_files.vector_store_id == "vs_1"
+    assert provider.workflow_calls[0] == (
+        "poll_vector_store",
+        {"vector_store_id": "vs_1", "poll_interval": 0.0, "timeout": 5.0},
+    )
+    assert provider.workflow_calls[1] == (
+        "create_vector_store_and_poll",
+        {"poll_interval": 0.0, "timeout": 5.0, "name": "Docs", "file_ids": ["file_1"]},
+    )
+    assert provider.workflow_calls[2] == (
+        "create_vector_store_and_poll",
+        {
+            "poll_interval": 0.0,
+            "timeout": 5.0,
+            "name": "Spec docs",
+            "files": [
+                ResponsesVectorStoreFileSpec(
+                    file_id="file_2",
+                    attributes={"scope": "batch"},
+                    chunking_strategy=ResponsesChunkingStrategy.auto(),
+                )
+            ],
+        },
+    )

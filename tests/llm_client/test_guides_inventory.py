@@ -4,7 +4,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-README = ROOT / "llm_client" / "README.md"
+README = ROOT / "README.md"
 GUIDE_INDEX = ROOT / "docs" / "llm-client-guides-index.md"
 
 

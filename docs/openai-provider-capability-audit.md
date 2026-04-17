@@ -1,8 +1,20 @@
 # OpenAI Provider Capability Audit
 
-Last updated: 2026-03-31
+Last updated: 2026-04-16
 
 This document tracks how `llm_client`'s OpenAI provider aligns with the local scraped OpenAI docs index exposed by the docs API container.
+
+## 2026-04-08 refresh
+
+This document was refreshed against both the local docs-ledger inventory and the official OpenAI docs MCP before `1.2` implementation work starts.
+
+Refresh findings:
+
+- the local docs-ledger is still the better inventory source, but localhost reachability remains inconsistent from the default sandbox namespace
+- the official docs MCP confirmed the `tool_search` and namespace work completed earlier on this branch, and the next missing hosted-tool gap was output-side continuation helpers for `shell` and `apply_patch`
+- the official Realtime conversations guidance now explicitly enumerates `conversation.item.added` and `conversation.item.done`, confirming the current Realtime base is useful but still narrower than the latest documented event surface
+- the official retrieval/file-search guidance now explicitly calls out vector-store-file `attributes` and `attribute_filter`-based filtering, which reframes the remaining retrieval gap as ergonomics and first-class workflow support rather than missing vector-store CRUD
+- the official model pages and pricing docs now expose the GPT-5.4 family as the current flagship OpenAI reasoning line, and the package model registry has been expanded accordingly with `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.4-nano`, and `gpt-5.4-pro`
 
 ## Canonical sources
 
@@ -65,9 +77,12 @@ This pass used the docs index as the source-of-truth inventory and then ran a bi
 - Responses function tools now default to `strict=True` unless the caller explicitly overrides that field.
 - OpenAI Responses tool validation now fails early when built-in/custom Responses descriptors are used on the chat-completions path or with non-OpenAI providers.
 - The model catalog and provider registry now expose explicit Responses-first capability flags for OpenAI completions models and the OpenAI provider surface.
-- OpenAI provider and engine workflows now expose direct moderation, image generation/editing, speech-to-text, translation, text-to-speech, generic file upload/retrieve/content helpers, hosted vector stores, vector-store files, and fine-tuning job APIs.
+- The model catalog and provider registry now include the GPT-5.4 family with official snapshot ids, context windows, reasoning-effort ranges, and current pricing/rate-limit metadata from the OpenAI model pages.
+- OpenAI provider and engine workflows now expose direct moderation, image generation/editing, speech-to-text, translation, text-to-speech, generic file upload/retrieve/content helpers, Uploads lifecycle helpers, hosted vector stores, vector-store files, and fine-tuning job APIs.
 - OpenAI provider and engine workflows now expose realtime websocket connection helpers, client-secret/call-control helpers, webhook verification/unwrapping, and vector-store file polling/batch helpers.
-- OpenAI provider and engine workflows now expose realtime transcription-session helpers plus hosted Responses workflow helpers for web search, file search, code interpreter, remote MCP, and connectors.
+- OpenAI provider and engine workflows now expose realtime transcription-session helpers plus hosted Responses workflow helpers for web search, file search, code interpreter, shell, apply-patch, computer-use, image generation, remote MCP, and connectors.
+- OpenAI provider and engine workflows now expose first-class `submit_shell_call_output(...)` and `submit_apply_patch_call_output(...)` helpers, plus typed continuation payload helpers in `llm_client.tools`, so hosted shell/apply-patch loops no longer require raw provider dicts.
+- OpenAI retrieval/file-search workflows now expose first-class typed tuning controls for `attribute_filter`, `ranking_options`, `max_num_results`, `rewrite_query`, and `include_search_results`.
 - Deep-research workflows now include first-class clarify, rewrite, kickoff, and staged runner helpers aligned with the docs-ledger guidance.
 
 ### Still partial or deferred
@@ -75,10 +90,11 @@ This pass used the docs index as the source-of-truth inventory and then ran a bi
 - `CompletionResult.provider_items` should remain available as a low-level replay/debug escape hatch, but not as a documented stable provider-agnostic contract. The stable surface is `output_items` plus the typed result objects.
 - The package now exposes a normalized subset of rich Responses outputs via `CompletionResult.output_items` and `CompletionResult.refusal`, while retaining `provider_items` for exact replay of provider-specific details that are not yet part of the stable normalized shape.
 - Realtime coverage is now materially broader, but it is still not the full OpenAI Realtime product surface.
-- Hosted retrieval now covers the generic Files API, vector stores, vector-store files, polling, and file batches, but it still does not cover every hosted file-search/resource workflow in the docs.
-- MCP/connectors now have typed descriptors and helper workflows, but they still do not cover the full skills/connectors product surface from the docs.
+- Hosted retrieval now covers the generic Files API, the Uploads API lifecycle, vector stores, vector-store files, polling, file batches, typed filters, ranking options, query rewriting, and hosted file-search result inclusion, but broader file-search product/resource management is still incomplete.
+- MCP/connectors now have typed descriptors, typed connector allowlists, deferred loading for tool-search workflows, and helper workflows, but they still do not cover the full skills/connectors product surface from the docs.
 - Deep research now covers clarify/rewrite/kickoff/staged orchestration, but it is still not the full lifecycle/product surface from the docs.
 - The local docs API remains intermittently unavailable on `127.0.0.1:8000`; live re-audit should be treated as best-effort until `/health` and `/docs/index` stabilize consistently.
+- The package model registry is broader than before, but it is still not a full mirror of the entire OpenAI docs model corpus.
 
 ## Capability matrix
 
@@ -107,15 +123,34 @@ This pass used the docs index as the source-of-truth inventory and then ran a bi
 | Responses API advanced `tool_choice` including `allowed_tools` | `guides/function-calling.md` | Implemented | Important | Public surface now accepts dict tool-choice payloads and aliases nested function names correctly. |
 | Responses built-in tools as first-class package abstractions | `guides/tools*.md` | Implemented | Important | Added stable `ResponsesBuiltinTool` descriptors in `llm_client.tools` and OpenAI translation support. |
 | Responses custom tools with CFG grammar | `guides/function-calling.md` | Implemented | Important | Added stable `ResponsesCustomTool` and `ResponsesGrammar` descriptors in `llm_client.tools`. |
-| Responses MCP approval continuation | `guides/tools-remote-mcp.md` | Implemented | Important | Added `submit_mcp_approval_response(...)` helper for approval loops. |
+| Responses MCP approval continuation | `guides/tools-remote-mcp.md`, `guides/tools-connectors-mcp.md` | Implemented | Important | Added `submit_mcp_approval_response(...)` helper for approval loops, including MCP/connector convenience kwargs so continuation calls can resend auth-bearing tool definitions. |
 | Encrypted reasoning continuity controls | `guides/reasoning.md`, `guides/migrate-to-responses.md` | Implemented | Important | Added first-class `include=["reasoning.encrypted_content"]` request control support. |
 | Prompt caching request controls | `guides/prompt-caching.md` | Implemented | Important | Added first-class `prompt_cache_key` and `prompt_cache_retention` controls. |
 | Background response retrieve/cancel/resume APIs | `guides/background.md` | Implemented | Important | Provider now exposes retrieval, cancellation, polling, and resumed background streaming. |
 | Stored Responses deletion | `guides/background.md`, SDK surface | Implemented | Important | Added first-class `delete_response(...)` helper instead of requiring raw SDK access. |
 | Responses rich output-item normalization | `guides/migrate-to-responses.md`, SDK `ResponseOutputItem` union | Implemented | Important | Added normalized `output_items` plus `refusal`, while preserving raw `provider_items` for exact replay. |
 | Responses function-tool strict defaults | `guides/function-calling.md` | Implemented | Important | Responses function tools now default `strict=True` unless the caller sets it explicitly. |
+| OpenAI `tool_search` | Official docs MCP `guides/function-calling#tool-search` | Implemented | Important | Added first-class advanced `ResponsesToolSearch` plus `respond_with_tool_search(...)` and `submit_tool_search_output(...)` helpers for hosted and client-executed workflows. |
+| OpenAI-specific tool namespaces | Official docs MCP `guides/function-calling#tool-search` best-practices section | Implemented | Important | Added `ResponsesToolNamespace` and `ResponsesFunctionTool`, plus recursive alias sanitization and output normalization so namespace intent is preserved on the OpenAI path. |
+| Hosted shell/apply-patch continuation helpers | Official docs MCP `guides/tools-shell.md`, `guides/tools-apply-patch.md` | Implemented | Important | Added typed `ResponsesShellCallChunk`, `ResponsesShellCallOutput`, and `ResponsesApplyPatchCallOutput`, plus `submit_shell_call_output(...)` and `submit_apply_patch_call_output(...)` on the provider and engine. |
+| Realtime conversation item lifecycle events | Official docs MCP `guides/realtime-conversations#text-inputs-and-outputs`, `guides/realtime-conversations#interruption-and-truncation`, `guides/realtime-conversations#push-to-talk`, `guides/realtime-mcp#realtime-mcp-flow` | Implemented | Important | `RealtimeConnection` now exposes `create_text_message(...)`, `append_input_audio_chunks(...)`, `commit_audio_and_create_response(...)`, `disable_vad(...)`, `send_audio_turn(...)`, `update_session_tools(...)`, `create_response_with_tools(...)`, realtime `mcp_approval_response` creation, `conversation.item.retrieve`, `conversation.item.delete`, `conversation.item.truncate`, `response.cancel`, and typed `RealtimeEventResult` / `RealtimeMCPToolListingResult` / `RealtimeResponseOutput` helpers via `recv_event()` / `recv_until_type(...)` / `wait_for_mcp_tool_listing(...)` / `collect_response_output(...)`. |
+| Retrieval attributes, chunking, and ingestion ergonomics | Official docs MCP `guides/tools-file-search#metadata-filtering`, `guides/retrieval#attributes`, `guides/retrieval#attribute-filtering`, `guides/retrieval#batch-operations`, `assistants/tools/file-search#creating-vector-stores-and-adding-files` | Implemented | Important | Added typed `ResponsesAttributeFilter`, `ResponsesFileSearchRankingOptions`, `ResponsesFileSearchHybridWeights`, `ResponsesExpirationPolicy`, `ResponsesChunkingStrategy`, and `ResponsesVectorStoreFileSpec`, plus direct `search_vector_store(...)`, `create_vector_store(...)`, `poll_vector_store(...)`, `create_vector_store_and_poll(...)`, vector-store file, and vector-store batch controls for typed retrieval tuning, expiration, chunking, per-file ingestion metadata, store provisioning from typed file specs, and store-level ingestion waits. |
+| Uploads API lifecycle | Official docs MCP OpenAPI `/uploads`, SDK `uploads.upload_file_chunked(...)` | Implemented | Important | Added first-class `create_upload(...)`, `add_upload_part(...)`, `complete_upload(...)`, `cancel_upload(...)`, and `upload_file_chunked(...)` provider/engine helpers with typed `UploadResource` and `UploadPartResource` results so larger hosted ingestion flows no longer require raw SDK access. |
 
 ## Implementation roadmap
+
+### 1.2 next pass
+
+The next bounded `1.2` implementation slice should be:
+
+1. deeper connectors/MCP and hosted file-search product management
+2. then the next broader Realtime product-management follow-up
+
+Why this order:
+
+- `tool_search`, namespaces, hosted shell/apply-patch continuation, retrieval tuning/ingestion ergonomics, store-level vector-store polling, and the first Realtime lifecycle/event wrapper slice are now closed as the early advanced OpenAI-specific `1.2` slices
+- deeper connectors/MCP and hosted file-search product management now represent the clearest remaining high-value gaps, although MCP approval continuation no longer requires raw tool reconstruction
+- broader Realtime product-management work still remains, but the connection-level lifecycle contract is materially stronger than before, including higher-level text/audio-turn helpers and collected response output helpers on `RealtimeConnection`
 
 This roadmap covers the remaining work needed to extend `llm_client` toward broader official-docs parity. It is ordered by package impact: fix compliance gaps first, then add missing capabilities that need package-contract expansion, then harden metadata, tests, and user-facing docs.
 

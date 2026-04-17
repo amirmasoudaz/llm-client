@@ -9,13 +9,22 @@ from llm_client.providers.google import GoogleProvider
 from llm_client.providers.openai import OpenAIProvider
 from llm_client.providers.types import CompletionResult, Message, ToolCall
 from llm_client.tools import (
+    ResponsesApplyPatchCallOutput,
+    ResponsesAttributeFilter,
     ResponsesBuiltinTool,
     ResponsesConnectorId,
     ResponsesCustomTool,
+    ResponsesFileSearchHybridWeights,
+    ResponsesFileSearchRankingOptions,
+    ResponsesFunctionTool,
+    ResponsesGmailTool,
     ResponsesGrammar,
     ResponsesMCPApprovalPolicy,
     ResponsesMCPTool,
     ResponsesMCPToolFilter,
+    ResponsesShellCallChunk,
+    ResponsesToolNamespace,
+    ResponsesToolSearch,
 )
 from llm_client.tools.base import Tool
 from tests.llm_client.fakes import FakeModel
@@ -55,6 +64,7 @@ def _tool(name: str = "Conversation.Profile.Requirements") -> Tool:
 def _openai_provider(model_name: str = "gpt-5-mini") -> OpenAIProvider:
     provider = OpenAIProvider.__new__(OpenAIProvider)
     provider._model = FakeModel(key=model_name, model_name=model_name)
+    provider.limiter = _NoopLimiter()
     return provider
 
 
@@ -255,6 +265,15 @@ def test_openai_responses_request_translation_preserves_reasoning_items_and_allo
     }
 
 
+def test_responses_mcp_tool_rejects_conflicting_authorization_headers() -> None:
+    with pytest.raises(ValueError, match="authorization"):
+        ResponsesMCPTool.remote_server(
+            "https://mcp.example.com",
+            authorization="Bearer token",
+            headers={"Authorization": "Bearer other"},
+        )
+
+
 def test_openai_responses_request_translation_supports_builtin_and_custom_tool_descriptors() -> None:
     provider = _openai_provider("gpt-5-mini")
     strict_tool = Tool(
@@ -297,6 +316,47 @@ def test_openai_responses_request_translation_supports_builtin_and_custom_tool_d
     assert original_to_alias["Lookup.Strict"] == "Lookup_Strict"
 
 
+def test_openai_responses_request_translation_serializes_typed_file_search_config() -> None:
+    provider = _openai_provider("gpt-5-mini")
+
+    rewritten, _, _ = provider._prepare_openai_tools(
+        [
+            ResponsesBuiltinTool.file_search(
+                vector_store_ids=["vs_123"],
+                filters=ResponsesAttributeFilter.and_(
+                    ResponsesAttributeFilter.eq("scope", "tenant"),
+                    ResponsesAttributeFilter.in_("kind", ["policy", "guide"]),
+                ),
+                ranking_options=ResponsesFileSearchRankingOptions(
+                    ranker="default-2024-11-15",
+                    score_threshold=0.2,
+                    hybrid_search=ResponsesFileSearchHybridWeights(embedding_weight=0.75, text_weight=0.25),
+                ),
+            )
+        ],
+        responses_api=True,
+    )
+
+    assert rewritten == [
+        {
+            "type": "file_search",
+            "vector_store_ids": ["vs_123"],
+            "filters": {
+                "type": "and",
+                "filters": [
+                    {"type": "eq", "key": "scope", "value": "tenant"},
+                    {"type": "in", "key": "kind", "value": ["policy", "guide"]},
+                ],
+            },
+            "ranking_options": {
+                "ranker": "default-2024-11-15",
+                "score_threshold": 0.2,
+                "hybrid_search": {"embedding_weight": 0.75, "text_weight": 0.25},
+            },
+        }
+    ]
+
+
 def test_openai_responses_request_translation_defaults_function_tools_to_strict() -> None:
     provider = _openai_provider("gpt-5-mini")
 
@@ -314,7 +374,7 @@ def test_openai_responses_request_translation_defaults_function_tools_to_strict(
 def test_openai_responses_request_translation_supports_typed_mcp_tools_and_policies() -> None:
     provider = _openai_provider("gpt-5-mini")
     policy = ResponsesMCPApprovalPolicy(
-        never=ResponsesMCPToolFilter(tool_names=("read_wiki_structure", "ask_question")),
+        never=ResponsesMCPToolFilter.of("read_wiki_structure", "ask_question"),
     )
 
     rewritten, _, _ = provider._prepare_openai_tools(
@@ -325,6 +385,7 @@ def test_openai_responses_request_translation_supports_typed_mcp_tools_and_polic
                 authorization="Bearer token",
                 allowed_tools=["read_wiki_structure", "ask_question"],
                 require_approval=policy,
+                defer_loading=True,
             )
         ],
         responses_api=True,
@@ -340,16 +401,103 @@ def test_openai_responses_request_translation_supports_typed_mcp_tools_and_polic
             "require_approval": {
                 "never": {"tool_names": ["read_wiki_structure", "ask_question"]},
             },
+            "defer_loading": True,
         }
     ]
 
     connector = ResponsesMCPTool.connector(
         ResponsesConnectorId.GMAIL,
         authorization="Bearer oauth-token",
+        allowed_tools=(ResponsesGmailTool.SEARCH_EMAILS, ResponsesGmailTool.READ_EMAIL),
+        defer_loading=True,
     )
     connector_payload = connector.to_dict()
     assert connector_payload["connector_id"] == "connector_gmail"
     assert connector_payload["authorization"] == "Bearer oauth-token"
+    assert connector_payload["allowed_tools"] == ["search_emails", "read_email"]
+    assert connector_payload["defer_loading"] is True
+
+
+def test_openai_responses_request_translation_supports_tool_search_and_namespaces() -> None:
+    provider = _openai_provider("gpt-5.4")
+    crm_lookup = Tool(
+        name="CRM.GetProfile",
+        description="Lookup a customer profile.",
+        parameters={
+            "type": "object",
+            "properties": {"customer_id": {"type": "string"}},
+            "required": ["customer_id"],
+            "additionalProperties": False,
+        },
+        handler=_lookup,
+    )
+    crm_lookup_now = Tool(
+        name="crm_lookup_now",
+        description="Lookup a customer profile.",
+        parameters={
+            "type": "object",
+            "properties": {"customer_id": {"type": "string"}},
+            "required": ["customer_id"],
+            "additionalProperties": False,
+        },
+        handler=_lookup,
+    )
+
+    rewritten, alias_to_original, original_to_alias = provider._prepare_openai_tools(
+        [
+            ResponsesToolSearch.client(parameters={"type": "object", "properties": {"query": {"type": "string"}}}),
+            ResponsesToolNamespace(
+                name="crm",
+                description="CRM tools",
+                tools=(
+                    ResponsesFunctionTool.from_tool(crm_lookup, defer_loading=True),
+                    crm_lookup_now,
+                ),
+            ),
+        ],
+        responses_api=True,
+    )
+
+    assert rewritten is not None
+    assert rewritten[0] == {
+        "type": "tool_search",
+        "execution": "client",
+        "parameters": {"type": "object", "properties": {"query": {"type": "string"}}},
+    }
+    assert rewritten[1] == {
+        "type": "namespace",
+        "name": "crm",
+        "description": "CRM tools",
+        "tools": [
+            {
+                "type": "function",
+                "name": "CRM_GetProfile",
+                "description": "Lookup a customer profile.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {"customer_id": {"type": "string"}},
+                    "required": ["customer_id"],
+                    "additionalProperties": False,
+                },
+                "strict": True,
+                "defer_loading": True,
+            },
+            {
+                "type": "function",
+                "name": "crm_lookup_now",
+                "description": "Lookup a customer profile.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {"customer_id": {"type": "string"}},
+                    "required": ["customer_id"],
+                    "additionalProperties": False,
+                },
+                "strict": True,
+            },
+        ],
+    }
+    assert alias_to_original["CRM_GetProfile"] == "CRM.GetProfile"
+    assert original_to_alias["CRM.GetProfile"] == "CRM_GetProfile"
 
 
 @pytest.mark.asyncio
@@ -391,6 +539,170 @@ async def test_openai_start_deep_research_normalizes_typed_mcp_tools() -> None:
             "require_approval": "never",
         },
     ]
+
+
+@pytest.mark.asyncio
+async def test_openai_submit_tool_search_output_prepares_loaded_tools() -> None:
+    provider = _openai_provider("gpt-5.4")
+    provider.use_responses_api = True
+
+    captured: dict[str, object] = {}
+
+    async def _responses_create(**kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(
+            model="gpt-5.4",
+            status="completed",
+            output_text="loaded",
+            output=[
+                SimpleNamespace(
+                    type="function_call",
+                    call_id="call_loaded",
+                    id="fc_loaded",
+                    name="CRM_GetProfile",
+                    arguments='{"customer_id":"cus_123"}',
+                )
+            ],
+            usage=SimpleNamespace(to_dict=lambda: {"input_tokens": 2, "output_tokens": 1, "total_tokens": 3}),
+            incomplete_details=None,
+        )
+
+    provider.client = SimpleNamespace(
+        responses=SimpleNamespace(create=_responses_create, parse=None),
+    )
+
+    loaded_tool = Tool(
+        name="CRM.GetProfile",
+        description="Lookup a customer profile.",
+        parameters={
+            "type": "object",
+            "properties": {"customer_id": {"type": "string"}},
+            "required": ["customer_id"],
+            "additionalProperties": False,
+        },
+        handler=_lookup,
+    )
+
+    result = await provider.submit_tool_search_output(
+        previous_response_id="resp_prev",
+        call_id="ts_1",
+        tools=[ResponsesFunctionTool.from_tool(loaded_tool, defer_loading=True)],
+    )
+
+    assert captured["previous_response_id"] == "resp_prev"
+    assert captured["input"] == [
+        {
+            "type": "tool_search_output",
+            "call_id": "ts_1",
+            "tools": [
+                {
+                    "type": "function",
+                    "name": "CRM_GetProfile",
+                    "description": "Lookup a customer profile.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {"customer_id": {"type": "string"}},
+                        "required": ["customer_id"],
+                        "additionalProperties": False,
+                    },
+                    "strict": True,
+                    "defer_loading": True,
+                }
+            ],
+        }
+    ]
+    assert result.tool_calls is not None
+    assert result.tool_calls[0].name == "CRM.GetProfile"
+
+
+@pytest.mark.asyncio
+async def test_openai_submit_shell_call_output_serializes_chunks() -> None:
+    provider = _openai_provider("gpt-5.4")
+    provider.use_responses_api = True
+
+    captured: dict[str, object] = {}
+
+    async def _responses_create(**kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(
+            model="gpt-5.4",
+            status="completed",
+            output_text="shell continued",
+            output=[],
+            usage=SimpleNamespace(to_dict=lambda: {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2}),
+            incomplete_details=None,
+        )
+
+    provider.client = SimpleNamespace(
+        responses=SimpleNamespace(create=_responses_create, parse=None),
+    )
+
+    result = await provider.submit_shell_call_output(
+        previous_response_id="resp_prev",
+        call_id="shell_1",
+        output=[
+            ResponsesShellCallChunk.exit(stdout="ok", stderr="", exit_code=0),
+            ResponsesShellCallChunk.timeout(stdout="partial", stderr=""),
+        ],
+        max_output_length=2048,
+        status="completed",
+    )
+
+    assert captured["input"] == [
+        {
+            "type": "shell_call_output",
+            "call_id": "shell_1",
+            "output": [
+                {"stdout": "ok", "stderr": "", "outcome": {"type": "exit", "exit_code": 0}},
+                {"stdout": "partial", "stderr": "", "outcome": {"type": "timeout"}},
+            ],
+            "max_output_length": 2048,
+            "status": "completed",
+        }
+    ]
+    assert result.content == "shell continued"
+
+
+@pytest.mark.asyncio
+async def test_openai_submit_apply_patch_call_output_accepts_typed_payload() -> None:
+    provider = _openai_provider("gpt-5.4")
+    provider.use_responses_api = True
+
+    captured: dict[str, object] = {}
+
+    async def _responses_create(**kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(
+            model="gpt-5.4",
+            status="completed",
+            output_text="patch continued",
+            output=[],
+            usage=SimpleNamespace(to_dict=lambda: {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2}),
+            incomplete_details=None,
+        )
+
+    provider.client = SimpleNamespace(
+        responses=SimpleNamespace(create=_responses_create, parse=None),
+    )
+
+    result = await provider.submit_apply_patch_call_output(
+        previous_response_id="resp_prev",
+        output=ResponsesApplyPatchCallOutput(
+            call_id="patch_1",
+            status="completed",
+            output="Patched src/app.py",
+        ),
+    )
+
+    assert captured["input"] == [
+        {
+            "type": "apply_patch_call_output",
+            "call_id": "patch_1",
+            "status": "completed",
+            "output": "Patched src/app.py",
+        }
+    ]
+    assert result.content == "patch continued"
 
 
 def test_openai_responses_native_tool_descriptors_require_responses_api() -> None:

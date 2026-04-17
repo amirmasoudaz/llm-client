@@ -72,6 +72,8 @@ from .types import (
     StreamEventType,
     ToolCall,
     ToolCallDelta,
+    UploadPartResource,
+    UploadResource,
     Usage,
     RealtimeCallResult,
     RealtimeConnection,
@@ -90,10 +92,23 @@ from .types import (
 if TYPE_CHECKING:
     from ..models import ModelProfile
     from ..tools.base import ToolDefinition
-from ..tools.base import ResponsesBuiltinTool, ResponsesMCPTool, is_provider_native_tool
+from ..tools.base import (
+    ResponsesApplyPatchCallOutput,
+    ResponsesAttributeFilter,
+    ResponsesBuiltinTool,
+    ResponsesChunkingStrategy,
+    ResponsesExpirationPolicy,
+    ResponsesFileSearchRankingOptions,
+    ResponsesMCPTool,
+    ResponsesShellCallOutput,
+    ResponsesVectorStoreFileSpec,
+    is_provider_native_tool,
+)
 
 
 logger = logging.getLogger("llm_client.providers.openai")
+
+_OPENAI_FILE_SEARCH_RESULTS_INCLUDE = "file_search_call.results"
 
 
 _DEEP_RESEARCH_CLARIFY_INSTRUCTIONS = """
@@ -301,6 +316,73 @@ class OpenAIProvider(BaseProvider):
         return params
 
     @staticmethod
+    def _serialize_openai_request_value(value: Any) -> Any:
+        if value is None or isinstance(value, (str, int, float, bool)):
+            return value
+        if isinstance(value, dict):
+            return {
+                str(key): OpenAIProvider._serialize_openai_request_value(item)
+                for key, item in value.items()
+            }
+        if isinstance(value, (list, tuple)):
+            return [OpenAIProvider._serialize_openai_request_value(item) for item in value]
+        if hasattr(value, "to_dict"):
+            return OpenAIProvider._serialize_openai_request_value(value.to_dict())
+        if hasattr(value, "model_dump"):
+            return OpenAIProvider._serialize_openai_request_value(value.model_dump())
+        return value
+
+    @staticmethod
+    def _merge_openai_include(
+        include: list[str] | tuple[str, ...] | None,
+        *extra_values: str,
+    ) -> list[str] | None:
+        merged: list[str] = [str(item) for item in (include or []) if str(item)]
+        for item in extra_values:
+            if item and item not in merged:
+                merged.append(item)
+        return merged or None
+
+    @staticmethod
+    def _apply_openai_param_alias(
+        params: dict[str, Any],
+        *,
+        canonical_key: str,
+        alias_value: Any,
+        alias_name: str,
+    ) -> None:
+        if alias_value is None:
+            return
+        if canonical_key in params:
+            raise ValueError(f"Provide only one of `{alias_name}` or `{canonical_key}`.")
+        params[canonical_key] = OpenAIProvider._serialize_openai_request_value(alias_value)
+
+    @staticmethod
+    def _normalize_vector_store_batch_inputs(
+        *,
+        file_ids: list[str] | tuple[str, ...] | None,
+        files: list[ResponsesVectorStoreFileSpec | dict[str, Any]] | tuple[ResponsesVectorStoreFileSpec | dict[str, Any], ...] | None,
+        attributes: dict[str, str | float | bool] | None,
+        chunking_strategy: ResponsesChunkingStrategy | dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        params: dict[str, Any] = {}
+        if file_ids is not None and files is not None:
+            raise ValueError("Provide only one of `file_ids` or `files` for vector-store batch creation.")
+        if files is not None and (attributes is not None or chunking_strategy is not None):
+            raise ValueError(
+                "When `files` is provided, attach per-file attributes and chunking on each file spec instead of using shared batch settings."
+            )
+        if file_ids is not None:
+            params["file_ids"] = [str(file_id) for file_id in file_ids]
+        if files is not None:
+            params["files"] = [OpenAIProvider._serialize_openai_request_value(file_spec) for file_spec in files]
+        if attributes is not None:
+            params["attributes"] = OpenAIProvider._serialize_openai_request_value(attributes)
+        if chunking_strategy is not None:
+            params["chunking_strategy"] = OpenAIProvider._serialize_openai_request_value(chunking_strategy)
+        return params
+
+    @staticmethod
     def _normalize_response_format(
         response_format: str | dict[str, Any] | type | None,
         messages: list[dict[str, Any]],
@@ -381,29 +463,42 @@ class OpenAIProvider(BaseProvider):
         used_aliases: set[str] = set()
         rewritten: list[dict[str, Any]] = []
 
-        for item in api_tools:
-            if not isinstance(item, dict):
-                rewritten.append(item)  # defensive passthrough
-                continue
-
+        def _rewrite_tool_dict(item: dict[str, Any], *, nested_in_namespace: bool = False) -> dict[str, Any]:
             item_copy = dict(item)
-            if responses_api and item_copy.get("type") == "function":
+            item_type = str(item_copy.get("type") or "")
+
+            if item_type == "namespace":
+                namespace_tools = item_copy.get("tools")
+                if isinstance(namespace_tools, list):
+                    item_copy["tools"] = [
+                        _rewrite_tool_dict(tool_item, nested_in_namespace=True)
+                        if isinstance(tool_item, dict)
+                        else tool_item
+                        for tool_item in namespace_tools
+                    ]
+                return item_copy
+
+            flatten_function = responses_api or nested_in_namespace
+            if flatten_function and item_type == "function":
                 fn = item_copy.pop("function", None)
                 if isinstance(fn, dict):
-                    for key in ("name", "description", "parameters", "strict"):
+                    for key in ("name", "description", "parameters", "strict", "defer_loading"):
                         if key in fn and key not in item_copy:
                             item_copy[key] = fn[key]
                 fn = item_copy
             else:
                 fn = item_copy.get("function")
-                if item_copy.get("type") == "function" and not isinstance(fn, dict):
-                    flattened = {key: item_copy.pop(key) for key in ("name", "description", "parameters", "strict") if key in item_copy}
+                if item_type == "function" and not isinstance(fn, dict):
+                    flattened = {
+                        key: item_copy.pop(key)
+                        for key in ("name", "description", "parameters", "strict", "defer_loading")
+                        if key in item_copy
+                    }
                     if flattened:
                         fn = flattened
                         item_copy["function"] = fn
             if not isinstance(fn, dict):
-                rewritten.append(item_copy)
-                continue
+                return item_copy
 
             fn_copy = dict(fn)
             original_name = str(fn_copy.get("name") or "")
@@ -412,17 +507,24 @@ class OpenAIProvider(BaseProvider):
             parameters = fn_copy.get("parameters")
             if isinstance(parameters, dict):
                 fn_copy["parameters"] = self._sanitize_openai_function_parameters_schema(parameters)
-            if responses_api and item_copy.get("type") == "function" and "strict" not in fn_copy:
+            if flatten_function and item_copy.get("type") == "function" and "strict" not in fn_copy:
                 fn_copy["strict"] = True
-            if responses_api:
+            if flatten_function:
                 item_copy.update(fn_copy)
             else:
                 item_copy["function"] = fn_copy
-            rewritten.append(item_copy)
 
             if original_name:
                 alias_to_original[alias_name] = original_name
                 original_to_alias[original_name] = alias_name
+
+            return item_copy
+
+        for item in api_tools:
+            if not isinstance(item, dict):
+                rewritten.append(item)  # defensive passthrough
+                continue
+            rewritten.append(_rewrite_tool_dict(item))
 
         return rewritten, alias_to_original, original_to_alias
 
@@ -720,8 +822,64 @@ class OpenAIProvider(BaseProvider):
                 name = str(item_copy.get("name") or "")
                 if name:
                     item_copy["name"] = original_to_alias.get(name, name)
+            elif item_copy.get("type") == "tool_search_output":
+                tools = item_copy.get("tools")
+                if isinstance(tools, list):
+                    item_copy["tools"] = [
+                        OpenAIProvider._rewrite_tool_definition_aliases(tool, original_to_alias=original_to_alias)
+                        if isinstance(tool, dict)
+                        else tool
+                        for tool in tools
+                    ]
             rewritten_items.append(item_copy)
         return rewritten_items
+
+    @staticmethod
+    def _rewrite_tool_definition_aliases(
+        tool: dict[str, Any],
+        *,
+        original_to_alias: dict[str, str] | None = None,
+        alias_to_original: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
+        tool_copy = dict(tool)
+        item_type = str(tool_copy.get("type") or "")
+
+        if item_type == "namespace":
+            namespace_tools = tool_copy.get("tools")
+            if isinstance(namespace_tools, list):
+                tool_copy["tools"] = [
+                    OpenAIProvider._rewrite_tool_definition_aliases(
+                        namespace_tool,
+                        original_to_alias=original_to_alias,
+                        alias_to_original=alias_to_original,
+                    )
+                    if isinstance(namespace_tool, dict)
+                    else namespace_tool
+                    for namespace_tool in namespace_tools
+                ]
+            return tool_copy
+
+        if item_type != "function":
+            return tool_copy
+
+        if isinstance(tool_copy.get("function"), dict):
+            fn_copy = dict(tool_copy["function"])
+            name = str(fn_copy.get("name") or "")
+            if name:
+                if original_to_alias is not None:
+                    fn_copy["name"] = original_to_alias.get(name, name)
+                elif alias_to_original is not None:
+                    fn_copy["name"] = alias_to_original.get(name, name)
+            tool_copy["function"] = fn_copy
+            return tool_copy
+
+        name = str(tool_copy.get("name") or "")
+        if name:
+            if original_to_alias is not None:
+                tool_copy["name"] = original_to_alias.get(name, name)
+            elif alias_to_original is not None:
+                tool_copy["name"] = alias_to_original.get(name, name)
+        return tool_copy
 
     @staticmethod
     def _responses_text_config_and_parser(
@@ -1213,6 +1371,35 @@ class OpenAIProvider(BaseProvider):
             raw_response=response,
         )
 
+    @staticmethod
+    def _upload_resource_from_response(response: Any) -> UploadResource:
+        payload = OpenAIProvider._serialize_responses_item(response)
+        response_dict = payload if isinstance(payload, dict) else {}
+        nested_file = response_dict.get("file")
+        file_resource = OpenAIProvider._file_resource_from_response(nested_file) if isinstance(nested_file, dict) else None
+        return UploadResource(
+            upload_id=str(response_dict.get("id") or ""),
+            status=str(response_dict.get("status") or "") or None,
+            filename=str(response_dict.get("filename") or "") or None,
+            purpose=str(response_dict.get("purpose") or "") or None,
+            bytes=int(response_dict.get("bytes", 0)) if response_dict.get("bytes") is not None else None,
+            created_at=response_dict.get("created_at"),
+            expires_at=response_dict.get("expires_at"),
+            file=file_resource,
+            raw_response=response,
+        )
+
+    @staticmethod
+    def _upload_part_resource_from_response(response: Any) -> UploadPartResource:
+        payload = OpenAIProvider._serialize_responses_item(response)
+        response_dict = payload if isinstance(payload, dict) else {}
+        return UploadPartResource(
+            part_id=str(response_dict.get("id") or ""),
+            upload_id=str(response_dict.get("upload_id") or ""),
+            created_at=response_dict.get("created_at"),
+            raw_response=response,
+        )
+
     def _files_page_from_response(self, response: Any) -> FilesPage:
         payload = self._serialize_responses_item(response)
         response_dict = payload if isinstance(payload, dict) else {}
@@ -1255,6 +1442,70 @@ class OpenAIProvider(BaseProvider):
         if isinstance(tool, ResponsesMCPTool):
             return tool.to_dict()
         return dict(tool)
+
+    @staticmethod
+    def _consume_mcp_tool_kwargs(kwargs: dict[str, Any]) -> ResponsesMCPTool | dict[str, Any] | None:
+        tool = kwargs.pop("tool", None)
+        server_url = kwargs.pop("server_url", None)
+        connector_id = kwargs.pop("connector_id", None)
+        server_label = kwargs.pop("server_label", None)
+        server_description = kwargs.pop("server_description", None)
+        authorization = kwargs.pop("authorization", None)
+        headers = kwargs.pop("headers", None)
+        allowed_tools = kwargs.pop("allowed_tools", None)
+        require_approval = kwargs.pop("require_approval", None)
+        defer_loading = kwargs.pop("defer_loading", None)
+        tool_metadata = dict(kwargs.pop("tool_metadata", {}) or {})
+
+        helper_values = (
+            server_url,
+            connector_id,
+            server_label,
+            server_description,
+            authorization,
+            headers,
+            allowed_tools,
+            require_approval,
+            defer_loading,
+        )
+        used_helper_kwargs = any(value is not None for value in helper_values) or bool(tool_metadata)
+        if tool is not None and used_helper_kwargs:
+            raise ValueError(
+                "Provide an explicit `tool` object or MCP/connector helper kwargs, but do not mix both."
+            )
+        if server_url is not None and connector_id is not None:
+            raise ValueError("Provide either `server_url` or `connector_id`, not both.")
+        if server_description is not None and connector_id is not None:
+            raise ValueError("`server_description` is only supported for remote MCP server tools.")
+        if headers is not None and connector_id is not None:
+            raise ValueError("`headers` is only supported for remote MCP server tools.")
+        if tool is not None:
+            return tool
+        if connector_id is not None:
+            return ResponsesMCPTool.connector(
+                connector_id,
+                server_label=server_label,
+                authorization=authorization,
+                allowed_tools=allowed_tools,
+                require_approval=require_approval,
+                defer_loading=defer_loading,
+                **tool_metadata,
+            )
+        if server_url is not None:
+            return ResponsesMCPTool.remote_server(
+                str(server_url),
+                server_label=server_label,
+                server_description=server_description,
+                authorization=authorization,
+                headers=headers,
+                allowed_tools=allowed_tools,
+                require_approval=require_approval,
+                defer_loading=defer_loading,
+                **tool_metadata,
+            )
+        if used_helper_kwargs:
+            raise ValueError("MCP helper kwargs require either `server_url`, `connector_id`, or `tool`.")
+        return None
 
     def _normalize_deep_research_mcp_tool(self, tool: Any) -> Any:
         if isinstance(tool, ResponsesMCPTool):
@@ -1410,6 +1661,48 @@ class OpenAIProvider(BaseProvider):
                         details={
                             "queries": list(item.get("queries") or []),
                             "results": list(item.get("results") or []),
+                        },
+                    )
+                )
+                continue
+
+            if item_type == "tool_search_call":
+                normalized.append(
+                    NormalizedOutputItem(
+                        type=item_type,
+                        id=item_id,
+                        call_id=str(item.get("call_id") or "") or None,
+                        status=item_status,
+                        details={k: v for k, v in item.items() if k not in {"type", "id", "call_id", "status"}},
+                    )
+                )
+                continue
+
+            if item_type == "tool_search_output":
+                loaded_tools = item.get("tools")
+                if isinstance(loaded_tools, list):
+                    loaded_tools = [
+                        OpenAIProvider._rewrite_tool_definition_aliases(
+                            tool,
+                            alias_to_original=alias_to_original,
+                        )
+                        if isinstance(tool, dict)
+                        else tool
+                        for tool in loaded_tools
+                    ]
+                normalized.append(
+                    NormalizedOutputItem(
+                        type=item_type,
+                        id=item_id,
+                        call_id=str(item.get("call_id") or "") or None,
+                        status=item_status,
+                        details={
+                            **{
+                                k: v
+                                for k, v in item.items()
+                                if k not in {"type", "id", "call_id", "status", "tools"}
+                            },
+                            "tools": loaded_tools if isinstance(loaded_tools, list) else list(item.get("tools") or []),
                         },
                     )
                 )
@@ -2945,9 +3238,121 @@ class OpenAIProvider(BaseProvider):
             raw_response=response,
         )
 
-    async def create_vector_store(self, **kwargs: Any) -> VectorStoreResource:
+    async def create_upload(
+        self,
+        *,
+        bytes: int,
+        filename: str,
+        mime_type: str,
+        purpose: str,
+        expires_after: dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> UploadResource:
+        params = dict(kwargs)
+        params.update(
+            {
+                "bytes": int(bytes),
+                "filename": filename,
+                "mime_type": mime_type,
+                "purpose": purpose,
+            }
+        )
+        if expires_after is not None:
+            params["expires_after"] = expires_after
         async with self.limiter.limit(tokens=0, requests=1):
-            response = await self.client.vector_stores.create(**kwargs)
+            response = await self.client.uploads.create(**params)
+        return self._upload_resource_from_response(response)
+
+    async def add_upload_part(
+        self,
+        upload_id: str,
+        *,
+        data: Any,
+        **kwargs: Any,
+    ) -> UploadPartResource:
+        async with self.limiter.limit(tokens=0, requests=1):
+            response = await self.client.uploads.parts.create(upload_id, data=data, **kwargs)
+        return self._upload_part_resource_from_response(response)
+
+    async def complete_upload(
+        self,
+        upload_id: str,
+        *,
+        part_ids: list[str] | tuple[str, ...],
+        md5: str | None = None,
+        **kwargs: Any,
+    ) -> UploadResource:
+        params = dict(kwargs)
+        params["part_ids"] = [str(part_id) for part_id in part_ids]
+        if md5 is not None:
+            params["md5"] = md5
+        async with self.limiter.limit(tokens=0, requests=1):
+            response = await self.client.uploads.complete(upload_id, **params)
+        return self._upload_resource_from_response(response)
+
+    async def cancel_upload(self, upload_id: str, **kwargs: Any) -> UploadResource:
+        async with self.limiter.limit(tokens=0, requests=1):
+            response = await self.client.uploads.cancel(upload_id, **kwargs)
+        return self._upload_resource_from_response(response)
+
+    async def upload_file_chunked(
+        self,
+        *,
+        file: Any,
+        mime_type: str,
+        purpose: str,
+        filename: str | None = None,
+        bytes: int | None = None,
+        part_size: int | None = None,
+        md5: str | None = None,
+        **kwargs: Any,
+    ) -> UploadResource:
+        params = dict(kwargs)
+        params.update({"file": file, "mime_type": mime_type, "purpose": purpose})
+        if filename is not None:
+            params["filename"] = filename
+        if bytes is not None:
+            params["bytes"] = int(bytes)
+        if part_size is not None:
+            params["part_size"] = int(part_size)
+        if md5 is not None:
+            params["md5"] = md5
+        async with self.limiter.limit(tokens=0, requests=1):
+            response = await self.client.uploads.upload_file_chunked(**params)
+        return self._upload_resource_from_response(response)
+
+    async def create_vector_store(
+        self,
+        *,
+        name: str | None = None,
+        description: str | None = None,
+        file_ids: list[str] | tuple[str, ...] | None = None,
+        metadata: dict[str, Any] | None = None,
+        expiration_policy: ResponsesExpirationPolicy | dict[str, Any] | None = None,
+        chunking_strategy: ResponsesChunkingStrategy | dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> VectorStoreResource:
+        params = dict(kwargs)
+        if name is not None:
+            params["name"] = name
+        if description is not None:
+            params["description"] = description
+        if file_ids is not None:
+            params["file_ids"] = [str(file_id) for file_id in file_ids]
+        if metadata is not None:
+            params["metadata"] = metadata
+        self._apply_openai_param_alias(
+            params,
+            canonical_key="expires_after",
+            alias_value=expiration_policy,
+            alias_name="expiration_policy",
+        )
+        if chunking_strategy is not None and "chunking_strategy" in params:
+            raise ValueError("Provide only one `chunking_strategy` value when creating a vector store.")
+        if chunking_strategy is not None:
+            params["chunking_strategy"] = self._serialize_openai_request_value(chunking_strategy)
+        async with self.limiter.limit(tokens=0, requests=1):
+            response = await self.client.vector_stores.create(**params)
         return self._vector_store_resource_from_response(response)
 
     async def retrieve_vector_store(self, vector_store_id: str, **kwargs: Any) -> VectorStoreResource:
@@ -2986,10 +3391,39 @@ class OpenAIProvider(BaseProvider):
         vector_store_id: str,
         *,
         query: str | list[str],
+        max_num_results: int | None = None,
+        attribute_filter: ResponsesAttributeFilter | dict[str, Any] | None = None,
+        ranking_options: ResponsesFileSearchRankingOptions | dict[str, Any] | None = None,
+        rewrite_query: bool | None = None,
         **kwargs: Any,
     ) -> VectorStoreSearchResult:
+        params = dict(kwargs)
+        self._apply_openai_param_alias(
+            params,
+            canonical_key="filters",
+            alias_value=attribute_filter,
+            alias_name="attribute_filter",
+        )
+        self._apply_openai_param_alias(
+            params,
+            canonical_key="ranking_options",
+            alias_value=ranking_options,
+            alias_name="ranking_options",
+        )
+        self._apply_openai_param_alias(
+            params,
+            canonical_key="max_num_results",
+            alias_value=max_num_results,
+            alias_name="max_num_results",
+        )
+        self._apply_openai_param_alias(
+            params,
+            canonical_key="rewrite_query",
+            alias_value=rewrite_query,
+            alias_name="rewrite_query",
+        )
         async with self.limiter.limit(tokens=self.count_tokens(query), requests=1):
-            response = await self.client.vector_stores.search(vector_store_id, query=query, **kwargs)
+            response = await self.client.vector_stores.search(vector_store_id, query=query, **params)
         if hasattr(response, "_get_page"):
             page = await response._get_page()
             return self._vector_store_search_result_from_response(page, vector_store_id=vector_store_id, query=query)
@@ -3155,10 +3589,19 @@ class OpenAIProvider(BaseProvider):
         vector_store_id: str,
         *,
         file_id: str,
+        attributes: dict[str, str | float | bool] | None = None,
+        chunking_strategy: ResponsesChunkingStrategy | dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> VectorStoreFileResource:
+        params = dict(kwargs)
+        if attributes is not None:
+            params["attributes"] = attributes
+        if chunking_strategy is not None and "chunking_strategy" in params:
+            raise ValueError("Provide only one `chunking_strategy` value when creating a vector-store file.")
+        if chunking_strategy is not None:
+            params["chunking_strategy"] = self._serialize_openai_request_value(chunking_strategy)
         async with self.limiter.limit(tokens=0, requests=1):
-            response = await self.client.vector_stores.files.create(vector_store_id, file_id=file_id, **kwargs)
+            response = await self.client.vector_stores.files.create(vector_store_id, file_id=file_id, **params)
         return self._vector_store_file_resource_from_response(response, vector_store_id=vector_store_id)
 
     async def upload_vector_store_file(
@@ -3252,10 +3695,23 @@ class OpenAIProvider(BaseProvider):
         vector_store_id: str,
         *,
         file_id: str,
+        attributes: dict[str, str | float | bool] | None = None,
+        chunking_strategy: ResponsesChunkingStrategy | dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> VectorStoreFileResource:
+        params = dict(kwargs)
+        if attributes is not None:
+            params["attributes"] = attributes
+        if chunking_strategy is not None and "chunking_strategy" in params:
+            raise ValueError("Provide only one `chunking_strategy` value when creating and polling a vector-store file.")
+        if chunking_strategy is not None:
+            params["chunking_strategy"] = self._serialize_openai_request_value(chunking_strategy)
         async with self.limiter.limit(tokens=0, requests=1):
-            response = await self.client.vector_stores.files.create_and_poll(file_id, vector_store_id=vector_store_id, **kwargs)
+            response = await self.client.vector_stores.files.create_and_poll(
+                file_id,
+                vector_store_id=vector_store_id,
+                **params,
+            )
         return self._vector_store_file_resource_from_response(response, vector_store_id=vector_store_id)
 
     async def upload_vector_store_file_and_poll(
@@ -3272,10 +3728,24 @@ class OpenAIProvider(BaseProvider):
     async def create_vector_store_file_batch(
         self,
         vector_store_id: str,
+        *,
+        file_ids: list[str] | tuple[str, ...] | None = None,
+        files: list[ResponsesVectorStoreFileSpec | dict[str, Any]] | tuple[ResponsesVectorStoreFileSpec | dict[str, Any], ...] | None = None,
+        attributes: dict[str, str | float | bool] | None = None,
+        chunking_strategy: ResponsesChunkingStrategy | dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> VectorStoreFileBatchResource:
+        params = dict(kwargs)
+        params.update(
+            self._normalize_vector_store_batch_inputs(
+                file_ids=file_ids,
+                files=files,
+                attributes=attributes,
+                chunking_strategy=chunking_strategy,
+            )
+        )
         async with self.limiter.limit(tokens=0, requests=1):
-            response = await self.client.vector_stores.file_batches.create(vector_store_id, **kwargs)
+            response = await self.client.vector_stores.file_batches.create(vector_store_id, **params)
         return self._vector_store_file_batch_resource_from_response(response, vector_store_id=vector_store_id)
 
     async def retrieve_vector_store_file_batch(
@@ -3331,10 +3801,24 @@ class OpenAIProvider(BaseProvider):
     async def create_vector_store_file_batch_and_poll(
         self,
         vector_store_id: str,
+        *,
+        file_ids: list[str] | tuple[str, ...] | None = None,
+        files: list[ResponsesVectorStoreFileSpec | dict[str, Any]] | tuple[ResponsesVectorStoreFileSpec | dict[str, Any], ...] | None = None,
+        attributes: dict[str, str | float | bool] | None = None,
+        chunking_strategy: ResponsesChunkingStrategy | dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> VectorStoreFileBatchResource:
+        params = dict(kwargs)
+        params.update(
+            self._normalize_vector_store_batch_inputs(
+                file_ids=file_ids,
+                files=files,
+                attributes=attributes,
+                chunking_strategy=chunking_strategy,
+            )
+        )
         async with self.limiter.limit(tokens=0, requests=1):
-            response = await self.client.vector_stores.file_batches.create_and_poll(vector_store_id, **kwargs)
+            response = await self.client.vector_stores.file_batches.create_and_poll(vector_store_id, **params)
         return self._vector_store_file_batch_resource_from_response(response, vector_store_id=vector_store_id)
 
     async def upload_vector_store_file_batch_and_poll(
@@ -3390,17 +3874,67 @@ class OpenAIProvider(BaseProvider):
         prompt: str,
         *,
         vector_store_ids: list[str] | tuple[str, ...],
+        max_num_results: int | None = None,
+        attribute_filter: ResponsesAttributeFilter | dict[str, Any] | None = None,
+        ranking_options: ResponsesFileSearchRankingOptions | dict[str, Any] | None = None,
+        include_search_results: bool = False,
         **kwargs: Any,
     ) -> CompletionResult:
         model_name = str(kwargs.pop("model", self.model_name))
         tool = kwargs.pop("tool", None)
         tool_config = dict(kwargs.pop("tool_config", {}) or {})
+        include = kwargs.pop("include", None)
+        if tool is not None and any(value is not None for value in (max_num_results, attribute_filter, ranking_options)):
+            raise ValueError(
+                "Provide file-search tuning controls on the explicit `tool` object, or omit `tool` and use helper kwargs."
+            )
+        self._apply_openai_param_alias(
+            tool_config,
+            canonical_key="filters",
+            alias_value=attribute_filter,
+            alias_name="attribute_filter",
+        )
+        self._apply_openai_param_alias(
+            tool_config,
+            canonical_key="ranking_options",
+            alias_value=ranking_options,
+            alias_name="ranking_options",
+        )
+        self._apply_openai_param_alias(
+            tool_config,
+            canonical_key="max_num_results",
+            alias_value=max_num_results,
+            alias_name="max_num_results",
+        )
         if tool is None:
             tool = ResponsesBuiltinTool.file_search(
                 vector_store_ids=list(vector_store_ids),
                 **tool_config,
             )
+        if include_search_results:
+            include = self._merge_openai_include(include, _OPENAI_FILE_SEARCH_RESULTS_INCLUDE)
+        if include is not None:
+            kwargs["include"] = include
         return await self._complete_with_responses_tools(prompt, tools=[tool], model=model_name, **kwargs)
+
+    async def respond_with_tool_search(
+        self,
+        prompt: str,
+        *,
+        tools: list[ToolDefinition],
+        **kwargs: Any,
+    ) -> CompletionResult:
+        model_name = str(kwargs.pop("model", self.model_name))
+        tool_search = kwargs.pop("tool_search", None)
+        tool_search_config = dict(kwargs.pop("tool_search_config", {}) or {})
+        if tool_search is None:
+            tool_search = ResponsesBuiltinTool.of("tool_search", **tool_search_config)
+        return await self._complete_with_responses_tools(
+            prompt,
+            tools=[tool_search, *list(tools)],
+            model=model_name,
+            **kwargs,
+        )
 
     async def respond_with_code_interpreter(
         self,
@@ -3417,25 +3951,69 @@ class OpenAIProvider(BaseProvider):
             )
         return await self._complete_with_responses_tools(prompt, tools=[tool], model=model_name, **kwargs)
 
-    async def respond_with_remote_mcp(
+    async def respond_with_shell(
         self,
         prompt: str,
         **kwargs: Any,
     ) -> CompletionResult:
         model_name = str(kwargs.pop("model", self.model_name))
         tool = kwargs.pop("tool", None)
+        tool_config = dict(kwargs.pop("tool_config", {}) or {})
         if tool is None:
-            server_url = kwargs.pop("server_url")
-            tool = ResponsesMCPTool.remote_server(
-                server_url,
-                server_label=kwargs.pop("server_label", None),
-                server_description=kwargs.pop("server_description", None),
-                authorization=kwargs.pop("authorization", None),
-                headers=kwargs.pop("headers", None),
-                allowed_tools=kwargs.pop("allowed_tools", None),
-                require_approval=kwargs.pop("require_approval", None),
-                **dict(kwargs.pop("tool_metadata", {}) or {}),
+            tool = ResponsesBuiltinTool.shell(
+                environment=tool_config.pop("environment", {"type": "container_auto"}),
+                **tool_config,
             )
+        return await self._complete_with_responses_tools(prompt, tools=[tool], model=model_name, **kwargs)
+
+    async def respond_with_apply_patch(
+        self,
+        prompt: str,
+        **kwargs: Any,
+    ) -> CompletionResult:
+        model_name = str(kwargs.pop("model", self.model_name))
+        tool = kwargs.pop("tool", None)
+        tool_config = dict(kwargs.pop("tool_config", {}) or {})
+        if tool is None:
+            tool = ResponsesBuiltinTool.apply_patch(**tool_config)
+        return await self._complete_with_responses_tools(prompt, tools=[tool], model=model_name, **kwargs)
+
+    async def respond_with_computer_use(
+        self,
+        prompt: str,
+        **kwargs: Any,
+    ) -> CompletionResult:
+        model_name = str(kwargs.pop("model", self.model_name))
+        tool = kwargs.pop("tool", None)
+        tool_config = dict(kwargs.pop("tool_config", {}) or {})
+        if tool is None:
+            tool = ResponsesBuiltinTool.computer_use(**tool_config)
+        return await self._complete_with_responses_tools(prompt, tools=[tool], model=model_name, **kwargs)
+
+    async def respond_with_image_generation(
+        self,
+        prompt: str,
+        **kwargs: Any,
+    ) -> CompletionResult:
+        model_name = str(kwargs.pop("model", self.model_name))
+        tool = kwargs.pop("tool", None)
+        tool_config = dict(kwargs.pop("tool_config", {}) or {})
+        if tool is None:
+            tool = ResponsesBuiltinTool.image_generation(**tool_config)
+        return await self._complete_with_responses_tools(prompt, tools=[tool], model=model_name, **kwargs)
+
+    async def respond_with_remote_mcp(
+        self,
+        prompt: str,
+        **kwargs: Any,
+    ) -> CompletionResult:
+        model_name = str(kwargs.pop("model", self.model_name))
+        tool = self._consume_mcp_tool_kwargs(kwargs)
+        if tool is None:
+            raise ValueError("Remote MCP workflows require `tool` or `server_url`.")
+        rendered_tool = self._coerce_mcp_tool(tool)
+        if rendered_tool.get("connector_id") is not None:
+            raise ValueError("Remote MCP workflows require a remote MCP server tool, not a connector tool.")
         return await self._complete_with_responses_tools(prompt, tools=[tool], model=model_name, **kwargs)
 
     async def respond_with_connector(
@@ -3444,17 +4022,12 @@ class OpenAIProvider(BaseProvider):
         **kwargs: Any,
     ) -> CompletionResult:
         model_name = str(kwargs.pop("model", self.model_name))
-        tool = kwargs.pop("tool", None)
+        tool = self._consume_mcp_tool_kwargs(kwargs)
         if tool is None:
-            connector_id = str(kwargs.pop("connector_id"))
-            tool = ResponsesMCPTool.connector(
-                connector_id,
-                server_label=kwargs.pop("server_label", None),
-                authorization=kwargs.pop("authorization", None),
-                allowed_tools=kwargs.pop("allowed_tools", None),
-                require_approval=kwargs.pop("require_approval", None),
-                **dict(kwargs.pop("tool_metadata", {}) or {}),
-            )
+            raise ValueError("Connector workflows require `tool` or `connector_id`.")
+        rendered_tool = self._coerce_mcp_tool(tool)
+        if rendered_tool.get("connector_id") is None:
+            raise ValueError("Connector workflows require a connector MCP tool, not a remote MCP server tool.")
         return await self._complete_with_responses_tools(prompt, tools=[tool], model=model_name, **kwargs)
 
     async def start_deep_research(
@@ -3791,6 +4364,16 @@ class OpenAIProvider(BaseProvider):
         if not bool(getattr(self, "use_responses_api", False)):
             raise NotImplementedError("MCP approval flows require use_responses_api=True")
 
+        helper_kwargs = dict(kwargs)
+        helper_tool = self._consume_mcp_tool_kwargs(helper_kwargs)
+        kwargs = helper_kwargs
+        if helper_tool is not None:
+            if tools:
+                raise ValueError(
+                    "Provide `tools` or MCP/connector helper kwargs for approval continuation, but do not mix both."
+                )
+            tools = [helper_tool]
+
         params: dict[str, Any] = {
             "model": self.model_name,
             "previous_response_id": previous_response_id,
@@ -3813,6 +4396,119 @@ class OpenAIProvider(BaseProvider):
             params,
             alias_to_original={},
         )
+
+    async def submit_tool_search_output(
+        self,
+        *,
+        previous_response_id: str,
+        call_id: str,
+        tools: list[ToolDefinition],
+        **kwargs: Any,
+    ) -> CompletionResult:
+        if not bool(getattr(self, "use_responses_api", False)):
+            raise NotImplementedError("Tool-search continuation requires use_responses_api=True")
+
+        provider_tools, alias_to_original, _ = self._prepare_openai_tools(tools, responses_api=True)
+        params: dict[str, Any] = {
+            "model": self.model_name,
+            "previous_response_id": previous_response_id,
+            "input": [
+                {
+                    "type": "tool_search_output",
+                    "call_id": call_id,
+                    "tools": provider_tools or [],
+                }
+            ],
+        }
+        params.update(kwargs)
+
+        return await self._complete_responses(
+            [],
+            params,
+            alias_to_original=alias_to_original,
+        )
+
+    async def submit_shell_call_output(
+        self,
+        *,
+        previous_response_id: str,
+        call_id: str | None = None,
+        output: ResponsesShellCallOutput | list[dict[str, Any] | Any] | tuple[dict[str, Any] | Any, ...] | None = None,
+        max_output_length: int | None = None,
+        status: str | None = None,
+        tools: list[ToolDefinition] | None = None,
+        **kwargs: Any,
+    ) -> CompletionResult:
+        if not bool(getattr(self, "use_responses_api", False)):
+            raise NotImplementedError("Shell continuation requires use_responses_api=True")
+
+        if isinstance(output, ResponsesShellCallOutput):
+            input_item = output.to_dict()
+        else:
+            if not call_id:
+                raise ValueError("submit_shell_call_output requires call_id when output is not pre-rendered")
+            if output is None:
+                raise ValueError("submit_shell_call_output requires at least one output chunk")
+            input_item = ResponsesShellCallOutput(
+                call_id=call_id,
+                output=tuple(output),
+                max_output_length=max_output_length,
+                status=status if status in {"in_progress", "completed", "incomplete"} else None,
+            ).to_dict()
+
+        params: dict[str, Any] = {
+            "model": self.model_name,
+            "previous_response_id": previous_response_id,
+            "input": [input_item],
+        }
+        alias_to_original: dict[str, str] = {}
+        if tools:
+            provider_tools, alias_to_original, _ = self._prepare_openai_tools(tools, responses_api=True)
+            if provider_tools:
+                params["tools"] = provider_tools
+        params.update(kwargs)
+
+        return await self._complete_responses([], params, alias_to_original=alias_to_original)
+
+    async def submit_apply_patch_call_output(
+        self,
+        *,
+        previous_response_id: str,
+        call_id: str | None = None,
+        status: str | None = None,
+        output: ResponsesApplyPatchCallOutput | str | None = None,
+        tools: list[ToolDefinition] | None = None,
+        **kwargs: Any,
+    ) -> CompletionResult:
+        if not bool(getattr(self, "use_responses_api", False)):
+            raise NotImplementedError("Apply-patch continuation requires use_responses_api=True")
+
+        if isinstance(output, ResponsesApplyPatchCallOutput):
+            input_item = output.to_dict()
+        else:
+            if not call_id:
+                raise ValueError("submit_apply_patch_call_output requires call_id when output is not pre-rendered")
+            if status not in {"completed", "failed"}:
+                raise ValueError("submit_apply_patch_call_output requires status='completed' or status='failed'")
+            input_item = ResponsesApplyPatchCallOutput(
+                call_id=call_id,
+                status=status,
+                output=output,
+            ).to_dict()
+
+        params: dict[str, Any] = {
+            "model": self.model_name,
+            "previous_response_id": previous_response_id,
+            "input": [input_item],
+        }
+        alias_to_original: dict[str, str] = {}
+        if tools:
+            provider_tools, alias_to_original, _ = self._prepare_openai_tools(tools, responses_api=True)
+            if provider_tools:
+                params["tools"] = provider_tools
+        params.update(kwargs)
+
+        return await self._complete_responses([], params, alias_to_original=alias_to_original)
 
     async def delete_response(self, response_id: str, **kwargs: Any) -> DeletionResult:
         if not bool(getattr(self, "use_responses_api", False)):

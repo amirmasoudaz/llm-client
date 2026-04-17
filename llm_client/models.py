@@ -48,6 +48,10 @@ class ModelProfile:
         "completions": [
             "gpt-5",
             "gpt-5-chat-latest",
+            "gpt-5.4",
+            "gpt-5.4-mini",
+            "gpt-5.4-nano",
+            "gpt-5.4-pro",
             "gpt-5-mini",
             "gpt-5-nano",
             "gpt-5.1",
@@ -323,6 +327,88 @@ class GPT5Point2(ModelProfile):
     function_calling_support = True
     token_streaming_support = True
     encoding = "o200k_base"
+
+
+class GPT54(ModelProfile):
+    key = "gpt-5.4"
+    model_name = "gpt-5.4-2026-03-05"
+    category = "completions"
+    context_window = 1_050_000
+    max_output = 128_000
+    usage_costs = {
+        "input": Decimal("2.50") / Decimal("1000000"),
+        "output": Decimal("15.00") / Decimal("1000000"),
+        "cached_input": Decimal("0.25") / Decimal("1000000"),
+    }
+    rate_limits = {"tkn_per_min": 4_000_000, "req_per_min": 10_000}
+    reasoning_model = True
+    reasoning_efforts = ["none", "low", "medium", "high", "xhigh"]
+    default_reasoning_effort = "none"
+    function_calling_support = True
+    token_streaming_support = True
+    encoding = "o200k_base"
+    audio_input_support = False
+
+
+class GPT54Mini(ModelProfile):
+    key = "gpt-5.4-mini"
+    model_name = "gpt-5.4-mini-2026-03-17"
+    category = "completions"
+    context_window = 400_000
+    max_output = 128_000
+    usage_costs = {
+        "input": Decimal("0.75") / Decimal("1000000"),
+        "output": Decimal("4.50") / Decimal("1000000"),
+        "cached_input": Decimal("0.075") / Decimal("1000000"),
+    }
+    rate_limits = {"tkn_per_min": 10_000_000, "req_per_min": 10_000}
+    reasoning_model = True
+    reasoning_efforts = ["none", "low", "medium", "high", "xhigh"]
+    function_calling_support = True
+    token_streaming_support = True
+    encoding = "o200k_base"
+    audio_input_support = False
+
+
+class GPT54Nano(ModelProfile):
+    key = "gpt-5.4-nano"
+    model_name = "gpt-5.4-nano-2026-03-17"
+    category = "completions"
+    context_window = 400_000
+    max_output = 128_000
+    usage_costs = {
+        "input": Decimal("0.20") / Decimal("1000000"),
+        "output": Decimal("1.25") / Decimal("1000000"),
+        "cached_input": Decimal("0.02") / Decimal("1000000"),
+    }
+    rate_limits = {"tkn_per_min": 10_000_000, "req_per_min": 10_000}
+    reasoning_model = True
+    reasoning_efforts = ["none", "low", "medium", "high", "xhigh"]
+    function_calling_support = True
+    token_streaming_support = True
+    encoding = "o200k_base"
+    audio_input_support = False
+
+
+class GPT54Pro(ModelProfile):
+    key = "gpt-5.4-pro"
+    model_name = "gpt-5.4-pro-2026-03-05"
+    category = "completions"
+    context_window = 1_050_000
+    max_output = 128_000
+    usage_costs = {
+        "input": Decimal("30.00") / Decimal("1000000"),
+        "output": Decimal("180.00") / Decimal("1000000"),
+        "cached_input": Decimal("0.00"),
+    }
+    rate_limits = {"tkn_per_min": 2_000_000, "req_per_min": 10_000}
+    reasoning_model = True
+    reasoning_efforts = ["medium", "high", "xhigh"]
+    function_calling_support = True
+    token_streaming_support = True
+    encoding = "o200k_base"
+    structured_outputs_support = False
+    audio_input_support = False
 
 
 class GPT5Point1(ModelProfile):

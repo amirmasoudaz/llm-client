@@ -7,7 +7,7 @@ See also:
 
 - [llm-client-package-api-guide.md](/home/namiral/Projects/Packages/llm-client-v1/docs/llm-client-package-api-guide.md)
 - [llm-client-build-and-recipes-guide.md](/home/namiral/Projects/Packages/llm-client-v1/docs/llm-client-build-and-recipes-guide.md)
-- [llm_client/README.md](/home/namiral/Projects/Packages/llm-client-v1/llm_client/README.md)
+- [README.md](/home/namiral/Projects/Packages/llm-client-v1/README.md)
 - [llm-client-guides-index.md](/home/namiral/Projects/Packages/llm-client-v1/docs/llm-client-guides-index.md)
 
 ## Installation and Configuration
@@ -53,10 +53,13 @@ Special note:
 - OpenAI Responses background workflows now live at the provider layer via `retrieve_background_response`, `cancel_background_response`, `wait_background_response`, and `stream_background_response`.
 - OpenAI Responses conversation-state workflows now also live at the provider layer via `create_conversation`, `retrieve_conversation`, `update_conversation`, `delete_conversation`, `create_conversation_items`, `list_conversation_items`, `retrieve_conversation_item`, `delete_conversation_item`, and `compact_response_context`.
 - MCP approval workflows can now continue through `submit_mcp_approval_response(...)` without raw provider-shaped request payloads.
+- OpenAI MCP/connector approval continuations can also rebuild the tool definition from `server_url`, `connector_id`, `authorization`, `allowed_tools`, `require_approval`, and `defer_loading`, which is important because OpenAI does not persist connector authorization on stored Responses objects.
+- Hosted shell and apply-patch tool loops can now continue through `submit_shell_call_output(...)` and `submit_apply_patch_call_output(...)` without raw provider-shaped request payloads.
 - OpenAI request controls `include`, `prompt_cache_key`, and `prompt_cache_retention` are first-class parameters on the OpenAI provider.
 - Stored OpenAI Responses can now be deleted through `delete_response(...)` without dropping to the raw SDK.
-- OpenAI moderation, direct image generation/editing, speech-to-text, text-to-speech, generic file upload/retrieve/content helpers, hosted vector-store CRUD/search, and fine-tuning job workflows are now available through first-class provider and engine methods instead of raw SDK escape hatches.
-- OpenAI realtime connection plus client-secret/call-control/transcription helpers, webhook verification/unwrapping, vector-store file CRUD/content/polling and file-batch helpers, hosted Responses tool workflows, and staged deep-research orchestration are also available through first-class provider and engine methods.
+- OpenAI moderation, direct image generation/editing, speech-to-text, text-to-speech, generic file upload/retrieve/content helpers, Uploads lifecycle helpers, hosted vector-store CRUD/search, and fine-tuning job workflows are now available through first-class provider and engine methods instead of raw SDK escape hatches.
+- `create_vector_store_and_poll(...)` can now provision a new vector store from typed `ResponsesVectorStoreFileSpec` entries, not just existing `file_ids`, which makes hosted retrieval setup easier to express as one workflow call.
+- OpenAI realtime connection plus client-secret/call-control/transcription helpers, typed `RealtimeEventResult`, `RealtimeMCPToolListingResult`, and `RealtimeResponseOutput` receive-side wrappers, conversation-item retrieve/delete/truncate helpers, realtime MCP session/response tool helpers, `response.cancel`, `disable_vad(...)`, `send_audio_turn(...)`, webhook verification/unwrapping, vector-store file CRUD/content/polling and file-batch helpers, hosted Responses tool workflows, and staged deep-research orchestration are also available through first-class provider and engine methods.
 
 ### Engine-managed execution
 
@@ -191,12 +194,28 @@ Current package boundary:
 Use:
 
 - `llm_client.tools`
-- specifically `ResponsesBuiltinTool`, `ResponsesCustomTool`, and `ResponsesGrammar`
+- specifically `ResponsesBuiltinTool`, `ResponsesToolSearch`,
+  `ResponsesFunctionTool`, `ResponsesToolNamespace`, `ResponsesCustomTool`,
+  `ResponsesGrammar`, `ResponsesAttributeFilter`,
+  `ResponsesChunkingStrategy`, `ResponsesExpirationPolicy`,
+  `ResponsesFileSearchRankingOptions`,
+  `ResponsesFileSearchHybridWeights`, `ResponsesVectorStoreFileSpec`,
+  `ResponsesShellCallChunk`, `ResponsesShellCallOutput`, and
+  `ResponsesApplyPatchCallOutput`
 
 Best for:
 
 - OpenAI Responses built-in hosted tools without raw provider dict payloads
+- OpenAI-specific deferred-tool workflows using `tool_search`
+- namespaced OpenAI function tools with deferred loading
 - typed MCP and connector descriptors with `allowed_tools` and approval-policy shaping
+- typed connector-specific allowlists via enums such as `ResponsesGmailTool`
+- MCP and connector deferred loading for `tool_search` workflows
+- hosted workflow helpers for shell, apply-patch, computer-use, and
+  image-generation on top of Responses built-in tools
+- typed hosted retrieval controls for file-search filters and ranking
+- typed hosted vector-store resource controls for expiration, chunking, and
+  per-file batch metadata
 - grammar-backed custom tools on `OpenAIProvider(..., use_responses_api=True)`
 - request-time tool descriptors that should stay in the stable package surface
 
@@ -205,8 +224,27 @@ Current package boundary:
 - provider-level and engine request-envelope compatible in `1.1.0`
 - richer MCP/connector descriptors are available through `ResponsesMCPTool`
 - `ResponsesConnectorId` provides docs-aligned connector ids for typed connector requests
+- connector-specific enums provide docs-aligned `allowed_tools` values without
+  hand-typed strings
+- provider and engine workflow helpers now cover web search, file search, code
+  interpreter, shell, apply-patch, computer-use, image-generation, remote MCP,
+  and connectors
+- `OpenAIProvider.submit_tool_search_output(...)` continues client-executed
+  `tool_search` loops by returning the loaded tool set from your application
+- `OpenAIProvider.submit_shell_call_output(...)` and
+  `OpenAIProvider.submit_apply_patch_call_output(...)` continue hosted shell
+  and apply-patch loops after your application executes the requested work
 - `ToolRegistry` and the agent tool runtime remain function-tool execution layers
 - the package now exposes a normalized subset of rich Responses output items and retains raw `provider_items` for exact replay
+- OpenAI retrieval helpers now expose typed `attribute_filter`,
+  `ranking_options`, `max_num_results`, and `rewrite_query` controls, plus
+  `include_search_results=True` on `respond_with_file_search(...)`
+- OpenAI vector-store helpers now expose typed `expiration_policy`,
+  `chunking_strategy`, and `files=[ResponsesVectorStoreFileSpec(...)]`
+  controls on the vector-store creation and file-batch workflows
+- Store-level ingestion can now be awaited with `poll_vector_store(...)` and
+  `create_vector_store_and_poll(...)` when hosted vector-store creation starts
+  with initial `file_ids`
 
 ### Rich Responses output items
 

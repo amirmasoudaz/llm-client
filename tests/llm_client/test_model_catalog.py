@@ -1,4 +1,5 @@
 import json
+from decimal import Decimal
 
 import pytest
 
@@ -12,7 +13,7 @@ from llm_client.model_catalog import (
     load_model_catalog,
     metadata_from_profile,
 )
-from llm_client.models import GPT5, ModelProfile, TextEmbedding3Small
+from llm_client.models import GPT5, GPT54, GPT54Mini, GPT54Nano, GPT54Pro, ModelProfile, TextEmbedding3Small
 from llm_client.provider_registry import get_default_provider_registry
 
 
@@ -33,6 +34,36 @@ def test_model_catalog_loads_asset_backed_metadata() -> None:
     assert gpt5.normalized_output_items is True
     assert gpt5.vision_input is True
     assert gpt5.context_window >= 400_000
+
+
+def test_model_catalog_includes_gpt54_family_metadata() -> None:
+    catalog = get_default_model_catalog()
+
+    gpt54 = catalog.get("gpt-5.4")
+    gpt54_mini = catalog.get("gpt-5.4-mini")
+    gpt54_nano = catalog.get("gpt-5.4-nano")
+    gpt54_pro = catalog.get("gpt-5.4-pro")
+
+    assert gpt54.model_name == "gpt-5.4-2026-03-05"
+    assert gpt54.context_window == 1_050_000
+    assert gpt54.default_reasoning_effort == "none"
+    assert gpt54.usage_costs["input"] == float(Decimal("2.50") / Decimal("1000000"))
+
+    assert gpt54_mini.model_name == "gpt-5.4-mini-2026-03-17"
+    assert gpt54_mini.context_window == 400_000
+    assert gpt54_mini.responses_native_tools is True
+    assert gpt54_mini.audio_input is False
+
+    assert gpt54_nano.model_name == "gpt-5.4-nano-2026-03-17"
+    assert gpt54_nano.context_window == 400_000
+    assert gpt54_nano.reasoning_efforts == ("none", "low", "medium", "high", "xhigh")
+    assert gpt54_nano.audio_input is False
+
+    assert gpt54_pro.model_name == "gpt-5.4-pro-2026-03-05"
+    assert gpt54_pro.context_window == 1_050_000
+    assert gpt54_pro.structured_outputs is False
+    assert gpt54_pro.responses_api is True
+    assert gpt54_pro.audio_input is False
 
 
 def test_model_catalog_filters_by_provider_category_and_capability() -> None:
@@ -149,6 +180,10 @@ def test_model_metadata_helpers_infer_provider_and_serialize() -> None:
     embedding = metadata_from_profile(TextEmbedding3Small)
 
     assert infer_provider_for_model("gpt-5-mini") == "openai"
+    assert infer_provider_for_model("gpt-5.4") == "openai"
+    assert infer_provider_for_model("gpt-5.4-mini") == "openai"
+    assert infer_provider_for_model("gpt-5.4-nano") == "openai"
+    assert infer_provider_for_model("gpt-5.4-pro") == "openai"
     assert infer_provider_for_model("chatgpt-image-latest") == "openai"
     assert infer_provider_for_model("computer-use-preview") == "openai"
     assert infer_provider_for_model("whisper-1") == "openai"
@@ -159,6 +194,10 @@ def test_model_metadata_helpers_infer_provider_and_serialize() -> None:
     assert embedding.to_dict()["provider"] == "openai"
     assert embedding.responses_api is False
     assert metadata_from_profile(GPT5).key == "gpt-5"
+    assert metadata_from_profile(GPT54).key == "gpt-5.4"
+    assert metadata_from_profile(GPT54Mini).key == "gpt-5.4-mini"
+    assert metadata_from_profile(GPT54Nano).key == "gpt-5.4-nano"
+    assert metadata_from_profile(GPT54Pro).key == "gpt-5.4-pro"
 
 
 def test_provider_configs_use_catalog_defaults() -> None:

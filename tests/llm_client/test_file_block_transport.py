@@ -75,7 +75,7 @@ def test_openai_responses_content_uses_native_file_transport_for_inline_or_refer
     assert payload[0] == {"type": "input_text", "text": "Summarize the attached file."}
     assert payload[1]["type"] == "input_file"
     assert payload[1]["filename"] == "brief.txt"
-    assert "file_data" in payload[1]
+    assert payload[1]["file_data"].startswith("data:text/plain;base64,")
     assert payload[2] == {"type": "input_file", "file_id": "file-123"}
 
 
@@ -121,3 +121,25 @@ def test_openai_provider_messages_to_api_format_uses_responses_file_transport(tm
     assert content[0] == {"type": "input_text", "text": "Read the file"}
     assert content[1]["type"] == "input_file"
     assert content[1]["filename"] == "incident.txt"
+    assert content[1]["file_data"].startswith("data:text/plain;base64,")
+
+
+def test_openai_responses_content_preserves_existing_data_uri_file_payload() -> None:
+    payload = content_blocks_to_openai_responses_content(
+        [
+            FileBlock(
+                name="brief.pdf",
+                mime_type="application/pdf",
+                data="data:application/pdf;base64,ZmFrZQ==",
+            )
+        ],
+        mode=ContentHandlingMode.STRICT,
+    )
+
+    assert payload == [
+        {
+            "type": "input_file",
+            "filename": "brief.pdf",
+            "file_data": "data:application/pdf;base64,ZmFrZQ==",
+        }
+    ]

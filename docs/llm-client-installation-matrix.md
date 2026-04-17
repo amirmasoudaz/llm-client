@@ -115,9 +115,9 @@ Or:
 pip install -e ".[all]"
 ```
 
-## CI Validation Matrix
+## Validation Matrix
 
-The release/readiness workflows validate these shapes:
+The release/readiness process validates these shapes locally:
 
 - base install on Python `3.10`, `3.11`, and `3.12`
 - full-feature install on Python `3.11`

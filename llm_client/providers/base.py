@@ -41,6 +41,8 @@ from .types import (
     MessageInput,
     ModerationResult,
     StreamEvent,
+    UploadPartResource,
+    UploadResource,
     Usage,
     RealtimeCallResult,
     RealtimeConnection,
@@ -228,6 +230,26 @@ class Provider(Protocol):
         """Fetch binary content for a generic provider file when supported."""
         ...
 
+    async def create_upload(self, **kwargs: Any) -> UploadResource:
+        """Create an upload lifecycle resource when supported."""
+        ...
+
+    async def add_upload_part(self, upload_id: str, **kwargs: Any) -> UploadPartResource:
+        """Attach a part to an upload lifecycle resource when supported."""
+        ...
+
+    async def complete_upload(self, upload_id: str, **kwargs: Any) -> UploadResource:
+        """Complete an upload lifecycle resource when supported."""
+        ...
+
+    async def cancel_upload(self, upload_id: str, **kwargs: Any) -> UploadResource:
+        """Cancel an upload lifecycle resource when supported."""
+        ...
+
+    async def upload_file_chunked(self, **kwargs: Any) -> UploadResource:
+        """Upload a file through the chunked upload lifecycle when supported."""
+        ...
+
     async def create_vector_store(self, **kwargs: Any) -> VectorStoreResource:
         """Create a hosted vector store when supported."""
         ...
@@ -256,6 +278,18 @@ class Provider(Protocol):
         **kwargs: Any,
     ) -> VectorStoreSearchResult:
         """Search a hosted vector store when supported."""
+        ...
+
+    async def poll_vector_store(
+        self,
+        vector_store_id: str,
+        **kwargs: Any,
+    ) -> VectorStoreResource:
+        """Poll a hosted vector store until ingestion reaches a terminal state when supported."""
+        ...
+
+    async def create_vector_store_and_poll(self, **kwargs: Any) -> VectorStoreResource:
+        """Create a hosted vector store and poll until ingestion reaches a terminal state when supported."""
         ...
 
     async def create_fine_tuning_job(self, **kwargs: Any) -> FineTuningJobResult:
@@ -532,6 +566,38 @@ class Provider(Protocol):
         """Run a Responses request with the hosted code-interpreter tool when supported."""
         ...
 
+    async def respond_with_shell(
+        self,
+        prompt: str,
+        **kwargs: Any,
+    ) -> CompletionResult:
+        """Run a Responses request with the hosted shell tool when supported."""
+        ...
+
+    async def respond_with_apply_patch(
+        self,
+        prompt: str,
+        **kwargs: Any,
+    ) -> CompletionResult:
+        """Run a Responses request with the hosted apply-patch tool when supported."""
+        ...
+
+    async def respond_with_computer_use(
+        self,
+        prompt: str,
+        **kwargs: Any,
+    ) -> CompletionResult:
+        """Run a Responses request with the hosted computer-use tool when supported."""
+        ...
+
+    async def respond_with_image_generation(
+        self,
+        prompt: str,
+        **kwargs: Any,
+    ) -> CompletionResult:
+        """Run a Responses request with the hosted image-generation tool when supported."""
+        ...
+
     async def respond_with_remote_mcp(
         self,
         prompt: str,
@@ -655,6 +721,33 @@ class Provider(Protocol):
         **kwargs: Any,
     ) -> CompletionResult:
         """Submit an MCP approval response and continue the provider workflow."""
+        ...
+
+    async def submit_shell_call_output(
+        self,
+        *,
+        previous_response_id: str,
+        call_id: str | None = None,
+        output: Any = None,
+        max_output_length: int | None = None,
+        status: str | None = None,
+        tools: list[ToolDefinition] | None = None,
+        **kwargs: Any,
+    ) -> CompletionResult:
+        """Submit a shell tool output item and continue the provider workflow."""
+        ...
+
+    async def submit_apply_patch_call_output(
+        self,
+        *,
+        previous_response_id: str,
+        call_id: str | None = None,
+        status: str | None = None,
+        output: Any = None,
+        tools: list[ToolDefinition] | None = None,
+        **kwargs: Any,
+    ) -> CompletionResult:
+        """Submit an apply_patch tool output item and continue the provider workflow."""
         ...
 
     async def delete_response(self, response_id: str, **kwargs: Any) -> DeletionResult:
@@ -973,6 +1066,26 @@ class BaseProvider(Provider, ABC):
         _ = file_id, kwargs
         raise NotImplementedError(f"{self.__class__.__name__} does not support generic file content retrieval.")
 
+    async def create_upload(self, **kwargs: Any) -> UploadResource:
+        _ = kwargs
+        raise NotImplementedError(f"{self.__class__.__name__} does not support uploads.")
+
+    async def add_upload_part(self, upload_id: str, **kwargs: Any) -> UploadPartResource:
+        _ = upload_id, kwargs
+        raise NotImplementedError(f"{self.__class__.__name__} does not support uploads.")
+
+    async def complete_upload(self, upload_id: str, **kwargs: Any) -> UploadResource:
+        _ = upload_id, kwargs
+        raise NotImplementedError(f"{self.__class__.__name__} does not support uploads.")
+
+    async def cancel_upload(self, upload_id: str, **kwargs: Any) -> UploadResource:
+        _ = upload_id, kwargs
+        raise NotImplementedError(f"{self.__class__.__name__} does not support uploads.")
+
+    async def upload_file_chunked(self, **kwargs: Any) -> UploadResource:
+        _ = kwargs
+        raise NotImplementedError(f"{self.__class__.__name__} does not support uploads.")
+
     async def create_vector_store(self, **kwargs: Any) -> VectorStoreResource:
         raise NotImplementedError(f"{self.__class__.__name__} does not support vector stores.")
 
@@ -1001,6 +1114,65 @@ class BaseProvider(Provider, ABC):
     ) -> VectorStoreSearchResult:
         _ = vector_store_id, query, kwargs
         raise NotImplementedError(f"{self.__class__.__name__} does not support vector-store search.")
+
+    @staticmethod
+    def _vector_store_ingestion_terminal(result: VectorStoreResource) -> bool:
+        terminal_statuses = {"completed", "failed", "cancelled", "expired"}
+        if str(result.status or "").lower() in terminal_statuses:
+            return True
+        file_counts = result.file_counts or {}
+        in_progress = file_counts.get("in_progress")
+        return isinstance(in_progress, int) and in_progress == 0
+
+    async def poll_vector_store(
+        self,
+        vector_store_id: str,
+        *,
+        poll_interval: float = 2.0,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> VectorStoreResource:
+        loop = asyncio.get_running_loop()
+        started_at = loop.time()
+
+        while True:
+            result = await self.retrieve_vector_store(vector_store_id, **kwargs)
+            if self._vector_store_ingestion_terminal(result):
+                return result
+            if timeout is not None and (loop.time() - started_at) >= timeout:
+                raise TimeoutError(f"Timed out waiting for vector store {vector_store_id!r}")
+            await asyncio.sleep(poll_interval)
+
+    async def create_vector_store_and_poll(
+        self,
+        *,
+        poll_interval: float = 2.0,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> VectorStoreResource:
+        initial_file_ids = kwargs.get("file_ids")
+        provisioned_files = kwargs.pop("files", None)
+        if initial_file_ids and provisioned_files:
+            raise ValueError("Provide either `file_ids` or `files` when provisioning a vector store, not both.")
+
+        result = await self.create_vector_store(**kwargs)
+        if provisioned_files:
+            await self.create_vector_store_file_batch_and_poll(
+                result.vector_store_id,
+                files=provisioned_files,
+            )
+            return await self.poll_vector_store(
+                result.vector_store_id,
+                poll_interval=poll_interval,
+                timeout=timeout,
+            )
+        if not initial_file_ids:
+            return result
+        return await self.poll_vector_store(
+            result.vector_store_id,
+            poll_interval=poll_interval,
+            timeout=timeout,
+        )
 
     async def create_fine_tuning_job(self, **kwargs: Any) -> FineTuningJobResult:
         _ = kwargs
@@ -1276,6 +1448,38 @@ class BaseProvider(Provider, ABC):
         _ = prompt, kwargs
         raise NotImplementedError(f"{self.__class__.__name__} does not support hosted code-interpreter workflows.")
 
+    async def respond_with_shell(
+        self,
+        prompt: str,
+        **kwargs: Any,
+    ) -> CompletionResult:
+        _ = prompt, kwargs
+        raise NotImplementedError(f"{self.__class__.__name__} does not support hosted shell workflows.")
+
+    async def respond_with_apply_patch(
+        self,
+        prompt: str,
+        **kwargs: Any,
+    ) -> CompletionResult:
+        _ = prompt, kwargs
+        raise NotImplementedError(f"{self.__class__.__name__} does not support hosted apply-patch workflows.")
+
+    async def respond_with_computer_use(
+        self,
+        prompt: str,
+        **kwargs: Any,
+    ) -> CompletionResult:
+        _ = prompt, kwargs
+        raise NotImplementedError(f"{self.__class__.__name__} does not support hosted computer-use workflows.")
+
+    async def respond_with_image_generation(
+        self,
+        prompt: str,
+        **kwargs: Any,
+    ) -> CompletionResult:
+        _ = prompt, kwargs
+        raise NotImplementedError(f"{self.__class__.__name__} does not support hosted image-generation workflows.")
+
     async def respond_with_remote_mcp(
         self,
         prompt: str,
@@ -1483,6 +1687,33 @@ class BaseProvider(Provider, ABC):
     ) -> CompletionResult:
         _ = (previous_response_id, approval_request_id, approve, tools, kwargs)
         raise NotImplementedError(f"{self.__class__.__name__} does not support MCP approval flows")
+
+    async def submit_shell_call_output(
+        self,
+        *,
+        previous_response_id: str,
+        call_id: str | None = None,
+        output: Any = None,
+        max_output_length: int | None = None,
+        status: str | None = None,
+        tools: list[ToolDefinition] | None = None,
+        **kwargs: Any,
+    ) -> CompletionResult:
+        _ = (previous_response_id, call_id, output, max_output_length, status, tools, kwargs)
+        raise NotImplementedError(f"{self.__class__.__name__} does not support shell call continuation")
+
+    async def submit_apply_patch_call_output(
+        self,
+        *,
+        previous_response_id: str,
+        call_id: str | None = None,
+        status: str | None = None,
+        output: Any = None,
+        tools: list[ToolDefinition] | None = None,
+        **kwargs: Any,
+    ) -> CompletionResult:
+        _ = (previous_response_id, call_id, status, output, tools, kwargs)
+        raise NotImplementedError(f"{self.__class__.__name__} does not support apply_patch continuation")
 
     async def delete_response(self, response_id: str, **kwargs: Any) -> DeletionResult:
         _ = (response_id, kwargs)

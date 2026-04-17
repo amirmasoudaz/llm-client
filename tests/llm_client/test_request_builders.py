@@ -4,10 +4,13 @@ from llm_client.tools import (
     ResponsesBuiltinTool,
     ResponsesConnectorId,
     ResponsesCustomTool,
+    ResponsesFunctionTool,
     ResponsesGrammar,
     ResponsesMCPApprovalPolicy,
     ResponsesMCPTool,
     ResponsesMCPToolFilter,
+    ResponsesToolNamespace,
+    ResponsesToolSearch,
 )
 
 
@@ -121,6 +124,54 @@ def test_request_builder_serializes_responses_tool_descriptors() -> None:
         "name": "planner",
         "description": "Emit a compact plan.",
         "format": {"type": "grammar", "syntax": "lark", "definition": 'start: "done"'},
+    }
+
+
+def test_request_builder_serializes_advanced_openai_tool_search_and_namespaces() -> None:
+    provider = _FakeProvider()
+
+    spec = build_request_spec(
+        provider=provider,
+        messages=[Message.user("hi")],
+        request_kwargs={
+            "tools": [
+                ResponsesToolSearch.client(parameters={"type": "object", "properties": {"query": {"type": "string"}}}),
+                ResponsesToolNamespace(
+                    name="crm",
+                    description="CRM tools",
+                    tools=(
+                        ResponsesFunctionTool(
+                            name="lookup_profile",
+                            description="Lookup a profile.",
+                            parameters={"type": "object", "properties": {"id": {"type": "string"}}},
+                            defer_loading=True,
+                        ),
+                    ),
+                ),
+            ]
+        },
+    )
+
+    payload = spec.to_dict()
+    tools_by_name = {tool["name"]: tool for tool in payload["tools"]}
+    assert tools_by_name["tool_search"]["provider_definition"] == {
+        "type": "tool_search",
+        "execution": "client",
+        "parameters": {"type": "object", "properties": {"query": {"type": "string"}}},
+    }
+    assert tools_by_name["crm"]["provider_definition"] == {
+        "type": "namespace",
+        "name": "crm",
+        "description": "CRM tools",
+        "tools": [
+            {
+                "type": "function",
+                "name": "lookup_profile",
+                "description": "Lookup a profile.",
+                "parameters": {"type": "object", "properties": {"id": {"type": "string"}}},
+                "defer_loading": True,
+            }
+        ],
     }
 
 

@@ -13,6 +13,11 @@ The cookbook is not just a smoke-test folder. It serves three purposes:
 - provide application-shaped references without promoting all workflows into
   the core package surface
 
+The default example runner tracks the currently validated cookbook ring. Some
+newer advanced provider-specific examples may be documented here before they
+are promoted into that default ring, and should be run directly by filename
+until they are live-validated consistently.
+
 ## Prerequisites
 
 Baseline:
@@ -59,6 +64,9 @@ Optional infrastructure:
 - optionally `LLM_CLIENT_EXAMPLE_MCP_AUTHORIZATION` and
   `LLM_CLIENT_EXAMPLE_CONNECTOR_AUTHORIZATION` for authenticated MCP and
   connector workflows
+- the MCP approval continuation example can also reuse those MCP/connector
+  env vars when approval continuation must resend an auth-bearing tool
+  definition
 - `LLM_CLIENT_EXAMPLE_UPLOAD_FILE_PATH` and optionally
   `LLM_CLIENT_EXAMPLE_FILE_PURPOSE` / `LLM_CLIENT_EXAMPLE_KEEP_UPLOADED_FILE`
   for the generic OpenAI Files API example
@@ -94,10 +102,19 @@ These demonstrate stable package capabilities directly:
 - `46` OpenAI realtime connection wrapper
 - `47` OpenAI vector-store file batches
 - `48` OpenAI deep-research clarify/rewrite kickoff
+- `53` OpenAI realtime conversation lifecycle
+- `54` OpenAI `tool_search` and namespaces
+- `55` OpenAI Uploads API lifecycle
+- `56` OpenAI realtime output collection
+- `57` OpenAI realtime push-to-talk helper flow
+- `58` OpenAI vector-store provisioning
+- `59` OpenAI realtime MCP lifecycle and tool-loading wait helper
 - `49` OpenAI realtime transcription session
 - `50` OpenAI MCP and connector workflows
 - `51` OpenAI staged deep research orchestration
 - `52` OpenAI Files API upload/retrieve/list/content/delete flow
+- `53` OpenAI realtime conversation lifecycle helpers
+- `54` OpenAI tool-search and namespace workflow
 
 ### Application-shaped examples
 
@@ -149,6 +166,10 @@ Typical failure classes:
 - optional provider package not installed
 - optional infrastructure not running
 - provider quota/rate limits
+- large-upload examples may also fail on provider-side file-purpose or MIME
+  validation if the local file does not match the configured purpose
+- realtime audio-turn examples may also skip or fail fast when no compatible
+  local audio file is configured or the websocket session cannot be established
 
 These failures should be treated differently from package regressions.
 
@@ -183,7 +204,7 @@ For a new adopter:
 4. `38`, `39`, `40` if you plan to use OpenAI Responses lifecycle/state APIs
 5. `41`, `42`, `43` if you need reconnectable background streams, prompt
    caching controls, or context compaction
-6. `44`, `45`, `46`, `47`, `48`, `49`, `50`, `51` if you plan to orchestrate
+6. `44`, `45`, `46`, `47`, `48`, `49`, `50`, `51`, `53`, `54`, `59` if you plan to orchestrate
    stored OpenAI workflows, realtime product surfaces, or hosted-tool
    workflows at the engine layer
 7. `36`, `37` if you plan to expose controlled service access through tools

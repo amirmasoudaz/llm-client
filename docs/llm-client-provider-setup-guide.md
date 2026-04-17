@@ -72,7 +72,7 @@ GoogleProvider(model="gemini-2.0-flash", api_key="...")
 ```
 
 When loading credentials from environment, call
-[`load_env()`](../llm_client/README.md) explicitly first.
+[`load_env()`](../README.md) explicitly first.
 
 ## OpenAI Responses lifecycle and state
 
@@ -92,7 +92,17 @@ When you construct `OpenAIProvider(..., use_responses_api=True)`, the provider n
 - `delete_conversation_item(conversation_id, item_id, **kwargs)`
 - `compact_response_context(messages=None, model=None, instructions=None, previous_response_id=None, **kwargs)`
 - `submit_mcp_approval_response(previous_response_id, approval_request_id, approve, tools=None, **kwargs)`
+- `submit_shell_call_output(previous_response_id, call_id=None, output=..., tools=None, **kwargs)`
+- `submit_apply_patch_call_output(previous_response_id, call_id=None, status=None, output=None, tools=None, **kwargs)`
 - `delete_response(response_id, **kwargs)`
+
+For OpenAI MCP and connector approval loops, `submit_mcp_approval_response(...)`
+accepts the same convenience kwargs as `respond_with_remote_mcp(...)` and
+`respond_with_connector(...)`, including `server_url`, `connector_id`,
+`authorization`, `allowed_tools`, `require_approval`, and `defer_loading`.
+This matters because OpenAI does not persist MCP/connector authorization on
+stored Responses objects, so continuation requests must resend the tool
+definition when approval is granted or denied.
 
 Minimal polling example:
 
@@ -149,20 +159,62 @@ Responses tool descriptors from `llm_client.tools`:
 - `ResponsesBuiltinTool` for built-in hosted tools such as `web_search`,
   `file_search`, `computer_use`, `code_interpreter`, `image_generation`, `mcp`,
   `shell`, and `apply_patch`
+- `ResponsesToolSearch` for OpenAI-specific advanced deferred-tool workflows
+- `ResponsesFunctionTool` when a function tool needs provider metadata such as
+  `defer_loading=True`
+- `ResponsesToolNamespace` to group related OpenAI function tools under a
+  namespace
 - `ResponsesCustomTool` plus `ResponsesGrammar` for grammar-backed custom tools
 
 Example:
 
 ```python
 from llm_client.providers import OpenAIProvider
-from llm_client.tools import ResponsesBuiltinTool, ResponsesCustomTool, ResponsesGrammar
+from llm_client.tools import (
+    ResponsesAttributeFilter,
+    ResponsesBuiltinTool,
+    ResponsesConnectorId,
+    ResponsesCustomTool,
+    ResponsesFileSearchRankingOptions,
+    ResponsesFunctionTool,
+    ResponsesGmailTool,
+    ResponsesGrammar,
+    ResponsesMCPTool,
+    ResponsesToolNamespace,
+    ResponsesToolSearch,
+)
 
 provider = OpenAIProvider(model="gpt-5.2", use_responses_api=True)
 
 result = await provider.complete(
-    "Search the web and return a compact plan.",
+    "Search the web and CRM tools, then return a compact plan.",
     tools=[
+        ResponsesToolSearch.hosted(),
+        ResponsesToolNamespace(
+            name="crm",
+            description="CRM tools for customer lookup and order management.",
+            tools=(
+                ResponsesFunctionTool(
+                    name="lookup_profile",
+                    description="Fetch a customer profile by customer id.",
+                    parameters={
+                        "type": "object",
+                        "properties": {"customer_id": {"type": "string"}},
+                        "required": ["customer_id"],
+                        "additionalProperties": False,
+                    },
+                    defer_loading=True,
+                ),
+            ),
+        ),
         ResponsesBuiltinTool.web_search(search_context_size="medium"),
+        ResponsesMCPTool.connector(
+            ResponsesConnectorId.GMAIL,
+            server_label="Gmail",
+            allowed_tools=(ResponsesGmailTool.SEARCH_EMAILS,),
+            require_approval="never",
+            defer_loading=True,
+        ),
         ResponsesCustomTool(
             name="planner",
             description="Emit a compact plan.",
@@ -175,6 +227,32 @@ result = await provider.complete(
 These descriptors are provider-native request objects. They are not registered
 or executed through `ToolRegistry`, which remains the runtime for local
 function tools only.
+
+If you use client-executed `tool_search`, return the loaded tool set with
+`OpenAIProvider.submit_tool_search_output(...)` after the model emits a
+`tool_search_call`.
+
+If you use hosted `shell` or `apply_patch`, return your host-side execution
+results with `OpenAIProvider.submit_shell_call_output(...)` or
+`OpenAIProvider.submit_apply_patch_call_output(...)`. The typed helpers
+`ResponsesShellCallChunk`, `ResponsesShellCallOutput`, and
+`ResponsesApplyPatchCallOutput` are available from `llm_client.tools` so you do
+not need to build raw provider dicts for those continuation items.
+
+For typed MCP/connectors, `ResponsesMCPTool` now also supports
+`defer_loading=True` for tool-search workflows, and `allowed_tools` can be
+supplied with connector-specific enums such as `ResponsesGmailTool`.
+
+For hosted retrieval/file-search tuning, the OpenAI provider now also accepts
+typed first-class controls:
+
+- `ResponsesAttributeFilter`
+- `ResponsesFileSearchRankingOptions`
+
+Use them either inside `ResponsesBuiltinTool.file_search(...)` or directly on
+`search_vector_store(...)` / `respond_with_file_search(...)`. The file-search
+helper also supports `include_search_results=True`, which requests
+`file_search_call.results` in the Responses output.
 
 ## OpenAI Responses request controls
 

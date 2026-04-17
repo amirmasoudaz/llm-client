@@ -1,6 +1,6 @@
 # OpenAI Docs-Ledger Completeness Audit
 
-Last updated: 2026-03-31
+Last updated: 2026-04-16
 
 This report audits `llm_client` against the local OpenAI docs ledger API running on `http://127.0.0.1:8000`, using only the `docs/` and `search/` endpoints as requested.
 
@@ -19,6 +19,17 @@ Important API notes from this audit:
 - `POST /search/query` worked and returned reliable `md_relpath` hits.
 - `GET /docs/catalog` returned `500 Internal Server Error` during this audit and should be treated as unreliable until fixed.
 - Because the docs were cached locally after retrieval, the repo/code cross-check below is based on the actual exported docs corpus, not prior package notes.
+
+Important API notes from the 2026-04-08 refresh:
+
+- `GET /docs/index` and selected `GET /docs/export/file/...` reads are currently reachable from the host namespace, but localhost access is still inconsistent from the default sandbox namespace.
+- `GET /docs/export/file/guides/function-calling.md` was readable from the sandbox while `GET /docs/export/file/guides/realtime.md` was not, so the ledger remains useful but operationally inconsistent.
+- Official OpenAI docs MCP was used to cross-validate the highest-risk gaps from this refresh:
+  - `https://developers.openai.com/api/docs/guides/function-calling#tool-search`
+  - `https://developers.openai.com/api/docs/guides/realtime-conversations#text-inputs-and-outputs`
+  - `https://developers.openai.com/api/docs/guides/tools-file-search#metadata-filtering`
+  - `https://developers.openai.com/api/docs/guides/retrieval#attributes`
+  - `https://developers.openai.com/api/docs/guides/retrieval#attribute-filtering`
 
 Relevant docs corpus cached from the ledger included:
 
@@ -85,10 +96,11 @@ Relevant docs corpus cached from the ledger included:
 - webhook verification and event unwrapping
 - realtime websocket connection wrappers plus realtime and realtime-transcription session helpers and call-control helpers
 - vector-store file polling and vector-store file batches
-- hosted Responses tool workflow helpers for web search, file search, code interpreter, remote MCP, and connectors
-- typed MCP/connector descriptors with structured approval-policy support
+- hosted Responses tool workflow helpers for web search, file search, code interpreter, shell, apply-patch, computer-use, image-generation, remote MCP, and connectors
+- typed MCP/connector descriptors with structured approval-policy support, typed connector allowlists, and deferred-loading support for tool search
 - deep-research clarify/rewrite helpers plus kickoff orchestration and a staged runner over Responses background mode
 - expanded OpenAI model registry coverage across newer GPT-4.1, GPT-5 chat/codex, o-series, image, audio, realtime, and deprecated compatibility families
+- expanded OpenAI model registry coverage now also includes the GPT-5.4 family (`gpt-5.4`, `gpt-5.4-mini`, `gpt-5.4-nano`, `gpt-5.4-pro`) with official snapshot ids, pricing, and rate-limit metadata from the current model pages
 - runnable cookbook coverage for realtime connection, realtime transcription, vector-store file batches, MCP/connector workflows, and deep-research kickoff/staged workflows
 
 `llm_client` does not implement the full OpenAI docs surface.
@@ -130,13 +142,13 @@ The biggest missing or incomplete areas are:
 | --- | --- | --- | --- | --- |
 | Images and vision | `guides/images-vision.md`, `guides/images.md` | `llm_client/content.py` supports `ImageBlock` and image inputs; `llm_client/providers/openai.py` normalizes some image-generation outputs | Partial | Image understanding on the text-generation path is supported, but the broader image product surface is not. |
 | Audio understanding | `guides/audio.md` | `llm_client/content.py` supports `AudioBlock` / `input_audio`; speech APIs plus realtime transcription session helpers live in `llm_client/providers/openai.py` | Partial | Input-audio transport, speech endpoints, and realtime transcription session/bootstrap helpers are implemented, but the broader realtime-audio product surface is still incomplete. |
-| Built-in tools | `guides/tools.md`, `guides/tools-*.md` | `ResponsesBuiltinTool` / `ResponsesMCPTool` in `llm_client/tools/base.py`; workflow helpers in `llm_client/providers/openai.py` and `llm_client/engine.py` | Partial | Typed request descriptors and helper workflows now exist for web search, file search, code interpreter, remote MCP, and connectors, but there are still no full management APIs around every hosted tool family. |
-| MCP and connectors | `guides/tools-remote-mcp.md`, `guides/tools-connectors-mcp.md`, `guides/developer-mode.md` | `ResponsesMCPTool`, `ResponsesConnectorId`, `submit_mcp_approval_response(...)`, `respond_with_remote_mcp(...)`, `respond_with_connector(...)` | Partial | Typed remote-MCP and connector request surfaces, documented connector ids, authorization shaping, approval continuations, and helper workflows exist, but broader connector/skills product management remains outside the package. |
-| Retrieval / file search | `guides/retrieval.md`, `guides/tools-file-search.md`, `guides/deep-research.md` | `create_file(...)`, `retrieve_file(...)`, `list_files(...)`, `delete_file(...)`, `get_file_content(...)`, `ResponsesBuiltinTool.file_search(...)`; vector-store CRUD/search, vector-store-file CRUD/content/polling, and vector-store file-batch helpers in `llm_client/providers/openai.py` | Partial | Generic Files API plus hosted vector stores, vector-store files, and file batches are implemented, but broader file-search product/resource management is still incomplete. |
+| Built-in tools | `guides/tools.md`, `guides/tools-*.md` | `ResponsesBuiltinTool` / `ResponsesMCPTool` plus `ResponsesShellCallChunk`, `ResponsesShellCallOutput`, and `ResponsesApplyPatchCallOutput` in `llm_client/tools/base.py`; workflow helpers in `llm_client/providers/openai.py` and `llm_client/engine.py` | Partial | Typed request descriptors plus shell/apply-patch continuation helpers now exist for web search, file search, code interpreter, shell, apply-patch, computer-use, image-generation, remote MCP, and connectors, but there are still no full management APIs around every hosted tool family. |
+| MCP and connectors | `guides/tools-remote-mcp.md`, `guides/tools-connectors-mcp.md`, `guides/developer-mode.md` | `ResponsesMCPTool`, `ResponsesConnectorId`, connector-tool enums in `llm_client/tools/base.py`, `submit_mcp_approval_response(...)`, `respond_with_remote_mcp(...)`, `respond_with_connector(...)` | Partial | Typed remote-MCP and connector request surfaces, documented connector ids, typed `allowed_tools` values, `defer_loading` support, authorization shaping, approval continuations that can rebuild auth-bearing tool definitions, and helper workflows exist, but broader connector/skills product management remains outside the package. |
+| Retrieval / file search | `guides/retrieval.md`, `guides/tools-file-search.md`, `guides/deep-research.md`, OpenAPI `/uploads` | `create_file(...)`, `retrieve_file(...)`, `list_files(...)`, `delete_file(...)`, `get_file_content(...)`, `create_upload(...)`, `add_upload_part(...)`, `complete_upload(...)`, `cancel_upload(...)`, `upload_file_chunked(...)`, `ResponsesBuiltinTool.file_search(...)`, `ResponsesAttributeFilter`, `ResponsesFileSearchRankingOptions`, `ResponsesExpirationPolicy`, `ResponsesChunkingStrategy`, `ResponsesVectorStoreFileSpec`; vector-store CRUD/search/polling, typed `create_vector_store_and_poll(...)` provisioning, vector-store-file CRUD/content/polling, and vector-store file-batch helpers in `llm_client/providers/openai.py` | Partial | Generic Files API plus Uploads lifecycle helpers, hosted vector stores, store-level ingestion polling, typed provisioning from `files=[ResponsesVectorStoreFileSpec(...)]`, vector-store files, file batches, typed filters/ranking, typed expiration/chunking, per-file batch metadata, and hosted file-search result inclusion are implemented, but broader file-search product/resource management is still incomplete. |
 | Agents | `guides/agents.md`, `guides/agents-sdk.md` | `llm_client.agent` package, generic tool runtime, engine | Partial | The package has its own agent layer, but it is not a full implementation of the OpenAI Agents SDK / AgentKit product surface. |
-| Realtime API | `guides/realtime.md`, `guides/realtime-server-controls.md`, `guides/realtime-transcription.md`, `api-reference.md` | `connect_realtime(...)`, `connect_realtime_transcription(...)`, realtime and realtime-transcription session helpers, and call helpers in `llm_client/providers/openai.py` and `llm_client/engine.py` | Partial | Stable websocket/session bootstrap is wrapped for both standard realtime and transcription flows, but the full Realtime product surface still extends beyond the current helper set. |
+| Realtime API | `guides/realtime.md`, `guides/realtime-server-controls.md`, `guides/realtime-transcription.md`, `guides/realtime-conversations.md`, `guides/realtime-mcp.md`, `api-reference.md` | `connect_realtime(...)`, `connect_realtime_transcription(...)`, realtime and realtime-transcription session helpers, call helpers, and `RealtimeConnection` lifecycle/event helpers in `llm_client/providers/openai.py`, `llm_client/providers/types.py`, and `llm_client/engine.py` | Partial | Stable websocket/session bootstrap, higher-level text/audio-turn helpers on `RealtimeConnection`, session/response-level MCP tool injection, realtime MCP approval-response creation, typed tool-loading wait helpers, conversation-item lifecycle helpers, typed receive-side event wrappers, and call controls are now wrapped, but the full Realtime product surface still extends beyond the current helper set. |
 | Deep Research | `guides/deep-research.md` | `clarify_deep_research_task(...)`, `rewrite_deep_research_prompt(...)`, `start_deep_research(...)`, and `run_deep_research(...)` in `llm_client/providers/openai.py` and `llm_client/engine.py` | Partial | Clarify, rewrite, kickoff, optional background wait, and typed MCP/connectors are implemented, but the broader deep-research lifecycle/product surface is still incomplete. |
-| Model registry | `models.md`, `index.md` models section | `llm_client/assets/model_catalog.json`, `llm_client/models.py`, `llm_client/model_catalog.py` | Partial | The registry now includes a much broader OpenAI set, including GPT-4.1, GPT-5 chat/codex variants, o-series reasoning families, image/audio/realtime families, and deprecated compatibility entries, but it still does not cover the full docs-ledger model corpus. |
+| Model registry | `models.md`, `index.md` models section | `llm_client/assets/model_catalog.json`, `llm_client/models.py`, `llm_client/model_catalog.py` | Partial | The registry now includes a much broader OpenAI set, including GPT-5.4, GPT-4.1, GPT-5 chat/codex variants, o-series reasoning families, image/audio/realtime families, and deprecated compatibility entries, but it still does not cover the full docs-ledger model corpus. |
 
 ### Missing
 
@@ -144,6 +156,17 @@ The biggest missing or incomplete areas are:
 | --- | --- | --- | --- | --- |
 | Skills as an OpenAI product surface | `guides/tools-connectors-mcp.md`, `guides/developer-mode.md`, broader docs index | No dedicated “skills” product abstractions in `llm_client` | Missing | The package has its own tool abstractions, but not OpenAI “skills/connectors” product coverage. |
 | Full model coverage | `models.md`, docs index models section | Registry still omits several documented families and legacy/current variants | Missing | Many documented OpenAI models are still absent, especially the broader legacy/current catalog outside the newly added moderation, audio, image, realtime, and deep-research families. |
+
+### Newly implemented in 1.2 work
+
+| Feature area | Docs evidence | Repo evidence | Status | Notes |
+| --- | --- | --- | --- | --- |
+| OpenAI `tool_search` | Official docs MCP `guides/function-calling#tool-search` | `ResponsesToolSearch` in `llm_client/tools/base.py`; `respond_with_tool_search(...)` and `submit_tool_search_output(...)` in `llm_client/providers/openai.py` | Implemented | The package now supports hosted and client-executed `tool_search` as an OpenAI-specific advanced surface. |
+| OpenAI-specific tool namespaces | Official docs MCP `guides/function-calling#defining-namespaces` | `ResponsesToolNamespace` and `ResponsesFunctionTool` in `llm_client/tools/base.py`; recursive tool aliasing/normalization in `llm_client/providers/openai.py` | Implemented | Namespace tool definitions now preserve deferred-tool intent instead of flattening everything to raw dict passthrough. |
+| Retrieval tuning ergonomics | Official docs MCP `guides/tools-file-search#metadata-filtering`, `guides/retrieval#attribute-filtering`, `guides/retrieval#relevance-tuning` | `ResponsesAttributeFilter`, `ResponsesFileSearchRankingOptions`, and `ResponsesFileSearchHybridWeights` in `llm_client/tools/base.py`; `search_vector_store(...)` and `respond_with_file_search(...)` in `llm_client/providers/openai.py` | Implemented | The package now exposes typed retrieval filters/ranking, explicit `max_num_results`/`rewrite_query` controls, and `include_search_results=True` for hosted file-search responses. |
+| Hosted shell/apply-patch continuation helpers | Official docs MCP `guides/tools-shell.md`, `guides/tools-apply-patch.md` | `ResponsesShellCallChunk`, `ResponsesShellCallOutput`, and `ResponsesApplyPatchCallOutput` in `llm_client/tools/base.py`; `submit_shell_call_output(...)` and `submit_apply_patch_call_output(...)` in `llm_client/providers/openai.py` and `llm_client/engine.py` | Implemented | The package now exposes first-class typed continuation helpers for shell/apply-patch loops instead of requiring raw Responses input items. |
+| MCP approval continuation tool rebuilding | Official docs MCP `guides/tools-connectors-mcp.md` | `submit_mcp_approval_response(...)` in `llm_client/providers/openai.py` and `llm_client/engine.py` | Implemented | Approval-continuation calls can now rebuild remote-MCP or connector tool definitions from convenience kwargs, which keeps connector authorization explicit on every follow-up request. |
+| Realtime text/audio turn convenience helpers | Official docs MCP `guides/realtime-conversations#handling-audio-with-websockets`, `guides/realtime-conversations#interruption-and-truncation`, `guides/realtime-conversations#push-to-talk`, `guides/realtime-mcp#realtime-mcp-flow` | `RealtimeConnection.create_text_message(...)`, `append_input_audio_chunks(...)`, `commit_audio_and_create_response(...)`, `disable_vad(...)`, `send_audio_turn(...)`, `update_session_tools(...)`, `create_response_with_tools(...)`, `create_mcp_approval_response(...)`, `wait_for_mcp_tool_listing(...)`, and `collect_response_output(...)` in `llm_client/providers/types.py` | Implemented | The package now wraps the common WebSocket conversation flow in stable helper methods instead of forcing callers to assemble every low-level event payload manually, including VAD-off push-to-talk setup, realtime MCP tool-loading/approval loops, and collected response-output handling. |
 
 ## Correctness notes for implemented areas
 
@@ -170,14 +193,19 @@ This means the package’s current OpenAI strengths are real:
 ### Evidence that the package is narrower than the docs corpus
 
 - The docs-ledger `index.md` includes guides and models for image generation, speech-to-text, text-to-speech, moderation, fine-tuning, realtime, deep research, and many more model families.
-- The OpenAI model registry in `llm_client/assets/model_catalog.json` now covers a much broader slice of the docs-ledger model corpus, but still not all documented families and variants.
+- The OpenAI model registry in `llm_client/assets/model_catalog.json` now covers a much broader slice of the docs-ledger model corpus, including the current GPT-5.4 family, but still not all documented families and variants.
 - `llm_client/providers/openai.py` still does not expose the full product family set from the docs, especially broader hosted file-search resources beyond the generic Files API/vector-store layers, fuller connector/skills product management, and several newer platform families.
 
 ### Evidence that some product families are only partial
 
 - `llm_client/tools/base.py` exposes `ResponsesBuiltinTool` descriptors for hosted tool families, but those are still request-shape abstractions, not complete product-management wrappers.
 - `llm_client/providers/openai.py` normalizes `file_search_call`, `web_search_call`, `code_interpreter_call`, `image_generation_call`, and MCP-related output items, which proves hosted-tool awareness.
-- That same file now exposes direct image APIs, speech APIs, moderation, fine-tuning jobs, vector stores, vector-store files, vector-store file batches, webhook helpers, realtime connection/call/transcription helpers, hosted Responses tool workflow helpers, and staged deep-research helpers, but it does not yet expose the full remaining hosted-resource or broader product-management surface.
+- That same file now exposes direct image APIs, speech APIs, moderation, fine-tuning jobs, Uploads lifecycle helpers, vector stores, vector-store files, vector-store file batches, webhook helpers, realtime connection/call/transcription helpers, hosted Responses tool workflow helpers, and staged deep-research helpers, but it does not yet expose the full remaining hosted-resource or broader product-management surface.
+
+### Evidence for the remaining 1.2 gaps
+
+- The official realtime conversations docs explicitly enumerate `conversation.item.added`, `conversation.item.done`, `conversation.item.truncated`, and related response/input-buffer lifecycle events; the package now exposes typed `RealtimeEventResult` / `RealtimeMCPToolListingResult` / `RealtimeResponseOutput` wrappers plus `create_text_message(...)`, `append_input_audio_chunks(...)`, `commit_audio_and_create_response(...)`, `disable_vad(...)`, `send_audio_turn(...)`, realtime MCP tool/session helpers, conversation-item retrieve/delete/truncate, and `response.cancel` helpers, but broader Realtime product management still extends beyond the current helper set.
+- The official file-search and retrieval docs still extend beyond the current package surface into deeper hosted resource management and broader product lifecycle flows, but the package now covers store-level ingestion polling, typed vector-store provisioning from file specs, typed expiration policies, chunking strategies, and per-file batch ingestion metadata in addition to the earlier vector-store/file primitives.
 
 ### Evidence that fine-tuned models are not a supported surface
 
@@ -188,8 +216,8 @@ This means the package’s current OpenAI strengths are real:
 
 ### Priority 0: major remaining platform families
 
-- broader hosted retrieval / file-search resource management
-- broader realtime product coverage beyond the current websocket/session wrapper
+- broader hosted retrieval / file-search resource management beyond the newly typed expiration, chunking, and per-file ingestion helpers
+- broader realtime product coverage beyond the current websocket/session/event wrapper
 
 ### Priority 1: breadth and product-surface expansion
 
@@ -203,18 +231,29 @@ This means the package’s current OpenAI strengths are real:
 
 ## Recommended implementation plan
 
-### Phase 1: Close the remaining research and retrieval gaps
+### Phase 1: Add the newly confirmed tool-surface gaps
+
+Completed in this branch:
+
+- OpenAI-specific advanced support for `tool_search`.
+- OpenAI-specific tool namespace support without promoting namespaces into the stable generic tool contract.
+- Typed retrieval/file-search filters, ranking controls, and hosted search-result inclusion helpers.
+- Typed continuation helpers for hosted `shell` and `apply_patch` tool loops.
+
+The next active phase is broader Realtime and product-surface follow-up work.
+
+### Phase 2: Close the remaining research and retrieval gaps
 
 Deliverables:
 
-- Expand hosted retrieval/file-search management beyond vector stores, files, and file batches.
+- Expand hosted retrieval/file-search management beyond vector stores, files, file batches, and the newly added tuning ergonomics.
 - Add examples covering realtime transcription, connector/MCP helpers, and the staged deep-research workflow.
 
 Exit criteria:
 
 - The package can represent the docs-ledger deep-research and hosted retrieval workflows further end to end, not just the setup calls.
 
-### Phase 2: Expand broader realtime and hosted-tool coverage
+### Phase 3: Expand broader realtime and hosted-tool coverage
 
 Deliverables:
 
@@ -225,7 +264,7 @@ Exit criteria:
 
 - Realtime and hosted-tool workflows from the docs can be expressed without dropping to raw SDK access.
 
-### Phase 3: Continue model-registry and docs parity expansion
+### Phase 4: Continue model-registry and docs parity expansion
 
 Deliverables:
 

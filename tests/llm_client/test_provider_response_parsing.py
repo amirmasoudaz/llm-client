@@ -11,6 +11,7 @@ from llm_client.providers.anthropic import AnthropicProvider
 from llm_client.providers.google import GoogleProvider
 from llm_client.providers.openai import OpenAIProvider
 from llm_client.providers.types import Message, StreamEventType
+from llm_client.tools import ResponsesConnectorId, ResponsesGoogleCalendarTool
 from tests.llm_client.fakes import FakeModel
 from tests.llm_client.stream_transcripts import (
     AnthropicStreamManager,
@@ -514,6 +515,67 @@ async def test_openai_responses_complete_normalizes_refusal_and_hosted_tool_outp
     assert [item.to_dict() for item in roundtrip.output_items] == [item.to_dict() for item in result.output_items]
 
 
+@pytest.mark.asyncio
+async def test_openai_responses_complete_normalizes_tool_search_outputs() -> None:
+    provider = _openai_provider("gpt-5.4")
+    provider.use_responses_api = True
+
+    async def _responses_create(**kwargs):
+        _ = kwargs
+        return SimpleNamespace(
+            model="gpt-5.4",
+            status="completed",
+            output_text="",
+            output=[
+                SimpleNamespace(
+                    type="tool_search_call",
+                    id="tsc_1",
+                    call_id=None,
+                    status="completed",
+                    execution="server",
+                    query="crm refund lookup",
+                ),
+                SimpleNamespace(
+                    type="tool_search_output",
+                    id="tso_1",
+                    call_id="toolsearch_1",
+                    status="completed",
+                    execution="client",
+                    tools=[
+                        {
+                            "type": "function",
+                            "name": "CRM_GetProfile",
+                            "description": "Lookup a customer profile.",
+                            "parameters": {"type": "object", "properties": {"customer_id": {"type": "string"}}},
+                        }
+                    ],
+                ),
+            ],
+            usage=SimpleNamespace(to_dict=lambda: {"input_tokens": 3, "output_tokens": 1, "total_tokens": 4}),
+            incomplete_details=None,
+        )
+
+    provider.client = SimpleNamespace(
+        responses=SimpleNamespace(create=_responses_create, parse=None),
+    )
+
+    result = await provider.complete(
+        [Message.user("hello")],
+        tools=[],
+        model="gpt-5.4",
+    )
+
+    assert result.output_items is not None
+    assert [item.type for item in result.output_items] == [
+        "tool_search_call",
+        "tool_search_output",
+    ]
+    assert result.output_items[0].details["query"] == "crm refund lookup"
+    assert result.output_items[1].call_id == "toolsearch_1"
+    assert result.output_items[1].details["execution"] == "client"
+    assert result.output_items[1].details["tools"][0]["name"] == "CRM_GetProfile"
+
+
 def test_openai_responses_finish_reason_normalizes_incomplete_statuses() -> None:
     provider = _openai_provider()
 
@@ -809,6 +871,54 @@ async def test_openai_submit_mcp_approval_response_continues_response() -> None:
             "type": "mcp_approval_response",
             "approval_request_id": "mcpr_1",
             "approve": True,
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_openai_submit_mcp_approval_response_builds_connector_tool_from_helper_kwargs() -> None:
+    provider = _openai_provider("gpt-5")
+    provider.use_responses_api = True
+
+    captured: dict[str, object] = {}
+
+    async def _responses_create(**kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(
+            id="resp_approved",
+            model="gpt-5",
+            status="completed",
+            output_text="approved",
+            output=[SimpleNamespace(type="message", content=[SimpleNamespace(type="output_text", text="approved")])],
+            usage=SimpleNamespace(to_dict=lambda: {"input_tokens": 2, "output_tokens": 1, "total_tokens": 3}),
+            incomplete_details=None,
+            error=None,
+        )
+
+    provider.client = SimpleNamespace(responses=SimpleNamespace(create=_responses_create))
+
+    result = await provider.submit_mcp_approval_response(
+        previous_response_id="resp_prev",
+        approval_request_id="mcpr_1",
+        approve=True,
+        connector_id=ResponsesConnectorId.GOOGLE_CALENDAR,
+        server_label="Google Calendar",
+        authorization="Bearer oauth-token",
+        allowed_tools=(ResponsesGoogleCalendarTool.SEARCH_EVENTS,),
+        require_approval="never",
+        defer_loading=True,
+    )
+
+    assert result.content == "approved"
+    assert captured["tools"] == [
+        {
+            "type": "mcp",
+            "connector_id": ResponsesConnectorId.GOOGLE_CALENDAR.value,
+            "server_label": "Google Calendar",
+            "authorization": "Bearer oauth-token",
+            "allowed_tools": [ResponsesGoogleCalendarTool.SEARCH_EVENTS.value],
+            "require_approval": "never",
+            "defer_loading": True,
         }
     ]
 
