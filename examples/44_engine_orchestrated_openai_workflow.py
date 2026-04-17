@@ -43,7 +43,7 @@ async def main() -> None:
             provider_name="openai",
             model=handle.model,
             poll_interval=0.5,
-            timeout=90.0,
+            timeout=170.0,
         )
         await engine.create_conversation_items(
             conversation.conversation_id,

@@ -74,7 +74,7 @@ TIMEOUT_OVERRIDES = {
     "27_sql_analytics_assistant.py": 240,
     "34_end_to_end_mission_control.py": 300,
     "39_openai_conversation_state_workflow.py": 240,
-    "38_openai_background_responses.py": 120,
+    "38_openai_background_responses.py": 180,
     "41_openai_background_resume_stream.py": 120,
     "43_openai_long_running_compaction.py": 120,
     "44_engine_orchestrated_openai_workflow.py": 180,

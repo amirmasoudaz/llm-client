@@ -37,7 +37,7 @@ async def main() -> None:
             provider_name="openai",
             model=handle.model,
             poll_interval=0.5,
-            timeout=60.0,
+            timeout=170.0,
         )
         deleted = await engine.delete_response(
             response_id,
