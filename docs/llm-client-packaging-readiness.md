@@ -77,7 +77,7 @@ phase.
 The package is considered packaging-ready when:
 
 - the `pyproject.toml` metadata is valid
-- wheel and sdist artifacts are built in CI
-- live cookbook entrypoints are validated in CI with credential-less skip allowance
-- standalone installation is smoke-tested across supported Python versions
-- publish automation exists for tagged and manual releases
+- wheel and sdist artifacts can be built locally
+- live cookbook entrypoints are validated locally with credential-less skip allowance
+- standalone installation is smoke-tested in the repository environment
+- the manual release path is documented and reproducible

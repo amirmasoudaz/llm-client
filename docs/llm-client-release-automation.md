@@ -1,33 +1,36 @@
 # llm-client Release Automation
 
-The package release path uses two automation layers:
+The package release path is intentionally manual.
 
-## Continuous Package Validation
+This repository does not rely on GitHub-hosted CI or publish workflows for the
+package release path. Validation and release publication are expected to run
+from a local, controlled environment.
 
-The package CI workflow validates:
+## Validation Expectations
 
-- standalone installation across supported Python versions
-- live cookbook entrypoint validation
-- wheel and sdist build verification
+Before a release is merged and tagged, validate:
+
+- standalone installation in the repository `.venv`
 - package metadata and docs inventory tests
-
-## Publish Automation
-
-The publish workflow is designed for:
-
-- tagged releases for PyPI
-- manual releases for TestPyPI or PyPI
+- full test suite
+- cookbook validation with expected environment-dependent skips only
+- wheel and sdist build verification
+- `twine check` on built artifacts
 
 ## Release Flow
 
-1. Update version and release notes.
-2. Push the version tag or trigger the manual publish workflow.
-3. Build wheel and sdist.
-4. Run `twine check`.
-5. Publish artifacts through the package publish workflow.
+1. Update the package version and release notes on a release-prep branch.
+2. Run the validation gate locally.
+3. Merge the release branch into `main` through the normal PR flow.
+4. Tag the merged `main` commit.
+5. Build wheel and sdist locally if distribution artifacts are needed.
+6. Run `twine check` locally before any manual publish step.
+7. Publish artifacts manually only if there is an explicit release decision to
+   do so.
 
 ## Safety Notes
 
-- Tagged releases should publish to the primary package repository.
-- Manual releases should default to TestPyPI unless there is an explicit
-  release decision to publish to PyPI.
+- Do not treat tag creation as automatic publication.
+- Prefer validating and tagging from a clean local checkout of merged `main`.
+- If artifacts are published, default to the lowest-risk target first unless
+  there is an explicit decision to publish to the primary package index.
