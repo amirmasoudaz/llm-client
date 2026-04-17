@@ -1,15 +1,14 @@
 from __future__ import annotations
 
-import asyncio
+import json
+import os
 from typing import Any
 
-from cookbook_support import build_live_provider, close_provider, print_heading, print_json
-
-from llm_client.conversation import Conversation
-from llm_client.models import ModelProfile
-from llm_client.providers.types import Message
+from llm_client import Conversation, Message, ModelProfile, OpenAIProvider, load_env
 from llm_client.summarization import LLMSummarizer, LLMSummarizerConfig
 from llm_client.sync import get_messages_sync, run_async_sync, summarize_sync
+
+load_env()
 
 
 def _conversation_for_sync_showcase(summarizer: LLMSummarizer) -> Conversation:
@@ -107,16 +106,18 @@ async def _capture_guardrail_errors(
 
 
 def main() -> None:
-    handle = build_live_provider()
+    model_name = os.getenv("LLM_CLIENT_EXAMPLE_MODEL", "gpt-5-nano")
+    provider_name = "openai"
+    provider = OpenAIProvider(model=model_name)
     summarizer = LLMSummarizer(
-        provider=handle.provider,
+        provider=provider,
         config=LLMSummarizerConfig(
             max_summary_tokens=160,
             temperature=0.1,
         ),
     )
     conversation = _conversation_for_sync_showcase(summarizer)
-    model_profile = _resolve_model_profile(handle.model)
+    model_profile = _resolve_model_profile(model_name)
 
     try:
         raw_token_estimate = conversation.count_tokens(model_profile)
@@ -146,34 +147,44 @@ def main() -> None:
             )
         )
 
-        print_heading("Sync Wrapper Showcase")
-        print_json(
-            {
-                "provider": handle.name,
-                "model": handle.model,
-                "script_shape": "plain synchronous CLI flow with live summarization",
-                "conversation_message_count": len(conversation),
-                "raw_token_estimate": raw_token_estimate,
-                "prepared_message_count": len(prepared_messages),
-                "prepared_without_system_count": len(prepared_without_system),
-                "summary_injected": summary_message is not None,
-                "summary_message_excerpt": (
-                    (summary_message.content or "")[:240] if summary_message else None
-                ),
-                "prepared_messages": _messages_preview(prepared_messages),
-                "operator_digest": operator_digest,
-            }
+        print("\n=== Sync Wrapper Showcase ===\n")
+        print(
+            json.dumps(
+                {
+                    "provider": provider_name,
+                    "model": model_name,
+                    "script_shape": "plain synchronous CLI flow with live summarization",
+                    "conversation_message_count": len(conversation),
+                    "raw_token_estimate": raw_token_estimate,
+                    "prepared_message_count": len(prepared_messages),
+                    "prepared_without_system_count": len(prepared_without_system),
+                    "summary_injected": summary_message is not None,
+                    "summary_message_excerpt": (
+                        (summary_message.content or "")[:240] if summary_message else None
+                    ),
+                    "prepared_messages": _messages_preview(prepared_messages),
+                    "operator_digest": operator_digest,
+                },
+                indent=2,
+                ensure_ascii=False,
+                default=str,
+            )
         )
 
-        print_heading("Async Guardrails")
-        print_json(
-            {
-                "get_messages_sync_error": guardrail_errors.get("get_messages_sync"),
-                "summarize_sync_error": guardrail_errors.get("summarize_sync"),
-            }
+        print("\n=== Async Guardrails ===\n")
+        print(
+            json.dumps(
+                {
+                    "get_messages_sync_error": guardrail_errors.get("get_messages_sync"),
+                    "summarize_sync_error": guardrail_errors.get("summarize_sync"),
+                },
+                indent=2,
+                ensure_ascii=False,
+                default=str,
+            )
         )
     finally:
-        run_async_sync(close_provider(handle.provider))
+        run_async_sync(provider.close())
 
 
 if __name__ == "__main__":

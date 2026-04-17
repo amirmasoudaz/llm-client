@@ -2,15 +2,34 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import time
 from collections.abc import Sequence
 from typing import Any
 
-from cookbook_support import build_live_provider, close_provider, fail_or_skip, print_heading, print_json
-
+from llm_client import (
+    Message,
+    OpenAIProvider,
+    Tool,
+    ToolCall,
+    ToolExecutionEngine,
+    ToolExecutionMetadata,
+    ToolRegistry,
+    ToolResult,
+    load_env,
+)
 from llm_client.agent import ToolExecutionMode
-from llm_client.providers.types import Message, ToolCall
-from llm_client.tools import Tool, ToolExecutionEngine, ToolExecutionMetadata, ToolRegistry, ToolResult
+
+load_env()
+
+
+def _allow_skip() -> bool:
+    return os.getenv("LLM_CLIENT_EXAMPLE_ALLOW_SKIP", "0").strip() == "1"
+
+
+def _fail_or_skip(message: str) -> None:
+    print(message)
+    raise SystemExit(0 if _allow_skip() else 1)
 
 
 RELEASE_PACKET = {
@@ -272,11 +291,12 @@ def serialize_tool_call(tool_call: ToolCall) -> dict[str, Any]:
 
 
 async def main() -> None:
-    handle = build_live_provider()
+    model_name = os.getenv("LLM_CLIENT_EXAMPLE_MODEL", "gpt-5-nano")
+    provider = OpenAIProvider(model=model_name)
     try:
         tools = build_tools()
         provider_tools = tools
-        planning_result = await handle.provider.complete(
+        planning_result = await provider.complete(
             [
                 Message.system(
                     "You are orchestrating a release-readiness tool workflow. "
@@ -286,7 +306,7 @@ async def main() -> None:
                 ),
                 Message.user(
                     "Plan the tool calls for this release packet:\n"
-                    + json.dumps(RELEASE_PACKET, indent=2)
+                    + json.dumps(RELEASE_PACKET, indent=4)
                     + "\n\n"
                     + "Call these tools exactly once with valid arguments:\n"
                     + "- summarize_release_notes(release_notes)\n"
@@ -299,31 +319,43 @@ async def main() -> None:
             tools=provider_tools,
         )
         if not planning_result.tool_calls:
-            fail_or_skip("The live model did not emit tool calls for the tool execution showcase.")
+            _fail_or_skip("The live model did not emit tool calls for the tool execution showcase.")
 
-        print_heading("Release Packet")
-        print_json(RELEASE_PACKET)
+        print("\n=== Release Packet ===\n")
+        print(json.dumps(RELEASE_PACKET, indent=4, ensure_ascii=False, default=str))
 
-        print_heading("Tool Inventory")
-        print_json(
-            [
-                {
-                    "name": tool.name,
-                    "description": tool.description,
-                    "execution": {
-                        "timeout_seconds": tool.execution.timeout_seconds,
-                        "retry_attempts": tool.execution.retry_attempts,
-                        "concurrency_limit": tool.execution.concurrency_limit,
-                        "safety_tags": list(tool.execution.safety_tags),
-                        "trust_level": tool.execution.trust_level,
-                    },
-                }
-                for tool in tools
-            ]
+        print("\n=== Tool Inventory ===\n")
+        print(
+            json.dumps(
+                [
+                    {
+                        "name": tool.name,
+                        "description": tool.description,
+                        "execution": {
+                            "timeout_seconds": tool.execution.timeout_seconds,
+                            "retry_attempts": tool.execution.retry_attempts,
+                            "concurrency_limit": tool.execution.concurrency_limit,
+                            "safety_tags": list(tool.execution.safety_tags),
+                            "trust_level": tool.execution.trust_level,
+                        },
+                    }
+                    for tool in tools
+                ],
+                indent=4,
+                ensure_ascii=False,
+                default=str,
+            )
         )
 
-        print_heading("Live Tool Plan")
-        print_json([serialize_tool_call(tool_call) for tool_call in planning_result.tool_calls])
+        print("\n=== Live Tool Plan ===\n")
+        print(
+            json.dumps(
+                [serialize_tool_call(tool_call) for tool_call in planning_result.tool_calls],
+                indent=4,
+                ensure_ascii=False,
+                default=str,
+            )
+        )
 
         for mode in (
             ToolExecutionMode.SINGLE,
@@ -331,10 +363,17 @@ async def main() -> None:
             ToolExecutionMode.PARALLEL,
             ToolExecutionMode.PLANNER,
         ):
-            print_heading(f"Execution Mode: {mode.value}")
-            print_json(await run_mode(mode, planning_result.tool_calls))
+            print(f"\n=== Execution Mode: {mode.value} ===\n")
+            print(
+                json.dumps(
+                    await run_mode(mode, planning_result.tool_calls),
+                    indent=4,
+                    ensure_ascii=False,
+                    default=str,
+                )
+            )
     finally:
-        await close_provider(handle.provider)
+        await provider.close()
 
 
 if __name__ == "__main__":

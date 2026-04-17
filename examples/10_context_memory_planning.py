@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import difflib
+import json
+import os
 from dataclasses import dataclass
 from typing import Any
 
-from cookbook_support import build_live_provider, close_provider, print_heading, print_json, summarize_usage
-
+from llm_client import ExecutionEngine, Message, OpenAIProvider, RequestSpec, load_env
 from llm_client.context_assembly import (
     ContextAssemblyRequest,
     ContextSourcePayload,
@@ -18,12 +19,10 @@ from llm_client.context_planning import (
     HeuristicContextPlanner,
     TieredTrimmingStrategy,
 )
-from llm_client.engine import ExecutionEngine
 from llm_client.memory import InMemorySummaryStore, MemoryQuery, MemoryWrite, ShortTermMemoryStore
-from llm_client.providers.types import Message
-from llm_client.spec import RequestSpec
 from llm_client.summarization import LLMSummarizer
 
+load_env()
 
 THREAD_SCOPE = "grant-thread-robotics"
 
@@ -36,7 +35,8 @@ class _Entry:
 
 
 class _ApplicantProfileSource:
-    async def load(self, request: ContextSourceRequest) -> ContextSourcePayload:
+    @staticmethod
+    async def load(request: ContextSourceRequest) -> ContextSourcePayload:
         _ = request
         entries = [
             _Entry(
@@ -59,7 +59,8 @@ class _ApplicantProfileSource:
 
 
 class _ReviewerBriefSource:
-    async def load(self, request: ContextSourceRequest) -> ContextSourcePayload:
+    @staticmethod
+    async def load(request: ContextSourceRequest) -> ContextSourcePayload:
         _ = request
         entries = [
             _Entry(
@@ -143,9 +144,11 @@ def _summary_change(previous: str | None, current: str | None) -> dict[str, Any]
 
 
 async def main() -> None:
-    handle = build_live_provider()
+    model_name = os.getenv("LLM_CLIENT_EXAMPLE_MODEL", "gpt-5-nano")
+    provider_name = "openai"
+    provider = OpenAIProvider(model=model_name)
     try:
-        engine = ExecutionEngine(provider=handle.provider)
+        engine = ExecutionEngine(provider=provider)
         memory = ShortTermMemoryStore()
         summaries = InMemorySummaryStore()
 
@@ -242,8 +245,8 @@ async def main() -> None:
         final_prompt = _build_prompt(second_pass.plan, second_question)
         final_result = await engine.complete(
             spec=RequestSpec(
-                provider=handle.name,
-                model=handle.model,
+                provider=provider_name,
+                model=model_name,
                 messages=[
                     Message.system("You write concise, evidence-based grant guidance."),
                     Message.user(final_prompt),
@@ -251,53 +254,79 @@ async def main() -> None:
             )
         )
 
-        print_heading("Source Thread")
-        print_json({"entries": _format_entries(follow_up_entries)})
-
-        print_heading("First Planning Pass")
-        first_summary_change = _summary_change(None, first_pass.plan.persistent_summary)
-        print_json(
+        usage = (
             {
-                "selected_entries": _format_entries(first_pass.plan.entries),
-                "memory": _format_memory(first_pass.plan.memory),
-                "summary": first_pass.plan.summary,
-                "persistent_summary": first_pass.plan.persistent_summary,
-                "metadata": first_pass.plan.metadata,
-                "persistent_summary_change": first_summary_change,
-                "sources": [payload.source_name for payload in first_pass.sources],
+                "input_tokens": final_result.usage.input_tokens,
+                "output_tokens": final_result.usage.output_tokens,
+                "total_tokens": final_result.usage.total_tokens,
+                "total_cost": final_result.usage.total_cost,
             }
+            if final_result.usage is not None
+            else {}
         )
 
-        print_heading("Second Planning Pass")
+        print("\n=== Source Thread ===\n")
+        print(json.dumps({"entries": _format_entries(follow_up_entries)}, indent=2, ensure_ascii=False, default=str))
+
+        print("\n=== First Planning Pass ===\n")
+        first_summary_change = _summary_change(None, first_pass.plan.persistent_summary)
+        print(
+            json.dumps(
+                {
+                    "selected_entries": _format_entries(first_pass.plan.entries),
+                    "memory": _format_memory(first_pass.plan.memory),
+                    "summary": first_pass.plan.summary,
+                    "persistent_summary": first_pass.plan.persistent_summary,
+                    "metadata": first_pass.plan.metadata,
+                    "persistent_summary_change": first_summary_change,
+                    "sources": [payload.source_name for payload in first_pass.sources],
+                },
+                indent=2,
+                ensure_ascii=False,
+                default=str,
+            )
+        )
+
+        print("\n=== Second Planning Pass ===\n")
         second_summary_change = _summary_change(
             first_pass.plan.persistent_summary,
             second_pass.plan.persistent_summary,
         )
-        print_json(
-            {
-                "selected_entries": _format_entries(second_pass.plan.entries),
-                "memory": _format_memory(second_pass.plan.memory),
-                "summary": second_pass.plan.summary,
-                "persistent_summary": second_pass.plan.persistent_summary,
-                "metadata": second_pass.plan.metadata,
-                "persistent_summary_change": second_summary_change,
-                "sources": [payload.source_name for payload in second_pass.sources],
-            }
+        print(
+            json.dumps(
+                {
+                    "selected_entries": _format_entries(second_pass.plan.entries),
+                    "memory": _format_memory(second_pass.plan.memory),
+                    "summary": second_pass.plan.summary,
+                    "persistent_summary": second_pass.plan.persistent_summary,
+                    "metadata": second_pass.plan.metadata,
+                    "persistent_summary_change": second_summary_change,
+                    "sources": [payload.source_name for payload in second_pass.sources],
+                },
+                indent=2,
+                ensure_ascii=False,
+                default=str,
+            )
         )
 
-        print_heading("Final Live Answer")
-        print_json(
-            {
-                "provider": handle.name,
-                "model": handle.model,
-                "prompt_preview": final_prompt[:1200],
-                "status": final_result.status,
-                "usage": summarize_usage(final_result.usage),
-                "content": final_result.content,
-            }
+        print("\n=== Final Live Answer ===\n")
+        print(
+            json.dumps(
+                {
+                    "provider": provider_name,
+                    "model": model_name,
+                    "prompt_preview": final_prompt[:1200],
+                    "status": final_result.status,
+                    "usage": usage,
+                    "content": final_result.content,
+                },
+                indent=2,
+                ensure_ascii=False,
+                default=str,
+            )
         )
     finally:
-        await close_provider(handle.provider)
+        await provider.close()
 
 
 if __name__ == "__main__":

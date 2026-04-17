@@ -1,19 +1,23 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import os
 from typing import Any
 
-from cookbook_support import (
-    build_live_provider,
-    close_provider,
-    fail_or_skip,
-    print_heading,
-    print_json,
-    summarize_usage,
-)
+from llm_client import Agent, OpenAIProvider, load_env, tool
+from llm_client.agent import AgentDefinition, AgentExecutionPolicy, ToolExecutionMode
 
-from llm_client.agent import Agent, AgentDefinition, AgentExecutionPolicy, ToolExecutionMode
-from llm_client.tools import tool
+load_env()
+
+
+def _allow_skip() -> bool:
+    return os.getenv("LLM_CLIENT_EXAMPLE_ALLOW_SKIP", "0").strip() == "1"
+
+
+def _fail_or_skip(message: str) -> None:
+    print(message)
+    raise SystemExit(0 if _allow_skip() else 1)
 
 
 INCIDENT_CONTEXT = {
@@ -126,10 +130,12 @@ def serialize_turn(turn) -> dict[str, Any]:
 
 
 async def main() -> None:
-    handle = build_live_provider()
+    model_name = os.getenv("LLM_CLIENT_EXAMPLE_MODEL", "gpt-5-nano")
+    provider_name = "openai"
+    provider = OpenAIProvider(model=model_name)
     try:
         agent = Agent(
-            provider=handle.provider,
+            provider=provider,
             tools=[
                 get_incident_snapshot,
                 get_recent_alerts,
@@ -161,29 +167,52 @@ async def main() -> None:
         )
 
         if not result.all_tool_calls:
-            fail_or_skip("The live model did not use tools for the tool-calling agent showcase.")
+            _fail_or_skip("The live model did not use tools for the tool-calling agent showcase.")
 
-        print_heading("Incident Context")
-        print_json(INCIDENT_CONTEXT)
-
-        print_heading("Tool-Calling Agent")
-        print_json(
+        usage = (
             {
-                "provider": handle.name,
-                "model": handle.model,
-                "status": result.status,
-                "turn_count": len(result.turns),
-                "tool_call_count": len(result.all_tool_calls),
-                "tool_names_used": [tool_call.name for tool_call in result.all_tool_calls],
-                "usage": summarize_usage(result.total_usage),
-                "final_content": result.content,
+                "input_tokens": result.total_usage.input_tokens,
+                "output_tokens": result.total_usage.output_tokens,
+                "total_tokens": result.total_usage.total_tokens,
+                "total_cost": result.total_usage.total_cost,
             }
+            if result.total_usage is not None
+            else {}
         )
 
-        print_heading("Agent Turns")
-        print_json([serialize_turn(turn) for turn in result.turns])
+        print("\n=== Incident Context ===\n")
+        print(json.dumps(INCIDENT_CONTEXT, indent=2, ensure_ascii=False, default=str))
+
+        print("\n=== Tool-Calling Agent ===\n")
+        print(
+            json.dumps(
+                {
+                    "provider": provider_name,
+                    "model": model_name,
+                    "status": result.status,
+                    "turn_count": len(result.turns),
+                    "tool_call_count": len(result.all_tool_calls),
+                    "tool_names_used": [tool_call.name for tool_call in result.all_tool_calls],
+                    "usage": usage,
+                    "final_content": result.content,
+                },
+                indent=2,
+                ensure_ascii=False,
+                default=str,
+            )
+        )
+
+        print("\n=== Agent Turns ===\n")
+        print(
+            json.dumps(
+                [serialize_turn(turn) for turn in result.turns],
+                indent=2,
+                ensure_ascii=False,
+                default=str,
+            )
+        )
     finally:
-        await close_provider(handle.provider)
+        await provider.close()
 
 
 if __name__ == "__main__":

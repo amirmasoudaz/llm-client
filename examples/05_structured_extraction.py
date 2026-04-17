@@ -1,15 +1,23 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import os
 
-from cookbook_support import build_live_provider, close_provider, print_heading, print_json
+from llm_client import (
+    Message,
+    OpenAIProvider,
+    StructuredOutputConfig,
+    extract_structured,
+    load_env,
+)
 
-from llm_client.providers.types import Message
-from llm_client.structured import StructuredOutputConfig, extract_structured
+load_env()
 
 
 async def main() -> None:
-    handle = build_live_provider()
+    model_name = os.getenv("LLM_CLIENT_EXAMPLE_MODEL", "gpt-5-nano")
+    provider = OpenAIProvider(model=model_name)
     try:
         config = StructuredOutputConfig(
             schema={
@@ -28,7 +36,7 @@ async def main() -> None:
             max_repair_attempts=1,
         )
         result = await extract_structured(
-            handle.provider,
+            provider,
             [
                 Message.system("Return valid JSON only."),
                 Message.user(
@@ -41,20 +49,37 @@ async def main() -> None:
             reasoning_effort="minimal",
         )
 
-        print_heading("Structured Extraction")
-        print_json(
+        usage = (
             {
-                "provider": handle.name,
-                "model": handle.model,
-                "valid": result.valid,
-                "data": result.data,
-                "repair_attempts": result.repair_attempts,
-                "response_kind": result.response_kind,
-                "validation_errors": result.validation_errors,
+                "input_tokens": result.usage.input_tokens,
+                "output_tokens": result.usage.output_tokens,
+                "total_tokens": result.usage.total_tokens,
+                "total_cost": result.usage.total_cost,
             }
+            if result.usage is not None
+            else {}
+        )
+
+        print("\n=== Structured Extraction ===\n")
+        print(
+            json.dumps(
+                {
+                    "provider": "openai",
+                    "model": model_name,
+                    "valid": result.valid,
+                    "data": result.data,
+                    "repair_attempts": result.repair_attempts,
+                    "response_kind": result.response_kind,
+                    "validation_errors": result.validation_errors,
+                    "usage": usage,
+                },
+                indent=4,
+                ensure_ascii=False,
+                default=str,
+            )
         )
     finally:
-        await close_provider(handle.provider)
+        await provider.close()
 
 
 if __name__ == "__main__":

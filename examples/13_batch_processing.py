@@ -1,17 +1,16 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import os
 import time
 from pathlib import Path
 from typing import Any
 
-from cookbook_support import build_live_provider, close_provider, print_heading, print_json
-
+from llm_client import ExecutionEngine, Message, OpenAIProvider, RequestSpec, load_env
 from llm_client.batch_req import BatchManager
-from llm_client.engine import ExecutionEngine
-from llm_client.providers.types import Message
-from llm_client.spec import RequestSpec
 
+load_env()
 
 ROOT = Path(__file__).resolve().parents[1]
 CHECKPOINT_PATH = ROOT / "tmp" / "cookbook-batch-processing-checkpoint.jsonl"
@@ -154,27 +153,29 @@ def infer_routing_owner(batch_item: dict[str, Any], model_excerpt: str) -> str:
 
 
 async def main() -> None:
-    handle = build_live_provider()
+    model_name = os.getenv("LLM_CLIENT_EXAMPLE_MODEL", "gpt-5-nano")
+    provider_name = "openai"
+    provider = OpenAIProvider(model=model_name)
     CHECKPOINT_PATH.parent.mkdir(parents=True, exist_ok=True)
     if CHECKPOINT_PATH.exists():
         CHECKPOINT_PATH.unlink()
 
     try:
         items = build_batch_items()
-        specs = build_batch_specs(handle.name, handle.model, items)
+        specs = build_batch_specs(provider_name, model_name, items)
 
-        engine = ExecutionEngine(provider=handle.provider)
+        engine = ExecutionEngine(provider=provider)
         batch_started = time.perf_counter()
         engine_results = await engine.batch_complete(specs, max_concurrency=3)
         engine_batch_duration_ms = (time.perf_counter() - batch_started) * 1000
 
-        worker_engine = ExecutionEngine(provider=handle.provider)
+        worker_engine = ExecutionEngine(provider=provider)
 
         async def _processor(batch_item: dict[str, Any]) -> dict[str, Any]:
             started = time.perf_counter()
             spec = RequestSpec(
-                provider=handle.name,
-                model=handle.model,
+                provider=provider_name,
+                model=model_name,
                 messages=[
                     Message.system(
                         "You are routing support escalations. "
@@ -214,44 +215,64 @@ async def main() -> None:
         resume_results = await resume_manager.process_batch(items, _processor, desc="cookbook-live-batch-resume")
         resume_duration_ms = (time.perf_counter() - resume_started) * 1000
 
-        print_heading("Batch Workload")
-        print_json(
-            {
-                "provider": handle.name,
-                "model": handle.model,
-                "checkpoint_path": str(CHECKPOINT_PATH),
-                "items": items,
-            }
+        print("\n=== Batch Workload ===\n")
+        print(
+            json.dumps(
+                {
+                    "provider": provider_name,
+                    "model": model_name,
+                    "checkpoint_path": str(CHECKPOINT_PATH),
+                    "items": items,
+                },
+                indent=2,
+                ensure_ascii=False,
+                default=str,
+            )
         )
 
-        print_heading("Engine Batch Complete")
-        print_json(
-            {
-                "max_concurrency": 3,
-                "batch_duration_ms": round(engine_batch_duration_ms, 2),
-                "ordered_results": summarize_engine_results(items, engine_results),
-            }
+        print("\n=== Engine Batch Complete ===\n")
+        print(
+            json.dumps(
+                {
+                    "max_concurrency": 3,
+                    "batch_duration_ms": round(engine_batch_duration_ms, 2),
+                    "ordered_results": summarize_engine_results(items, engine_results),
+                },
+                indent=2,
+                ensure_ascii=False,
+                default=str,
+            )
         )
 
-        print_heading("Checkpointed Batch Manager")
-        print_json(
-            {
-                "max_workers": 2,
-                "batch_duration_ms": round(manager_duration_ms, 2),
-                "results": summarize_manager_results(manager_results),
-            }
+        print("\n=== Checkpointed Batch Manager ===\n")
+        print(
+            json.dumps(
+                {
+                    "max_workers": 2,
+                    "batch_duration_ms": round(manager_duration_ms, 2),
+                    "results": summarize_manager_results(manager_results),
+                },
+                indent=2,
+                ensure_ascii=False,
+                default=str,
+            )
         )
 
-        print_heading("Resume Pass")
-        print_json(
-            {
-                "loaded_checkpoint_records": len(resume_manager.processed_indices),
-                "resume_duration_ms": round(resume_duration_ms, 2),
-                "results": summarize_manager_results(resume_results),
-            }
+        print("\n=== Resume Pass ===\n")
+        print(
+            json.dumps(
+                {
+                    "loaded_checkpoint_records": len(resume_manager.processed_indices),
+                    "resume_duration_ms": round(resume_duration_ms, 2),
+                    "results": summarize_manager_results(resume_results),
+                },
+                indent=2,
+                ensure_ascii=False,
+                default=str,
+            )
         )
     finally:
-        await close_provider(handle.provider)
+        await provider.close()
 
 
 if __name__ == "__main__":

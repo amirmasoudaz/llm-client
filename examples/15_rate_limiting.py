@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import os
 import time
 from typing import Any
 
-from cookbook_support import build_live_provider, close_provider, print_heading, print_json, summarize_usage
-
-from llm_client.providers.types import Message
+from llm_client import Message, OpenAIProvider, load_env
 from llm_client.rate_limit import Limiter
 
+load_env()
 
 DEMO_WINDOW_SECONDS = 6.0
 DEMO_REQUESTS_PER_WINDOW = 2
@@ -75,6 +76,17 @@ async def _run_item(
             budget.output_tokens = result.usage.output_tokens
         finished_at = time.monotonic()
 
+    usage = (
+        {
+            "input_tokens": result.usage.input_tokens,
+            "output_tokens": result.usage.output_tokens,
+            "total_tokens": result.usage.total_tokens,
+            "total_cost": result.usage.total_cost,
+        }
+        if result.usage is not None
+        else {}
+    )
+
     return {
         "ticket_id": item["ticket_id"],
         "status": result.status,
@@ -84,7 +96,7 @@ async def _run_item(
         "provider_latency_ms": round((finished_at - admitted_at) * 1000, 2),
         "total_item_latency_ms": round((finished_at - queued_at) * 1000, 2),
         "estimated_prompt_tokens": estimated_prompt_tokens,
-        "usage": summarize_usage(result.usage),
+        "usage": usage,
         "content_excerpt": (result.content or "")[:220],
     }
 
@@ -129,7 +141,9 @@ def _admission_timeline(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 async def main() -> None:
-    handle = build_live_provider()
+    model_name = os.getenv("LLM_CLIENT_EXAMPLE_MODEL", "gpt-5-nano")
+    provider_name = "openai"
+    provider = OpenAIProvider(model=model_name)
     try:
         workload = _build_rate_limited_workload()
         limiter = Limiter(
@@ -138,22 +152,27 @@ async def main() -> None:
             window_seconds=DEMO_WINDOW_SECONDS,
         )
 
-        print_heading("Rate-Limited Workload")
-        print_json(
-            {
-                "provider": handle.name,
-                "model": handle.model,
-                "items": workload,
-                "demo_limiter": {
-                    "window_seconds": DEMO_WINDOW_SECONDS,
-                    "requests_per_window": limiter.req_limiter.maximum_size,
-                    "tokens_per_window": limiter.tkn_limiter.maximum_size,
-                    "intent": (
-                        "show admission control in a short demo window; the provider's native "
-                        "rate limits remain unchanged"
-                    ),
+        print("\n=== Rate-Limited Workload ===\n")
+        print(
+            json.dumps(
+                {
+                    "provider": provider_name,
+                    "model": model_name,
+                    "items": workload,
+                    "demo_limiter": {
+                        "window_seconds": DEMO_WINDOW_SECONDS,
+                        "requests_per_window": limiter.req_limiter.maximum_size,
+                        "tokens_per_window": limiter.tkn_limiter.maximum_size,
+                        "intent": (
+                            "show admission control in a short demo window; the provider's native "
+                            "rate limits remain unchanged"
+                        ),
+                    },
                 },
-            }
+                indent=2,
+                ensure_ascii=False,
+                default=str,
+            )
         )
 
         suite_started_at = time.monotonic()
@@ -161,7 +180,7 @@ async def main() -> None:
             *[
                 _run_item(
                     item,
-                    provider=handle.provider,
+                    provider=provider,
                     limiter=limiter,
                     suite_started_at=suite_started_at,
                 )
@@ -170,20 +189,25 @@ async def main() -> None:
         )
         total_duration_ms = round((time.monotonic() - suite_started_at) * 1000, 2)
 
-        print_heading("Concurrent Run With Limiter")
-        print_json(
-            {
-                "batch_size": len(workload),
-                "total_duration_ms": total_duration_ms,
-                "max_parallel_submissions": len(workload),
-                "rate_limit_behavior": "continuous refill token bucket, not fixed-window batching",
-                "admission_timeline": _admission_timeline(results),
-                "burst_groups": _wave_summary(results),
-                "results": sorted(results, key=lambda item: item["ticket_id"]),
-            }
+        print("\n=== Concurrent Run With Limiter ===\n")
+        print(
+            json.dumps(
+                {
+                    "batch_size": len(workload),
+                    "total_duration_ms": total_duration_ms,
+                    "max_parallel_submissions": len(workload),
+                    "rate_limit_behavior": "continuous refill token bucket, not fixed-window batching",
+                    "admission_timeline": _admission_timeline(results),
+                    "burst_groups": _wave_summary(results),
+                    "results": sorted(results, key=lambda item: item["ticket_id"]),
+                },
+                indent=2,
+                ensure_ascii=False,
+                default=str,
+            )
         )
     finally:
-        await close_provider(handle.provider)
+        await provider.close()
 
 
 if __name__ == "__main__":

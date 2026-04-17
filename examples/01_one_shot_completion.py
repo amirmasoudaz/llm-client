@@ -1,29 +1,40 @@
 from __future__ import annotations
 
 import asyncio
+import os
 
-from cookbook_support import build_live_provider, close_provider, print_heading, summarize_usage
+from llm_client import Message, OpenAIProvider, load_env
 
-from llm_client.providers.types import Message
+load_env()
 
 
 async def main() -> None:
-    handle = build_live_provider()
+    model_name = os.getenv("LLM_CLIENT_EXAMPLE_MODEL", "gpt-5-nano")
+    provider = OpenAIProvider(model=model_name)
     try:
-        messages = [
-            Message.system("You are concise and answer in exactly one sentence."),
-            Message.user("Introduce the llm_client cookbook and mention that this is a live provider call."),
-        ]
-        result = await handle.provider.complete(messages)
-
-        print_heading("One-Shot Completion")
-        print(result.content)
-        print(
-            f"provider={handle.name} model={handle.model} "
-            f"status={result.status} usage={summarize_usage(result.usage)}"
+        result = await provider.complete(
+            messages=[
+                Message.system("You are concise and answer in exactly one sentence."),
+                Message.user("Introduce the llm_client cookbook and mention that this is a live provider call."),
+            ],
+            max_tokens=100,
+            temperature=0.1,
+            reasoning_effort="minimal"
         )
+
+        print("\n=== One-Shot Completion ===\n")
+        print(result.content)
+        print("\n=== Usage ===")
+        if result.usage is not None:
+            usage = {
+                "input_tokens": result.usage.input_tokens,
+                "output_tokens": result.usage.output_tokens,
+                "total_tokens": result.usage.total_tokens,
+                "total_cost": result.usage.total_cost,
+            }
+            print(f"provider=openai model={model_name} status={result.status} usage={usage}")
     finally:
-        await close_provider(handle.provider)
+        await provider.close()
 
 
 if __name__ == "__main__":

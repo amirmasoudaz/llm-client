@@ -1,81 +1,112 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import os
 
-from cookbook_support import build_live_provider, close_provider, print_heading, print_json
+from llm_client import (
+    ExecutionEngine,
+    Message,
+    OpenAIProvider,
+    AnthropicProvider,
+    ProviderCapabilities,
+    ProviderDescriptor,
+    ProviderRegistry,
+    RegistryRouter,
+    RequestSpec,
+    RetryConfig,
+    load_env,
+)
 
-from llm_client.engine import ExecutionEngine, RetryConfig
-from llm_client.provider_registry import ProviderCapabilities, ProviderDescriptor, ProviderRegistry
-from llm_client.providers.types import Message
-from llm_client.routing import RegistryRouter
-from llm_client.spec import RequestSpec
+load_env()
 
 
-def build_registry(primary, secondary) -> ProviderRegistry:
+def build_registry(
+    primary_provider: OpenAIProvider,
+    primary_model: str,
+    secondary_provider: AnthropicProvider,
+    secondary_model: str,
+) -> ProviderRegistry:
     registry = ProviderRegistry()
-    shared_capabilities = ProviderCapabilities(completions=True, streaming=True, embeddings=False, tool_calling=True)
+    shared_capabilities = ProviderCapabilities(
+        completions=True, streaming=True, embeddings=False, tool_calling=True
+    )
     registry.register(
         ProviderDescriptor(
             name="primary_live",
-            default_model=primary.model,
+            default_model=primary_model,
             priority=10,
             capabilities=shared_capabilities,
-            metadata={"provider_family": primary.name},
-            factory=lambda **_: primary.provider,
+            metadata={"provider_family": "openai"},
+            factory=lambda **_: primary_provider,
         )
     )
     registry.register(
         ProviderDescriptor(
             name="secondary_live",
-            default_model=secondary.model,
+            default_model=secondary_model,
             priority=20,
             capabilities=shared_capabilities,
-            metadata={"provider_family": secondary.name},
-            factory=lambda **_: secondary.provider,
+            metadata={"provider_family": "openai"},
+            factory=lambda **_: secondary_provider,
         )
     )
     return registry
 
 
 async def main() -> None:
-    primary = build_live_provider()
-    secondary = build_live_provider(secondary=True)
+    primary_model = os.getenv("LLM_CLIENT_EXAMPLE_MODEL", "gpt-5-nano")
+    secondary_model = os.getenv("LLM_CLIENT_EXAMPLE_SECONDARY_MODEL", "claude-3-5-haiku")
+    primary_provider = OpenAIProvider(model=primary_model)
+    secondary_provider = AnthropicProvider(model=secondary_model)
     try:
-        registry = build_registry(primary, secondary)
+        registry = build_registry(primary_provider, primary_model, secondary_provider, secondary_model)
         router = RegistryRouter(registry=registry)
         engine = ExecutionEngine(router=router, retry=RetryConfig(attempts=1, backoff=0.0, max_backoff=0.0))
         result = await engine.complete(
             RequestSpec(
                 provider="auto",
-                model=primary.model,
+                model=primary_model,
                 messages=[
                     Message.system("You are a helpful assistant that routes requests to the appropriate provider."),
-                    Message.user("Route this request and answer in one sentence about registry-based routing.")
+                    Message.user(
+                        "Route this request and answer in one sentence about registry-based routing."
+                    ),
                 ],
             )
         )
 
-        print_heading("Provider Registry")
-        print_json(
-            {
-                "providers": [descriptor.name for descriptor in registry.find_capable(completions=True)],
-                "primary": {"provider": primary.name, "model": primary.model},
-                "secondary": {"provider": secondary.name, "model": secondary.model},
-            }
+        print("\n=== Provider Registry ===\n")
+        print(
+            json.dumps(
+                {
+                    "providers": [descriptor.name for descriptor in registry.find_capable(completions=True)],
+                    "primary": {"provider": "openai", "model": primary_model},
+                    "secondary": {"provider": "anthropic", "model": secondary_model},
+                },
+                indent=4,
+                ensure_ascii=False,
+                default=str,
+            )
         )
 
-        print_heading("Routing + Live Completion")
-        print_json(
-            {
-                "status": result.status,
-                "model": result.model,
-                "content": result.content,
-            }
+        print("\n=== Routing + Live Completion ===\n")
+        print(
+            json.dumps(
+                {
+                    "status": result.status,
+                    "model": result.model,
+                    "content": result.content,
+                },
+                indent=4,
+                ensure_ascii=False,
+                default=str,
+            )
         )
     finally:
-        await close_provider(primary.provider)
-        if secondary.provider is not primary.provider:
-            await close_provider(secondary.provider)
+        await primary_provider.close()
+        if secondary_provider is not primary_provider:
+            await secondary_provider.close()
 
 
 if __name__ == "__main__":

@@ -4,37 +4,39 @@ import asyncio
 import io
 import json
 import logging
+import os
 import uuid
 from typing import Any
 
-from cookbook_support import build_live_provider, close_provider, print_heading, print_json
-
-from llm_client.cache import CacheCore, CachePolicy
-from llm_client.cache.base import BaseCacheBackend
-from llm_client.engine import ExecutionEngine
-from llm_client.hooks import (
+from llm_client import (
     EngineDiagnosticsRecorder,
+    ExecutionEngine,
     HookManager,
     LifecycleLoggingHook,
     LifecycleRecorder,
     LifecycleTelemetryHook,
-)
-from llm_client.idempotency import IdempotencyTracker
-from llm_client.logging import StructuredLogger
-from llm_client.observability import (
+    Message,
     MetricRegistry,
+    OpenAIProvider,
     PayloadPreviewMode,
     ProviderPayloadCaptureMode,
     RedactionPolicy,
+    RequestContext,
+    RequestSpec,
+    ToolOutputPolicy,
     UsageTracker,
     capture_provider_payload,
+    load_env,
     preview_payload,
     sanitize_payload,
     sanitize_tool_output,
 )
-from llm_client.providers.types import Message
-from llm_client.redaction import ToolOutputPolicy
-from llm_client.spec import RequestContext, RequestSpec
+from llm_client.cache import CacheCore, CachePolicy
+from llm_client.cache.base import BaseCacheBackend
+from llm_client.idempotency import IdempotencyTracker
+from llm_client.logging import StructuredLogger
+
+load_env()
 
 
 class _InMemoryCacheBackend(BaseCacheBackend):
@@ -139,7 +141,9 @@ def _select_counters(snapshot: dict[str, Any]) -> dict[str, int]:
 
 
 async def main() -> None:
-    handle = build_live_provider()
+    model_name = os.getenv("LLM_CLIENT_EXAMPLE_MODEL", "gpt-5-nano")
+    provider_name = "openai"
+    provider = OpenAIProvider(model=model_name)
     try:
         escalation_packet = {
             "case_id": "SUP-2081",
@@ -186,7 +190,7 @@ async def main() -> None:
             include_session_reports=True,
         )
         engine = ExecutionEngine(
-            provider=handle.provider,
+            provider=provider,
             cache=CacheCore(_InMemoryCacheBackend()),
             idempotency_tracker=IdempotencyTracker(),
             hooks=HookManager([diagnostics, lifecycle, telemetry, lifecycle_logging]),
@@ -195,8 +199,8 @@ async def main() -> None:
         session_id = "cookbook-observability-session"
 
         triage_spec = RequestSpec(
-            provider=handle.name,
-            model=handle.model,
+            provider=provider_name,
+            model=model_name,
             messages=[
                 Message.system(
                     "You are an LLM platform operations assistant. "
@@ -227,8 +231,8 @@ async def main() -> None:
         )
 
         reply_spec = RequestSpec(
-            provider=handle.name,
-            model=handle.model,
+            provider=provider_name,
+            model=model_name,
             messages=[
                 Message.system(
                     "You are a customer support incident communicator. "
@@ -260,79 +264,99 @@ async def main() -> None:
         usage_summary = usage_tracker.get_session_summary(session_id)
         parsed_logs = _extract_log_samples(log_stream.getvalue().splitlines())
 
-        print_heading("Escalation Packet")
-        print_json(
-            {
-                "raw_packet": escalation_packet,
-                "model_packet": model_packet,
-            }
+        print("\n=== Escalation Packet ===\n")
+        print(
+            json.dumps(
+                {
+                    "raw_packet": escalation_packet,
+                    "model_packet": model_packet,
+                },
+                indent=2,
+                ensure_ascii=False,
+                default=str,
+            )
         )
 
-        print_heading("Live Request Reports")
-        print_json(
-            {
-                "provider": handle.name,
-                "model": handle.model,
-                "triage_cold": {
-                    "content_excerpt": _result_excerpt(cold_result.content),
-                    "request_report": lifecycle.requests[cold_context.request_id].to_dict(),
-                    "diagnostics": diagnostics.latest_request(cold_context.request_id).payload
-                    if diagnostics.latest_request(cold_context.request_id)
-                    else {},
-                },
-                "triage_warm_cache_hit": {
-                    "content_excerpt": _result_excerpt(warm_result.content),
-                    "request_report": lifecycle.requests[warm_context.request_id].to_dict(),
-                    "diagnostics": diagnostics.latest_request(warm_context.request_id).payload
-                    if diagnostics.latest_request(warm_context.request_id)
-                    else {},
-                },
-                "customer_update_idempotent_replay": {
-                    "same_content": reply_first.content == reply_second.content,
-                    "first_excerpt": _result_excerpt(reply_first.content),
-                    "second_request_report": lifecycle.requests[reply_second_context.request_id].to_dict(),
-                    "second_diagnostics": diagnostics.latest_request(reply_second_context.request_id).payload
-                    if diagnostics.latest_request(reply_second_context.request_id)
-                    else {},
-                },
-            }
-        )
-
-        print_heading("Session Telemetry + Logs")
-        print_json(
-            {
-                "session_report": session_report,
-                "usage_tracker_summary": usage_summary,
-                "selected_metric_counters": _select_counters(telemetry_snapshot),
-                "latency_histogram": telemetry_snapshot.get("histograms", {}).get("llm.request.latency_ms", {}),
-                "structured_log_samples": parsed_logs,
-            }
-        )
-
-        print_heading("Redaction Utilities")
-        print_json(
-            {
-                "sanitize_payload": sanitize_payload(escalation_packet, policy=redaction_policy),
-                "preview_payload": preview_payload(escalation_packet, policy=redaction_policy),
-                "provider_payload_capture": capture_provider_payload(
-                    {
-                        "id": "resp_demo_123",
-                        "model": handle.model,
-                        "status": 200,
-                        "raw_response": {"secret": "should-not-leak"},
-                        "usage": {"total_tokens": 123},
+        print("\n=== Live Request Reports ===\n")
+        print(
+            json.dumps(
+                {
+                    "provider": provider_name,
+                    "model": model_name,
+                    "triage_cold": {
+                        "content_excerpt": _result_excerpt(cold_result.content),
+                        "request_report": lifecycle.requests[cold_context.request_id].to_dict(),
+                        "diagnostics": diagnostics.latest_request(cold_context.request_id).payload
+                        if diagnostics.latest_request(cold_context.request_id)
+                        else {},
                     },
-                    policy=redaction_policy,
-                ),
-                "sanitize_tool_output": sanitize_tool_output(
-                    "Customer email morgan@acme.example token=tok_live_demo_secret "
-                    "requested priority follow-up before renewal.",
-                    policy=ToolOutputPolicy(max_chars=96),
-                ),
-            }
+                    "triage_warm_cache_hit": {
+                        "content_excerpt": _result_excerpt(warm_result.content),
+                        "request_report": lifecycle.requests[warm_context.request_id].to_dict(),
+                        "diagnostics": diagnostics.latest_request(warm_context.request_id).payload
+                        if diagnostics.latest_request(warm_context.request_id)
+                        else {},
+                    },
+                    "customer_update_idempotent_replay": {
+                        "same_content": reply_first.content == reply_second.content,
+                        "first_excerpt": _result_excerpt(reply_first.content),
+                        "second_request_report": lifecycle.requests[reply_second_context.request_id].to_dict(),
+                        "second_diagnostics": diagnostics.latest_request(reply_second_context.request_id).payload
+                        if diagnostics.latest_request(reply_second_context.request_id)
+                        else {},
+                    },
+                },
+                indent=2,
+                ensure_ascii=False,
+                default=str,
+            )
+        )
+
+        print("\n=== Session Telemetry + Logs ===\n")
+        print(
+            json.dumps(
+                {
+                    "session_report": session_report,
+                    "usage_tracker_summary": usage_summary,
+                    "selected_metric_counters": _select_counters(telemetry_snapshot),
+                    "latency_histogram": telemetry_snapshot.get("histograms", {}).get("llm.request.latency_ms", {}),
+                    "structured_log_samples": parsed_logs,
+                },
+                indent=2,
+                ensure_ascii=False,
+                default=str,
+            )
+        )
+
+        print("\n=== Redaction Utilities ===\n")
+        print(
+            json.dumps(
+                {
+                    "sanitize_payload": sanitize_payload(escalation_packet, policy=redaction_policy),
+                    "preview_payload": preview_payload(escalation_packet, policy=redaction_policy),
+                    "provider_payload_capture": capture_provider_payload(
+                        {
+                            "id": "resp_demo_123",
+                            "model": model_name,
+                            "status": 200,
+                            "raw_response": {"secret": "should-not-leak"},
+                            "usage": {"total_tokens": 123},
+                        },
+                        policy=redaction_policy,
+                    ),
+                    "sanitize_tool_output": sanitize_tool_output(
+                        "Customer email morgan@acme.example token=tok_live_demo_secret "
+                        "requested priority follow-up before renewal.",
+                        policy=ToolOutputPolicy(max_chars=96),
+                    ),
+                },
+                indent=2,
+                ensure_ascii=False,
+                default=str,
+            )
         )
     finally:
-        await close_provider(handle.provider)
+        await provider.close()
 
 
 if __name__ == "__main__":

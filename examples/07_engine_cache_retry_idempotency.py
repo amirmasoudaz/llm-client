@@ -1,16 +1,25 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import os
 
-from cookbook_support import build_live_provider, close_provider, print_heading, print_json
-
+from llm_client import (
+    EngineDiagnosticsRecorder,
+    ExecutionEngine,
+    HookManager,
+    Message,
+    OpenAIProvider,
+    RequestContext,
+    RequestSpec,
+    RetryConfig,
+    load_env,
+)
 from llm_client.cache import CacheCore, CachePolicy
 from llm_client.cache.base import BaseCacheBackend
-from llm_client.engine import ExecutionEngine, RetryConfig
-from llm_client.hooks import EngineDiagnosticsRecorder, HookManager
 from llm_client.idempotency import IdempotencyTracker
-from llm_client.providers.types import Message
-from llm_client.spec import RequestContext, RequestSpec
+
+load_env()
 
 
 class _InMemoryCacheBackend(BaseCacheBackend):
@@ -41,11 +50,13 @@ class _InMemoryCacheBackend(BaseCacheBackend):
 
 
 async def main() -> None:
-    handle = build_live_provider()
+    model_name = os.getenv("LLM_CLIENT_EXAMPLE_MODEL", "gpt-5-nano")
+    provider_name = "openai"
+    provider = OpenAIProvider(model=model_name)
     try:
         diagnostics = EngineDiagnosticsRecorder()
         engine = ExecutionEngine(
-            provider=handle.provider,
+            provider=provider,
             cache=CacheCore(_InMemoryCacheBackend()),
             retry=RetryConfig(attempts=2, backoff=0.25, max_backoff=0.5),
             idempotency_tracker=IdempotencyTracker(),
@@ -54,8 +65,8 @@ async def main() -> None:
 
         retry_context = RequestContext()
         retry_spec = RequestSpec(
-            provider=handle.name,
-            model=handle.model,
+            provider=provider_name,
+            model=model_name,
             messages=[Message.user("Explain why retries are useful in LLM infrastructure.")],
         )
         retry_result = await engine.complete(retry_spec, context=retry_context, idempotency_key="cookbook-live-retry")
@@ -63,8 +74,8 @@ async def main() -> None:
         idem_first_context = RequestContext()
         idem_second_context = RequestContext()
         idem_spec = RequestSpec(
-            provider=handle.name,
-            model=handle.model,
+            provider=provider_name,
+            model=model_name,
             messages=[Message.user("Answer with the phrase: idempotency prevents duplicate work.")],
         )
         idem_first = await engine.complete(
@@ -79,8 +90,8 @@ async def main() -> None:
         )
 
         cache_spec = RequestSpec(
-            provider=handle.name,
-            model=handle.model,
+            provider=provider_name,
+            model=model_name,
             messages=[Message.user("Summarize cache hits in one sentence.")],
         )
         cold_context = RequestContext()
@@ -96,42 +107,52 @@ async def main() -> None:
             cache_policy=CachePolicy.default_response(collection="cookbook-live"),
         )
 
-        print_heading("Retry + Idempotency")
-        print_json(
-            {
-                "provider": handle.name,
-                "model": handle.model,
-                "retry_configured_attempts": 2,
-                "retry_observed_attempts": (
-                    diagnostics.latest_request(retry_context.request_id).payload.get("attempts")
-                    if diagnostics.latest_request(retry_context.request_id)
-                    else None
-                ),
-                "retry_result": retry_result.content,
-                "idempotent_same_content": idem_first.content == idem_second.content,
-                "idempotent_second_request": (
-                    diagnostics.latest_request(idem_second_context.request_id).payload
-                    if diagnostics.latest_request(idem_second_context.request_id)
-                    else {}
-                ),
-            }
+        print("\n=== Retry + Idempotency ===\n")
+        print(
+            json.dumps(
+                {
+                    "provider": provider_name,
+                    "model": model_name,
+                    "retry_configured_attempts": 2,
+                    "retry_observed_attempts": (
+                        diagnostics.latest_request(retry_context.request_id).payload.get("attempts")
+                        if diagnostics.latest_request(retry_context.request_id)
+                        else None
+                    ),
+                    "retry_result": retry_result.content,
+                    "idempotent_same_content": idem_first.content == idem_second.content,
+                    "idempotent_second_request": (
+                        diagnostics.latest_request(idem_second_context.request_id).payload
+                        if diagnostics.latest_request(idem_second_context.request_id)
+                        else {}
+                    ),
+                },
+                indent=4,
+                ensure_ascii=False,
+                default=str,
+            )
         )
 
-        print_heading("Cache + Diagnostics")
-        print_json(
-            {
-                "cold_result": cold_result.content,
-                "warm_result": warm_result.content,
-                "cache_stats": engine.cache.get_stats().to_dict() if engine.cache else {},
-                "warm_request_diagnostics": (
-                    diagnostics.latest_request(warm_context.request_id).payload
-                    if diagnostics.latest_request(warm_context.request_id)
-                    else {}
-                ),
-            }
+        print("\n=== Cache + Diagnostics ===\n")
+        print(
+            json.dumps(
+                {
+                    "cold_result": cold_result.content,
+                    "warm_result": warm_result.content,
+                    "cache_stats": engine.cache.get_stats().to_dict() if engine.cache else {},
+                    "warm_request_diagnostics": (
+                        diagnostics.latest_request(warm_context.request_id).payload
+                        if diagnostics.latest_request(warm_context.request_id)
+                        else {}
+                    ),
+                },
+                indent=4,
+                ensure_ascii=False,
+                default=str,
+            )
         )
     finally:
-        await close_provider(handle.provider)
+        await provider.close()
 
 
 if __name__ == "__main__":

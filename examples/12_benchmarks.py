@@ -1,16 +1,23 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from cookbook_support import build_live_provider, close_provider, print_heading, print_json
-
-from llm_client.benchmarks import (
+from llm_client import (
     BenchmarkComparisonReport,
+    BenchmarkRecorder,
     BenchmarkRecord,
     BenchmarkRunMode,
+    ExecutionEngine,
+    HookManager,
+    Message,
+    OpenAIProvider,
+    RequestSpec,
+    StructuredOutputConfig,
     build_cache_benchmark_case,
     build_completion_benchmark_case,
     build_context_planning_benchmark_case,
@@ -19,6 +26,7 @@ from llm_client.benchmarks import (
     build_structured_quality_benchmark_case,
     compare_benchmark_reports,
     load_benchmark_report,
+    load_env,
     run_benchmarks,
     save_benchmark_report,
 )
@@ -30,15 +38,11 @@ from llm_client.context_planning import (
     HeuristicContextPlanner,
     TieredTrimmingStrategy,
 )
-from llm_client.engine import ExecutionEngine
-from llm_client.hooks import BenchmarkRecorder, HookManager
 from llm_client.memory import InMemorySummaryStore, MemoryWrite, ShortTermMemoryStore
-from llm_client.providers.types import Message
-from llm_client.spec import RequestSpec
-from llm_client.structured import StructuredOutputConfig
 from llm_client.structured_benchmarks import StructuredBenchmarkCase
 from llm_client.summarization import LLMSummarizer
 
+load_env()
 
 ROOT = Path(__file__).resolve().parents[1]
 BASELINE_PATH = ROOT / "contracts" / "benchmarks" / "llm_client_deterministic_baseline.v1.json"
@@ -79,11 +83,11 @@ class _Entry:
     entry_type: str = "message"
 
 
-def _build_live_structured_cases(provider_handle, engine: ExecutionEngine) -> list[StructuredBenchmarkCase]:
+def _build_live_structured_cases(live_provider: OpenAIProvider, engine: ExecutionEngine) -> list[StructuredBenchmarkCase]:
     return [
         StructuredBenchmarkCase(
             name="incident_triage_extract",
-            provider=provider_handle.provider,
+            provider=live_provider,
             engine=engine,
             messages=[
                 Message.system("Return valid JSON only."),
@@ -110,7 +114,7 @@ def _build_live_structured_cases(provider_handle, engine: ExecutionEngine) -> li
         ),
         StructuredBenchmarkCase(
             name="release_gate_extract",
-            provider=provider_handle.provider,
+            provider=live_provider,
             engine=engine,
             messages=[
                 Message.system("Return valid JSON only."),
@@ -253,22 +257,22 @@ def _benchmark_event_summary(recorder: BenchmarkRecorder, report: Any) -> dict[s
 
 
 async def main() -> None:
-    chat_handle = build_live_provider()
-    embeddings_handle = build_live_provider(capability="embeddings")
-    extra_providers: list[Any] = []
-    if embeddings_handle.provider is not chat_handle.provider:
-        extra_providers.append(embeddings_handle.provider)
+    provider_name = "openai"
+    chat_model = os.getenv("LLM_CLIENT_EXAMPLE_MODEL", "gpt-5-nano")
+    embedding_model = os.getenv("LLM_CLIENT_EXAMPLE_EMBEDDINGS_MODEL", "text-embedding-3-small")
+    chat_provider = OpenAIProvider(model=chat_model)
+    embeddings_provider = OpenAIProvider(model=embedding_model)
 
     try:
         recorder = BenchmarkRecorder()
         hooks = HookManager([recorder])
 
-        primary_engine = ExecutionEngine(provider=chat_handle.provider)
+        primary_engine = ExecutionEngine(provider=chat_provider)
         cache_engine = ExecutionEngine(
-            provider=chat_handle.provider,
+            provider=chat_provider,
             cache=CacheCore(_InMemoryCacheBackend()),
         )
-        embeddings_engine = ExecutionEngine(provider=embeddings_handle.provider)
+        embeddings_engine = ExecutionEngine(provider=embeddings_provider)
 
         memory_store = ShortTermMemoryStore()
         await memory_store.write(
@@ -292,24 +296,24 @@ async def main() -> None:
         )
 
         completion_spec = RequestSpec(
-            provider=chat_handle.name,
-            model=chat_handle.model,
+            provider=provider_name,
+            model=chat_model,
             messages=[
                 Message.system("You are benchmarking completion quality for release operations."),
                 Message.user("Explain, in 3 short bullets, why cache-aware retries help an LLM platform."),
             ],
         )
         stream_spec = RequestSpec(
-            provider=chat_handle.name,
-            model=chat_handle.model,
+            provider=provider_name,
+            model=chat_model,
             messages=[
                 Message.system("You are benchmarking streaming responsiveness."),
                 Message.user("Stream a concise explanation of why observability matters during incident response."),
             ],
         )
         cache_spec = RequestSpec(
-            provider=chat_handle.name,
-            model=chat_handle.model,
+            provider=provider_name,
+            model=chat_model,
             messages=[
                 Message.system("You are benchmarking cacheable support triage generation."),
                 Message.user("Write a short support triage summary for an export-timeout incident."),
@@ -339,14 +343,14 @@ async def main() -> None:
                 primary_engine,
                 completion_spec,
                 iterations=2,
-                labels={"provider": chat_handle.name, "model": chat_handle.model},
+                labels={"provider": provider_name, "model": chat_model},
             ),
             build_stream_benchmark_case(
                 "stream_smoke",
                 primary_engine,
                 stream_spec,
                 iterations=2,
-                labels={"provider": chat_handle.name, "model": chat_handle.model},
+                labels={"provider": provider_name, "model": chat_model},
             ),
             build_embeddings_benchmark_case(
                 "embeddings_smoke",
@@ -356,26 +360,26 @@ async def main() -> None:
                     "observability lets operators diagnose routing, latency, and quota problems",
                 ],
                 iterations=2,
-                labels={"provider": embeddings_handle.name, "model": embeddings_handle.model},
+                labels={"provider": provider_name, "model": embedding_model},
             ),
             build_cache_benchmark_case(
                 "cache_smoke",
                 cache_engine,
                 cache_spec,
                 cache_policy=CachePolicy.default_response(collection="cookbook-benchmark-cache"),
-                labels={"provider": chat_handle.name, "model": chat_handle.model},
+                labels={"provider": provider_name, "model": chat_model},
             ),
             build_context_planning_benchmark_case(
                 "context_smoke",
                 planner,
                 context_request,
-                labels={"provider": chat_handle.name, "model": chat_handle.model},
+                labels={"provider": provider_name, "model": chat_model},
             ),
             build_structured_quality_benchmark_case(
                 "structured_smoke",
-                _build_live_structured_cases(chat_handle, primary_engine),
+                _build_live_structured_cases(chat_provider, primary_engine),
                 hooks=hooks,
-                labels={"provider": chat_handle.name, "model": chat_handle.model},
+                labels={"provider": provider_name, "model": chat_model},
             ),
         ]
 
@@ -384,58 +388,77 @@ async def main() -> None:
             label="cookbook-live-benchmarks",
             mode=BenchmarkRunMode.LIVE,
             hooks=hooks,
-            tags={"provider": chat_handle.name, "model": chat_handle.model},
+            tags={"provider": provider_name, "model": chat_model},
         )
         artifact_path = save_benchmark_report(report, ARTIFACT_PATH)
         baseline = load_benchmark_report(BASELINE_PATH)
         comparison = compare_benchmark_reports(report, baseline)
 
-        print_heading("Benchmark Suite")
-        print_json(
-            {
-                "run_label": report.metadata.label,
-                "mode": report.metadata.mode.value,
-                "chat_provider": {"provider": chat_handle.name, "model": chat_handle.model},
-                "embeddings_provider": {"provider": embeddings_handle.name, "model": embeddings_handle.model},
-                "cases": [
-                    {"name": case.name, "category": case.category.value, "labels": case.labels}
-                    for case in cases
-                ],
-            }
+        print("\n=== Benchmark Suite ===\n")
+        print(
+            json.dumps(
+                {
+                    "run_label": report.metadata.label,
+                    "mode": report.metadata.mode.value,
+                    "chat_provider": {"provider": provider_name, "model": chat_model},
+                    "embeddings_provider": {"provider": provider_name, "model": embedding_model},
+                    "cases": [
+                        {"name": case.name, "category": case.category.value, "labels": case.labels}
+                        for case in cases
+                    ],
+                },
+                indent=2,
+                ensure_ascii=False,
+                default=str,
+            )
         )
 
-        print_heading("Benchmark Summary")
-        print_json(
-            {
-                "total_cases": report.total_cases,
-                "success_count": report.success_count,
-                "failed_count": report.failed_count,
-                "avg_case_latency_ms": report.avg_case_latency_ms,
-                "records": _suite_summary(report.records),
-                "benchmark_events": _benchmark_event_summary(recorder, report),
-            }
+        print("\n=== Benchmark Summary ===\n")
+        print(
+            json.dumps(
+                {
+                    "total_cases": report.total_cases,
+                    "success_count": report.success_count,
+                    "failed_count": report.failed_count,
+                    "avg_case_latency_ms": report.avg_case_latency_ms,
+                    "records": _suite_summary(report.records),
+                    "benchmark_events": _benchmark_event_summary(recorder, report),
+                },
+                indent=2,
+                ensure_ascii=False,
+                default=str,
+            )
         )
 
-        print_heading("Comparison To Deterministic Baseline")
-        print_json(
-            {
-                "baseline_label": baseline.metadata.label,
-                "current_label": report.metadata.label,
-                "records": _comparison_summary(comparison),
-            }
+        print("\n=== Comparison To Deterministic Baseline ===\n")
+        print(
+            json.dumps(
+                {
+                    "baseline_label": baseline.metadata.label,
+                    "current_label": report.metadata.label,
+                    "records": _comparison_summary(comparison),
+                },
+                indent=2,
+                ensure_ascii=False,
+                default=str,
+            )
         )
 
-        print_heading("Benchmark Artifact")
-        print_json(
-            {
-                "report_path": str(artifact_path),
-                "baseline_path": str(BASELINE_PATH),
-            }
+        print("\n=== Benchmark Artifact ===\n")
+        print(
+            json.dumps(
+                {
+                    "report_path": str(artifact_path),
+                    "baseline_path": str(BASELINE_PATH),
+                },
+                indent=2,
+                ensure_ascii=False,
+                default=str,
+            )
         )
     finally:
-        await close_provider(chat_handle.provider)
-        for provider in extra_providers:
-            await close_provider(provider)
+        await chat_provider.close()
+        await embeddings_provider.close()
 
 
 if __name__ == "__main__":
