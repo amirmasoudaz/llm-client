@@ -153,8 +153,7 @@ promoted into that default ring, and can be run directly by filename.
 
 ## Notes
 
-- The examples now use real provider calls through
-  [cookbook_support.py](/home/namiral/Projects/Packages/llm-client-v1/examples/cookbook_support.py).
+- The examples now use real provider calls 
 - By default, the cookbook expects `OPENAI_API_KEY` and uses OpenAI models.
 - The OpenAI Responses lifecycle/state examples (`38`-`45`) expect
   `LLM_CLIENT_EXAMPLE_PROVIDER=openai`.
