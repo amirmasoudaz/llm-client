@@ -28,6 +28,8 @@ examples under [`examples/`](../examples/README.md).
   [llm-client-routing-and-failover-guide.md](/home/namiral/Projects/Packages/llm-client-v1/docs/llm-client-routing-and-failover-guide.md)
 - Tool runtime:
   [llm-client-tool-runtime-guide.md](/home/namiral/Projects/Packages/llm-client-v1/docs/llm-client-tool-runtime-guide.md)
+- Tool creation:
+  [llm-client-tool-creation-guide.md](/home/namiral/Projects/Packages/llm-client-v1/docs/llm-client-tool-creation-guide.md)
 - Structured outputs:
   [llm-client-structured-outputs-guide.md](/home/namiral/Projects/Packages/llm-client-v1/docs/llm-client-structured-outputs-guide.md)
 - Context and memory:
