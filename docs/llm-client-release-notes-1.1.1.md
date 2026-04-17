@@ -30,7 +30,7 @@ cleanup after the `1.1.0` OpenAI/provider expansion release.
 - Updated packaging guidance in
   [docs/llm-client-packaging-readiness.md](/home/namiral/Projects/Packages/llm-client-v1/docs/llm-client-packaging-readiness.md).
 - Updated cache backend notes in
-  [llm_client/README.md](/home/namiral/Projects/Packages/llm-client-v1/llm_client/README.md)
+  [README.md](/home/namiral/Projects/Packages/llm-client-v1/README.md)
   and
   [docs/llm-client-build-and-recipes-guide.md](/home/namiral/Projects/Packages/llm-client-v1/docs/llm-client-build-and-recipes-guide.md).
 

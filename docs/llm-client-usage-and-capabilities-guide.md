@@ -7,7 +7,7 @@ See also:
 
 - [llm-client-package-api-guide.md](/home/namiral/Projects/Packages/llm-client-v1/docs/llm-client-package-api-guide.md)
 - [llm-client-build-and-recipes-guide.md](/home/namiral/Projects/Packages/llm-client-v1/docs/llm-client-build-and-recipes-guide.md)
-- [llm_client/README.md](/home/namiral/Projects/Packages/llm-client-v1/llm_client/README.md)
+- [README.md](/home/namiral/Projects/Packages/llm-client-v1/README.md)
 - [llm-client-guides-index.md](/home/namiral/Projects/Packages/llm-client-v1/docs/llm-client-guides-index.md)
 
 ## Installation and Configuration

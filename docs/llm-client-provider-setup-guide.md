@@ -72,7 +72,7 @@ GoogleProvider(model="gemini-2.0-flash", api_key="...")
 ```
 
 When loading credentials from environment, call
-[`load_env()`](../llm_client/README.md) explicitly first.
+[`load_env()`](../README.md) explicitly first.
 
 ## OpenAI Responses lifecycle and state
 

@@ -13,7 +13,7 @@ Use this document when you need to answer:
 See also:
 
 - [llm-client-public-api-v1.md](/home/namiral/Projects/Packages/llm-client-v1/docs/llm-client-public-api-v1.md)
-- [llm_client/README.md](/home/namiral/Projects/Packages/llm-client-v1/llm_client/README.md)
+- [README.md](/home/namiral/Projects/Packages/llm-client-v1/README.md)
 - [llm-client-build-and-recipes-guide.md](/home/namiral/Projects/Packages/llm-client-v1/docs/llm-client-build-and-recipes-guide.md)
 - [llm-client-usage-and-capabilities-guide.md](/home/namiral/Projects/Packages/llm-client-v1/docs/llm-client-usage-and-capabilities-guide.md)
 

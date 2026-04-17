@@ -6,7 +6,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 PYPROJECT = ROOT / "pyproject.toml"
-README = ROOT / "llm_client" / "README.md"
+README = ROOT / "README.md"
 GUIDE_INDEX = ROOT / "docs" / "llm-client-guides-index.md"
 PY_TYPED = ROOT / "llm_client" / "py.typed"
 
@@ -41,7 +41,7 @@ def test_pyproject_declares_standalone_package_metadata() -> None:
     data = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))
     project = data["project"]
     assert project["name"] == "llm-client"
-    assert project["readme"] == "llm_client/README.md"
+    assert project["readme"] == "README.md"
     assert project["license"] == "Apache-2.0"
     assert "authors" in project
     assert "maintainers" in project
