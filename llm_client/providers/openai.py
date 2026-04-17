@@ -2730,6 +2730,7 @@ class OpenAIProvider(BaseProvider):
             tool_choice: Tool selection mode
             temperature: Sampling temperature
             max_tokens: Maximum output tokens
+            response_format: Response format
             reasoning_effort: Reasoning effort level
             reasoning: Reasoning configuration
             include: Responses include fields such as ``["reasoning.encrypted_content"]``
@@ -2752,8 +2753,8 @@ class OpenAIProvider(BaseProvider):
             "model": self.model_name,
             "stream": True,
             "stream_options": {"include_usage": True},
+            "input" if use_responses_api else "messages": api_messages
         }
-        params["input" if use_responses_api else "messages"] = api_messages
         alias_to_original: dict[str, str] = {}
         original_to_alias: dict[str, str] = {}
 
@@ -2826,7 +2827,13 @@ class OpenAIProvider(BaseProvider):
         params.update(kwargs)
 
         # Emit metadata event
-        yield StreamEvent(type=StreamEventType.META, data={"model": str(params.get("model") or self.model_name), "stream": True})
+        yield StreamEvent(
+            type=StreamEventType.META,
+            data={
+                "model": str(params.get("model") or self.model_name),
+                "stream": True
+            }
+        )
 
         if use_responses_api:
             async for event in self._stream_responses(
